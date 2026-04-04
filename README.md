@@ -17,6 +17,8 @@ The server exposes a small, stable tool surface for agents that need to inspect 
 - `find_symbol`: finds symbols by path-like query across a workspace, file, or directory
 - `find_referencing_symbols`: finds non-declaration usages of a symbol and groups them by file and logical container
 
+No special prompts are required. In most cases, LLM will prefer symbolic searches in accordance with its own asteria prompt.
+
 ## The following languages ​​are currently supported
 
 | Language | File extensions | Required executable |
