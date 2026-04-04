@@ -1,22 +1,23 @@
-# Asteria MCP
+# ✦ Asteria MCP
 
 An MCP server for symbolic code search over multiple language servers.
 
-Asteria was created as a lightweight alternative to [Serena](https://github.com/oraios/serena). It only borrows the idea of exposing three symbolic search tools — `get_symbols_overview`, `find_symbol`, and `find_referencing_symbols` — and does not try to replicate Serena's broader MCP toolkit.
+Asteria was created as a lightweight alternative to [Serena](https://github.com/oraios/serena). It only borrows the idea of exposing three symbolic search tools - `get_symbols_overview`, `find_symbol`, and `find_referencing_symbols` - and does not try to replicate Serena's broader MCP toolkit.
 
 The server exposes a small, stable tool surface for agents that need to inspect code with minimal file reads.
 
-## Tools
+> WARNING: ⚠️ LSP servers are required.
+> Asteria does **not** install or manage LSP servers for you.
+> If the required language server is not found in `PATH`, the corresponding adapter fails on the first request.
+> See [Language server installation](README.md#language-server-installation) for installation commands.
 
-### Symbolic search tools
+## Symbolic search tools
 
-- `get_symbols_overview` — returns a compact overview of symbols in one file, grouped by LSP symbol kind
-- `find_symbol` — finds symbols by path-like query across a workspace, file, or directory
-- `find_referencing_symbols` — finds non-declaration usages of a symbol and groups them by file and logical container
+- `get_symbols_overview`: returns a compact overview of symbols in one file, grouped by LSP symbol kind
+- `find_symbol`: finds symbols by path-like query across a workspace, file, or directory
+- `find_referencing_symbols`: finds non-declaration usages of a symbol and groups them by file and logical container
 
-The server communicates over stdio and starts language servers lazily on the first request.
-
-### Supported languages
+## The following languages ​​are currently supported
 
 | Language | File extensions | Required executable |
 | --- | --- | --- |
@@ -28,15 +29,15 @@ The server communicates over stdio and starts language servers lazily on the fir
 | PHP | `.php` | `phpactor` |
 | Rust | `.rs` | `rust-analyzer` |
 
-### Runtime requirements
+Adding a new LSP server: see [Adding a new LSP server](README.md#adding-a-new-lsp-server).
 
+## LSP runtime requirements.
+ 
 - Install the language servers you need.
 - See [Language server installation](README.md#language-server-installation) for installation commands.
 - Make sure they are available in `PATH` for the MCP client process.
 
- Asteria does not install or manage LSP servers for you. If a server is missing, the corresponding adapter fails when it receives the first request.
-
-## Installation
+## Asteria Installation
 
 ### Binary Releases
 
@@ -78,7 +79,7 @@ task build
 
 Use the commands that match the languages you want to analyze.
 
-#### Go
+### Go
 
 - Executable: `gopls`
 - macOS / Linux / Windows:
@@ -89,7 +90,7 @@ go install golang.org/x/tools/gopls@latest
 
 Source: <https://go.dev/gopls/>
 
-#### TypeScript and JavaScript
+### TypeScript and JavaScript
 
 - Executable: `typescript-language-server`
 - macOS / Linux / Windows:
@@ -100,7 +101,7 @@ npm install -g typescript-language-server typescript
 
 Source: <https://github.com/typescript-language-server/typescript-language-server>
 
-#### Markdown
+### Markdown
 
 - Executable: `marksman`
 - macOS:
@@ -119,7 +120,7 @@ brew install marksman
 
 Source: <https://github.com/artempyanykh/marksman/blob/main/docs/install.md>
 
-#### Python
+### Python
 
 - Executable: `basedpyright-langserver`
 - macOS / Linux:
@@ -140,7 +141,7 @@ Both commands install the `basedpyright` CLI and the `basedpyright-langserver` s
 
 Source: <https://docs.basedpyright.com/dev/installation/command-line-and-language-server/>
 
-#### C and C++
+### C and C++
 
 - Executable: `clangd`
 - macOS:
@@ -166,7 +167,7 @@ On non-Debian distributions, use the package manager or the official release bin
 
 Source: <https://clangd.llvm.org/installation.html>
 
-#### PHP
+### PHP
 
 - Executable: `phpactor`
 - Requirements: PHP `8.1+`
@@ -186,7 +187,7 @@ Make sure `~/.local/bin` is in `PATH`.
 
 Source: <https://phpactor.readthedocs.io/en/master/usage/standalone.html>
 
-#### Rust
+### Rust
 
 - Executable: `rust-analyzer`
 - macOS / Linux / Windows:
@@ -210,14 +211,14 @@ Add each adapter under `internal/adapters/lsp/servers/<server-name>/`.
 
 In most cases, the adapter should stay thin and reuse shared packages:
 
-- `internal/adapters/lsp/runtimelsp` — LSP process lifecycle, session reuse, and workspace isolation
-- `internal/adapters/lsp/stdlsp` — shared implementation for overview, symbol search, and reference search
-- `internal/adapters/lsp/helpers` — common document and workspace utilities
+- `internal/adapters/lsp/runtimelsp` - LSP process lifecycle, session reuse, and workspace isolation
+- `internal/adapters/lsp/stdlsp` - shared implementation for overview, symbol search, and reference search
+- `internal/adapters/lsp/helpers` - common document and workspace utilities
 
 There are two supported approaches:
 
-- **Standard adapter** — use this when the language server follows standard LSP behavior closely enough for `stdlsp`
-- **Custom adapter** — use this when the server needs its own symbol or reference workflow
+- **Standard adapter** - use this when the language server follows standard LSP behavior closely enough for `stdlsp`
+- **Custom adapter** - use this when the server needs its own symbol or reference workflow
 
 High-level flow:
 
@@ -292,23 +293,9 @@ Notes:
 - Asteria uses stdio transport.
 - Language server binaries must be visible in the environment of the MCP client process.
 
-## Tool contract
-
-All public MCP tools require `workspace_root`.
-
-- `workspace_root` must be an absolute path.
-- Relative paths such as `file_path` and `scope_path` are resolved against `workspace_root`.
-- Returned line ranges are 0-based and inclusive.
-
-## Development
-
-- `task lint` — run linters
-- `task test` — run unit tests
-- `task itest` — run unit and integration tests
-- `task build` — build `bin/asteria-mcp`
-
 ## Operational notes
 
 - Asteria creates one LSP session per normalized `workspace_root`.
 - Different workspace roots are isolated from each other.
 - Managed adapter artifacts are kept under the configured cache root, not inside the analyzed repository.
+- The server communicates over stdio and starts language servers lazily on the first request.
