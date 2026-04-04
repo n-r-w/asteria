@@ -1,0 +1,131 @@
+name: Setup integration test environment
+description: Install external language servers required by integration tests
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Set up Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rust-analyzer,rust-src
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: "8.3"
+
+    - name: Add Unix tool paths
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+    - name: Add Windows tool paths
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $pythonUserBase = python -c "import site; print(site.USER_BASE)"
+        $pythonBin = Join-Path $pythonUserBase 'Scripts'
+        $goBin = Join-Path (go env GOPATH) 'bin'
+        $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+
+        Add-Content -Path $env:GITHUB_PATH -Value $cargoBin
+        Add-Content -Path $env:GITHUB_PATH -Value $pythonBin
+        Add-Content -Path $env:GITHUB_PATH -Value $goBin
+
+    - name: Install Linux system packages
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        sudo apt-get update
+        sudo apt-get install -y clangd unzip
+
+    - name: Install macOS system packages
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if ! command -v clangd >/dev/null; then
+          brew install llvm
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+        fi
+
+    - name: Install Windows system packages
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        choco install llvm --yes --no-progress
+        Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\LLVM\bin'
+
+    - name: Install Unix language servers
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        go install golang.org/x/tools/gopls@latest
+        npm install -g typescript-language-server typescript
+        python -m pip install --user basedpyright
+        cargo install --locked marksman
+        composer global require phpactor/phpactor --no-interaction --prefer-dist
+        composer global config bin-dir --absolute >> "$GITHUB_PATH"
+
+    - name: Install Windows language servers
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        go install golang.org/x/tools/gopls@latest
+        npm install -g typescript-language-server typescript
+        python -m pip install --user basedpyright
+        cargo install --locked marksman
+        composer global require phpactor/phpactor --no-interaction --prefer-dist
+
+        $composerBin = composer global config bin-dir --absolute
+        Add-Content -Path $env:GITHUB_PATH -Value $composerBin
+
+    - name: Verify Unix executables
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        command -v gopls
+        command -v typescript-language-server
+        command -v marksman
+        command -v basedpyright-langserver
+        command -v clangd
+        command -v phpactor
+        command -v rust-analyzer
+
+    - name: Verify Windows executables
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        Get-Command gopls | Out-Null
+        Get-Command typescript-language-server | Out-Null
+        Get-Command marksman | Out-Null
+        Get-Command basedpyright-langserver | Out-Null
+        Get-Command clangd | Out-Null
+        Get-Command phpactor | Out-Null
+        Get-Command rust-analyzer | Out-Null
