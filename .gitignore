@@ -1,0 +1,15 @@
+.DS_Store
+/.serena
+/.idea
+/.vscode
+/.github/agents
+/bin
+.env
+/tmp
+coverage.html
+coverage.out
+node_modules
+.phpactor
+/internal/adapters/lsp/servers/rustanalyzer/testdata/basic/target
+/internal/adapters/lsp/servers/rustanalyzer/testdata/secondary/target
+Cargo.lock

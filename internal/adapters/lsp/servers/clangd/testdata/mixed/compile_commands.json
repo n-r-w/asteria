@@ -1,0 +1,12 @@
+[
+    {
+        "directory": ".",
+        "file": "mixed_c.c",
+        "command": "clang -std=c17 -I. -c mixed_c.c"
+    },
+    {
+        "directory": ".",
+        "file": "mixed_cpp.cpp",
+        "command": "clang++ -std=c++20 -I. -c mixed_cpp.cpp"
+    }
+]

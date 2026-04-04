@@ -1,0 +1,17 @@
+[
+    {
+        "directory": ".",
+        "file": "advanced.cpp",
+        "command": "clang++ -std=c++20 -I. -c advanced.cpp"
+    },
+    {
+        "directory": ".",
+        "file": "consumer.cpp",
+        "command": "clang++ -std=c++20 -I. -c consumer.cpp"
+    },
+    {
+        "directory": ".",
+        "file": "modules.cppm",
+        "command": "clang++ -std=c++20 -I. -c modules.cppm"
+    }
+]

@@ -1,0 +1,21 @@
+package server
+
+import (
+	"context"
+
+	"github.com/n-r-w/asteria/internal/domain"
+)
+
+//go:generate mockgen -destination=interfaces_mock.go -package=server -source=interfaces.go
+
+// ILSP defines use-case contract consumed by MCP tool handlers.
+type ILSP interface {
+	// GetSymbolsOverview returns a high-level overview of symbols in a file.
+	GetSymbolsOverview(
+		ctx context.Context, request *domain.GetSymbolsOverviewRequest) (domain.GetSymbolsOverviewResult, error)
+	// FindSymbol finds symbols matching the pattern.
+	FindSymbol(ctx context.Context, request *domain.FindSymbolRequest) (domain.FindSymbolResult, error)
+	// FindReferencingSymbols returns non-declaration references for a target symbol.
+	FindReferencingSymbols(
+		ctx context.Context, request *domain.FindReferencingSymbolsRequest) (domain.FindReferencingSymbolsResult, error)
+}

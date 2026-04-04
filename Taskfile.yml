@@ -1,0 +1,61 @@
+version: "3"
+
+# go-task Taskfile
+# https://taskfile.dev
+
+dotenv: [".env"]
+silent: true
+
+tasks:
+  default:
+    desc: "List available tasks"
+    cmds:
+      - task --list
+
+  lint:
+    desc: "Run code linters"
+    cmds:
+      - golangci-lint run --config ./.golangci.yml
+      - ifaceguard --config ifaceguard.cfg
+
+  test:
+    desc: "Run unit tests"
+    cmds:
+      - go test -race ./...
+
+  itest:
+    desc: "Run unit and integration tests"
+    cmds:
+      - go test -race -count=1 -tags=integration_tests ./...
+
+  fix:
+    desc: "Run go fix"
+    cmds:
+      - go fix ./...
+      - go fmt ./...
+
+  fmt:
+    desc: "Format the codebase"
+    cmds:
+      - go fmt ./...
+
+  vet:
+    desc: "Run go vet"
+    cmds:
+      - go vet ./...
+
+  generate:
+    desc: Generate code
+    cmds:
+      - go generate ./...
+
+  build:
+    desc: "Build the project"
+    cmds:
+      - go build -o bin/asteria-mcp ./cmd/asteria-mcp
+
+  test-coverage:
+    desc: Run tests with coverage
+    cmds:
+      - go test ./... -coverprofile=coverage.out -v
+      - go tool cover -html=coverage.out -o coverage.html

@@ -1,0 +1,8 @@
+{
+    "name": "asteria-tsls-duplicate-locals-fixture",
+    "private": true,
+    "type": "module",
+    "dependencies": {
+        "typescript": "^5.9.3"
+    }
+}
