@@ -83,9 +83,28 @@ runs:
         go install golang.org/x/tools/gopls@latest
         npm install -g typescript-language-server typescript
         python -m pip install --user basedpyright
-        cargo install --locked marksman
         composer global require phpactor/phpactor --no-interaction --prefer-dist
         composer global config bin-dir --absolute >> "$GITHUB_PATH"
+
+        case "${RUNNER_OS}/${RUNNER_ARCH}" in
+          Linux/X64)
+            marksman_asset="marksman-linux-x64"
+            ;;
+          Linux/ARM64)
+            marksman_asset="marksman-linux-arm64"
+            ;;
+          macOS/*)
+            marksman_asset="marksman-macos"
+            ;;
+          *)
+            echo "unsupported runner for marksman: ${RUNNER_OS}/${RUNNER_ARCH}" >&2
+            exit 1
+            ;;
+        esac
+
+        curl -fsSL -o "$HOME/.local/bin/marksman" \
+          "https://github.com/artempyanykh/marksman/releases/latest/download/${marksman_asset}"
+        chmod +x "$HOME/.local/bin/marksman"
 
     - name: Install Windows language servers
       if: runner.os == 'Windows'
@@ -96,11 +115,17 @@ runs:
         go install golang.org/x/tools/gopls@latest
         npm install -g typescript-language-server typescript
         python -m pip install --user basedpyright
-        cargo install --locked marksman
         composer global require phpactor/phpactor --no-interaction --prefer-dist
 
         $composerBin = composer global config bin-dir --absolute
+        $marksmanDir = Join-Path $env:USERPROFILE '.local\bin'
+        New-Item -ItemType Directory -Force -Path $marksmanDir | Out-Null
+        Invoke-WebRequest \
+          -Uri 'https://github.com/artempyanykh/marksman/releases/latest/download/marksman.exe' \
+          -OutFile (Join-Path $marksmanDir 'marksman.exe')
+
         Add-Content -Path $env:GITHUB_PATH -Value $composerBin
+        Add-Content -Path $env:GITHUB_PATH -Value $marksmanDir
 
     - name: Verify Unix executables
       if: runner.os != 'Windows'
