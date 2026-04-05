@@ -815,6 +815,9 @@ func requirePHPActorInstalled(t *testing.T) {
 
 	_, err := exec.LookPath(phpactorServerName)
 	require.NoError(t, err, "phpactor must be installed and available in PATH")
+
+	_, err = exec.LookPath("php")
+	require.NoError(t, err, "php runtime must be installed and available in PATH for phpactor")
 }
 
 // writeIgnoredNodeModulesFixture creates a live PHP file under node_modules so the directory-filter test proves
