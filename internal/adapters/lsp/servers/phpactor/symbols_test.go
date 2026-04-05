@@ -1,6 +1,7 @@
 package lspphpactor
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -120,6 +121,21 @@ func TestEnsureIndexerPathExists(t *testing.T) {
 
 	_, statErr := os.Stat(filepath.Join(workspaceRoot, ".phpactor"))
 	assert.ErrorIs(t, statErr, os.ErrNotExist)
+}
+
+// TestPHPActorConfigExtra proves that Phpactor CLI helpers target the same managed index path as the LSP
+// session, so reference preparation cannot silently build a different local cache.
+func TestPHPActorConfigExtra(t *testing.T) {
+	t.Parallel()
+
+	indexPath := filepath.Join(t.TempDir(), phpactorIndexerDirName)
+
+	configExtra, err := phpactorConfigExtra(indexPath)
+	require.NoError(t, err)
+
+	decodedConfig := make(map[string]string)
+	require.NoError(t, json.Unmarshal([]byte(configExtra), &decodedConfig))
+	assert.Equal(t, indexPath, decodedConfig[phpactorIndexerPathKey])
 }
 
 // TestShouldIgnoreDir keeps PHP workspace traversal away from hidden, cache, node_modules, and vendor folders.

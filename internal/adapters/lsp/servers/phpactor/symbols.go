@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
@@ -113,67 +112,14 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
-	referenceWorkflowFiles, err := collectReferenceWorkflowFiles(workspaceRoot, request.File)
+	indexErr := buildPHPActorIndex(ctx, s.cacheRoot, workspaceRoot)
+	if indexErr != nil {
+		return domain.FindReferencingSymbolsResult{}, indexErr
+	}
+
+	result, err := s.std.FindReferencingSymbols(ctx, request)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
-	}
-
-	conn, err := s.rt.EnsureConn(ctx, workspaceRoot)
-	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
-	}
-
-	var result domain.FindReferencingSymbolsResult
-	liveCtx, cancel := context.WithTimeout(ctx, phpactorReferenceTimeout)
-	defer cancel()
-
-	liveErr := helpers.RunWithReferenceWorkflowFiles(
-		liveCtx,
-		conn,
-		workspaceRoot,
-		referenceWorkflowFiles,
-		s.withRequestDocument,
-		func(callCtx context.Context) error {
-			var callErr error
-			result, callErr = s.std.FindReferencingSymbols(callCtx, request)
-
-			return callErr
-		},
-	)
-	if liveErr != nil && !errors.Is(liveErr, context.DeadlineExceeded) {
-		return domain.FindReferencingSymbolsResult{}, liveErr
-	}
-
-	if errors.Is(liveErr, context.DeadlineExceeded) {
-		logFallbackWarning(
-			ctx,
-			"phpactor live reference request timed out; trying fallback",
-			liveErr,
-			"file_path", request.File,
-			"symbol_path", request.Path,
-		)
-	}
-
-	functionAugmentedResult, functionFallbackUsed, functionAugmentErr := s.augmentFunctionReferenceResults(
-		ctx,
-		workspaceRoot,
-		request,
-		result,
-	)
-	if functionAugmentErr != nil {
-		logFallbackWarning(
-			ctx,
-			"skip phpactor function reference fallback",
-			functionAugmentErr,
-			"file_path", request.File,
-			"symbol_path", request.Path,
-		)
-	} else if functionFallbackUsed {
-		result = functionAugmentedResult
-	}
-
-	if errors.Is(liveErr, context.DeadlineExceeded) && !functionFallbackUsed {
-		return domain.FindReferencingSymbolsResult{}, liveErr
 	}
 
 	augmentedResult, augmentErr := s.augmentPropertyReferenceResults(
@@ -236,57 +182,6 @@ func ensureIndexerPathExists(cacheRoot, workspaceRoot string) error {
 	}
 
 	return os.MkdirAll(indexPath, phpactorStateDirPermissions)
-}
-
-func collectReferenceWorkflowFiles(workspaceRoot, targetRelativePath string) ([]string, error) {
-	cleanTargetRelativePath, targetAbsolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, targetRelativePath)
-	if err != nil {
-		return nil, err
-	}
-
-	targetDirectoryAbsolutePath := filepath.Dir(targetAbsolutePath)
-	directoryEntries, err := os.ReadDir(targetDirectoryAbsolutePath)
-	if err != nil {
-		return nil, err
-	}
-
-	targetDirectoryRelativePath := filepath.ToSlash(filepath.Dir(cleanTargetRelativePath))
-	if targetDirectoryRelativePath == "." {
-		targetDirectoryRelativePath = ""
-	}
-
-	workflowFiles := make([]string, 0, len(directoryEntries))
-	for _, entry := range directoryEntries {
-		relativePath := entry.Name()
-		if targetDirectoryRelativePath != "" {
-			relativePath = filepath.ToSlash(filepath.Join(targetDirectoryRelativePath, entry.Name()))
-		}
-		if entry.IsDir() {
-			continue
-		}
-		if shouldIgnoreDir(relativePath) ||
-			!hasSupportedPHPExtension(relativePath) ||
-			relativePath == cleanTargetRelativePath {
-			continue
-		}
-
-		workflowFiles = append(workflowFiles, relativePath)
-	}
-
-	slices.Sort(workflowFiles)
-
-	return append(workflowFiles, cleanTargetRelativePath), nil
-}
-
-func hasSupportedPHPExtension(relativePath string) bool {
-	extension := filepath.Ext(relativePath)
-	for _, supportedExtension := range extensions {
-		if strings.EqualFold(extension, supportedExtension) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // shouldIgnoreDir filters directories that add PHP analysis noise or unnecessary filesystem cost.
