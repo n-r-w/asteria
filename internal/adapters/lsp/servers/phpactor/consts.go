@@ -1,7 +1,10 @@
 // Package lspphpactor implements the phpactor standard-LSP adapter.
 package lspphpactor
 
-import "io/fs"
+import (
+	"io/fs"
+	"time"
+)
 
 // extensions lists the file extensions supported by phpactor for symbolic search.
 //
@@ -13,6 +16,7 @@ const (
 	phpLanguageID                = "php"
 	phpactorIndexerDirName       = "index"
 	phpactorStateDirPermissions  = fs.FileMode(0o750)
+	phpactorReferenceTimeout     = 8 * time.Second
 	phpactorIndexerPathKey       = "indexer.index_path"
 	phpactorPHPStanEnabledKey    = "language_server_phpstan.enabled"
 	phpactorPsalmEnabledKey      = "language_server_psalm.enabled"
