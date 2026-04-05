@@ -7,6 +7,7 @@ on:
 
 env:
   GO_VERSION: "1.26.0"
+  TASK_VERSION: "3.40.1"
 
 permissions:
   contents: write
@@ -33,7 +34,8 @@ jobs:
       - name: Install Task
         uses: arduino/setup-task@v2
         with:
-          version: 3.x
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install integration test dependencies
         uses: ./.github/actions/setup-integration-test-env
@@ -60,7 +62,8 @@ jobs:
       - name: Install Task
         uses: arduino/setup-task@v2
         with:
-          version: 3.x
+          version: ${{ env.TASK_VERSION }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run tests
         run: task test
