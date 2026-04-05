@@ -111,6 +111,7 @@ func (s *Service) FindSymbol(
 			if relErr != nil {
 				return domain.FindSymbolResult{}, domain.NewInternalError(relErr)
 			}
+			relativeFilePath = filepath.ToSlash(relativeFilePath)
 
 			fileRequest := &domain.FindSymbolRequest{
 				FindSymbolFilter: request.FindSymbolFilter,

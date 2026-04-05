@@ -40,9 +40,10 @@ func TestClangdWorkspaceDependenciesDisablesExternalCompilationDatabase(t *testi
 	t.Parallel()
 
 	workspaceRoot := t.TempDir()
+	externalBuildRoot := filepath.ToSlash(t.TempDir())
 	require.NoError(t, os.WriteFile(
 		filepath.Join(workspaceRoot, ".clangd"),
-		[]byte("CompileFlags:\n  CompilationDatabase: /tmp/external-build\n"),
+		[]byte("CompileFlags:\n  CompilationDatabase: "+externalBuildRoot+"\n"),
 		clangdManagedFilePermissions,
 	))
 
@@ -80,7 +81,7 @@ func TestClangdWorkspaceDependenciesScopesCompilationDatabaseByPathMatch(t *test
 
 	specialDependencies, specialReason := clangdWorkspaceDependencies(workspaceRoot, "src/special_case.cpp")
 	assert.Empty(t, specialReason)
-	assert.Equal(t, []string{".clangd", filepath.Join("build", compileCommandsFileName)}, specialDependencies)
+	assert.Equal(t, []string{".clangd", filepath.ToSlash(filepath.Join("build", compileCommandsFileName))}, specialDependencies)
 }
 
 // TestLanguageIDForExtension keeps the didOpen language mapping explicit for C and C++ file families.
@@ -229,7 +230,7 @@ func TestPatchInitializeParamsSetsCompilationDatabasePath(t *testing.T) {
 		rt:                  nil,
 		std:                 nil,
 		withRequestDocument: nil,
-		cacheRoot:           filepath.Join(string(filepath.Separator), "tmp", "asteria", "cache"),
+		cacheRoot:           filepath.Join(t.TempDir(), "cache"),
 	}
 	workspaceRoot := t.TempDir()
 	require.NoError(t, os.WriteFile(
@@ -259,7 +260,7 @@ func TestPatchInitializeParamsSkipsCompilationDatabasePathWithoutManagedDatabase
 		rt:                  nil,
 		std:                 nil,
 		withRequestDocument: nil,
-		cacheRoot:           filepath.Join(string(filepath.Separator), "tmp", "asteria", "cache"),
+		cacheRoot:           filepath.Join(t.TempDir(), "cache"),
 	}
 	workspaceRoot := t.TempDir()
 

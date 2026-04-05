@@ -21,9 +21,10 @@ func TestResolveCacheRootRejectsRelativePath(t *testing.T) {
 func TestResolveCacheRootCleansAbsolutePath(t *testing.T) {
 	t.Parallel()
 
-	resolved, err := ResolveCacheRoot(filepath.Join(string(filepath.Separator), "tmp", "asteria", "..", "asteria", "cache"))
+	cacheRootBase := t.TempDir()
+	resolved, err := ResolveCacheRoot(filepath.Join(cacheRootBase, "cache", "..", "cache"))
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(string(filepath.Separator), "tmp", "asteria", "cache"), resolved)
+	assert.Equal(t, filepath.Join(cacheRootBase, "cache"), resolved)
 }
 
 // TestWorkspaceHashIsStable proves that one normalized workspace root always maps to one stable cache namespace.
@@ -43,7 +44,7 @@ func TestAdapterCacheDirBuildsManagedPath(t *testing.T) {
 	t.Parallel()
 
 	workspaceRoot := t.TempDir()
-	cacheRoot := filepath.Join(string(filepath.Separator), "tmp", "asteria", "cache")
+	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	normalizedWorkspaceRoot, err := ResolveWorkspaceRoot(workspaceRoot)
 	require.NoError(t, err)
 

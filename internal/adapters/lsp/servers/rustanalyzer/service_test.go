@@ -91,16 +91,39 @@ func TestPatchInitializeParams(t *testing.T) {
 	assert.Equal(t, workspaceFolders, params.WorkspaceFolders)
 	assert.Empty(t, params.RootPath)
 	assert.Empty(t, params.RootURI)
-	optionsJSON, err := json.Marshal(params.InitializationOptions)
-	require.NoError(t, err)
-	assert.JSONEq(t, `{
-		"cargo":{"autoreload":true,"extraEnv":{"CARGO_TARGET_DIR":"`+filepath.ToSlash(filepath.Join(expectedCacheDir, rustAnalyzerCargoTargetDirName))+`"},"buildScripts":{"enable":true,"invocationLocation":"workspace","invocationStrategy":"per_workspace"}},
-		"procMacro":{"enable":true,"attributes":{"enable":true}},
-		"checkOnSave":false,
-		"linkedProjects":[],
-		"workspace":{"symbol":{"search":{"kind":"only_types","limit":128,"scope":"workspace"}}},
-		"diagnostics":{"enable":true}
-	}`, string(optionsJSON))
+	assert.Equal(t, map[string]any{
+		"cargo": map[string]any{
+			"autoreload": true,
+			"extraEnv": map[string]any{
+				"CARGO_TARGET_DIR": filepath.Join(expectedCacheDir, rustAnalyzerCargoTargetDirName),
+			},
+			"buildScripts": map[string]any{
+				"enable":             true,
+				"invocationLocation": "workspace",
+				"invocationStrategy": "per_workspace",
+			},
+		},
+		"procMacro": map[string]any{
+			"enable": true,
+			"attributes": map[string]any{
+				"enable": true,
+			},
+		},
+		"checkOnSave":    false,
+		"linkedProjects": []any{},
+		"workspace": map[string]any{
+			"symbol": map[string]any{
+				"search": map[string]any{
+					"kind":  "only_types",
+					"limit": 128,
+					"scope": "workspace",
+				},
+			},
+		},
+		"diagnostics": map[string]any{
+			"enable": true,
+		},
+	}, params.InitializationOptions)
 }
 
 // TestWaitUntilReadyReturnsAfterQuiescentStatus proves that startup waiting is released only by the observed

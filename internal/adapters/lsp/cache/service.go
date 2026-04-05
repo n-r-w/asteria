@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -352,6 +353,12 @@ func writeAtomically(targetPath string, content []byte) (writeErr error) {
 	//nolint:gosec // Both paths are derived from the validated cache root and cleaned internal path components.
 	if err = os.Rename(filepath.Clean(temporaryPath), cleanTargetPath); err != nil {
 		return fmt.Errorf("rename cache file: %w", err)
+	}
+	// Windows does not reliably allow syncing a directory handle here and can fail with
+	// "Access is denied" even after a successful rename, so on Windows the durable step
+	// ends at the synced temp file plus the rename.
+	if runtime.GOOS == "windows" {
+		return nil
 	}
 
 	targetDirHandle, err := os.Open(targetDir)

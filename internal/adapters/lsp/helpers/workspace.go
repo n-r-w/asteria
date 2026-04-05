@@ -56,8 +56,9 @@ func ResolveDocumentPath(workspaceRootPath, relativePath string) (cleanRelativeP
 			nil,
 		)
 	}
+	cleanRelativePath = filepath.ToSlash(cleanRelativePath)
 
-	absolutePath = filepath.Join(workspaceRootPath, cleanRelativePath)
+	absolutePath = filepath.Join(workspaceRootPath, filepath.FromSlash(cleanRelativePath))
 	relativeToRoot, err := filepath.Rel(workspaceRootPath, absolutePath)
 	if err != nil {
 		return "", "", domain.NewInternalError(fmt.Errorf("resolve relative path %q: %w", relativePath, err))
@@ -107,6 +108,7 @@ func CollectDirectoryFiles(
 			if relErr != nil {
 				return relErr
 			}
+			relativePath = filepath.ToSlash(relativePath)
 			if ignoreDir != nil && ignoreDir(relativePath) {
 				return filepath.SkipDir
 			}
@@ -121,6 +123,7 @@ func CollectDirectoryFiles(
 		if relErr != nil {
 			return relErr
 		}
+		relativePath = filepath.ToSlash(relativePath)
 		files = append(files, relativePath)
 
 		return nil

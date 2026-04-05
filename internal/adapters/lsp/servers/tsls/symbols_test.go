@@ -181,7 +181,9 @@ func TestRunWithReferenceWorkflowFilesClosesOpenedFilesAfterOpenFailure(t *testi
 			return nil
 		},
 	)
-	require.EqualError(t, err, `read request document `+"\""+filepath.Join(workspaceRoot, "missing.ts")+"\""+`: open `+filepath.Join(workspaceRoot, "missing.ts")+`: no such file or directory`)
+	require.Error(t, err)
+	require.ErrorContains(t, err, `read request document `+"\""+filepath.Join(workspaceRoot, "missing.ts")+"\"")
+	require.ErrorIs(t, err, os.ErrNotExist)
 	waitForURIMethods(t, recorder, uri.File(firstPath), []string{protocol.MethodTextDocumentDidOpen, protocol.MethodTextDocumentDidClose})
 }
 

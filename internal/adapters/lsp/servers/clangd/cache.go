@@ -304,7 +304,7 @@ func resolveCompilationDatabaseDependency(
 		return "", cacheDisabledUnsupportedClangdCfg
 	}
 
-	return filepath.Clean(relativeDependencyPath), ""
+	return filepath.ToSlash(filepath.Clean(relativeDependencyPath)), ""
 }
 
 // deduplicateDependencies keeps the manifest stable so the same logical dependency set does not create
