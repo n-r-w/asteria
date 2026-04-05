@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
@@ -95,8 +94,8 @@ func (s *Service) FindSymbol(
 	return result, nil
 }
 
-// FindReferencingSymbols keeps one bounded same-directory PHP file set open so phpactor can resolve nearby
-// cross-file references without the cost of recursively opening nested workspace trees.
+// FindReferencingSymbols keeps the target-directory PHP file set open for the whole shared workflow so
+// phpactor can resolve property and cross-file references before stdlsp groups the final result.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
@@ -113,7 +112,12 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
-	referenceWorkflowFiles, err := collectReferenceWorkflowFiles(workspaceRoot, request.File)
+	referenceWorkflowFiles, err := helpers.CollectReferenceWorkflowFiles(
+		workspaceRoot,
+		request.File,
+		extensions,
+		shouldIgnoreDir,
+	)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
@@ -201,57 +205,6 @@ func ensureIndexerPathExists(cacheRoot, workspaceRoot string) error {
 	}
 
 	return os.MkdirAll(indexPath, phpactorStateDirPermissions)
-}
-
-func collectReferenceWorkflowFiles(workspaceRoot, targetRelativePath string) ([]string, error) {
-	cleanTargetRelativePath, targetAbsolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, targetRelativePath)
-	if err != nil {
-		return nil, err
-	}
-
-	targetDirectoryAbsolutePath := filepath.Dir(targetAbsolutePath)
-	directoryEntries, err := os.ReadDir(targetDirectoryAbsolutePath)
-	if err != nil {
-		return nil, err
-	}
-
-	targetDirectoryRelativePath := filepath.ToSlash(filepath.Dir(cleanTargetRelativePath))
-	if targetDirectoryRelativePath == "." {
-		targetDirectoryRelativePath = ""
-	}
-
-	workflowFiles := make([]string, 0, len(directoryEntries))
-	for _, entry := range directoryEntries {
-		relativePath := entry.Name()
-		if targetDirectoryRelativePath != "" {
-			relativePath = filepath.ToSlash(filepath.Join(targetDirectoryRelativePath, entry.Name()))
-		}
-		if entry.IsDir() {
-			continue
-		}
-		if shouldIgnoreDir(relativePath) ||
-			!hasSupportedPHPExtension(relativePath) ||
-			relativePath == cleanTargetRelativePath {
-			continue
-		}
-
-		workflowFiles = append(workflowFiles, relativePath)
-	}
-
-	slices.Sort(workflowFiles)
-
-	return append(workflowFiles, cleanTargetRelativePath), nil
-}
-
-func hasSupportedPHPExtension(relativePath string) bool {
-	extension := filepath.Ext(relativePath)
-	for _, supportedExtension := range extensions {
-		if strings.EqualFold(extension, supportedExtension) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // shouldIgnoreDir filters directories that add PHP analysis noise or unnecessary filesystem cost.
