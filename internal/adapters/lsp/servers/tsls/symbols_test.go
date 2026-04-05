@@ -201,25 +201,25 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name                  string
-		targetRelativePath    string
+		name                   string
+		targetRelativePath     string
 		referenceWorkflowFiles []string
-		result                domain.FindReferencingSymbolsResult
-		expected              bool
+		result                 domain.FindReferencingSymbolsResult
+		expected               bool
 	}{
 		{
-			name:                  "single target file does not retry",
-			targetRelativePath:    "fixture.ts",
+			name:                   "single target file does not retry",
+			targetRelativePath:     "fixture.ts",
 			referenceWorkflowFiles: []string{"fixture.ts"},
-			result:                domain.FindReferencingSymbolsResult{},
-			expected:              false,
+			result:                 domain.FindReferencingSymbolsResult{},
+			expected:               false,
 		},
 		{
-			name:                  "empty cross file result retries",
-			targetRelativePath:    "fixture.ts",
+			name:                   "empty cross file result retries",
+			targetRelativePath:     "fixture.ts",
 			referenceWorkflowFiles: []string{"references.ts", "fixture.ts"},
-			result:                domain.FindReferencingSymbolsResult{},
-			expected:              true,
+			result:                 domain.FindReferencingSymbolsResult{},
+			expected:               true,
 		},
 		{
 			name:               "target file only result retries",
@@ -229,9 +229,9 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 				"fixture.ts",
 			},
 			result: domain.FindReferencingSymbolsResult{Symbols: []domain.ReferencingSymbol{{
-				Kind:            0,
-				Path:            "",
-				File:            "fixture.ts",
+				Kind:             0,
+				Path:             "",
+				File:             "fixture.ts",
 				ContentStartLine: 0,
 				ContentEndLine:   0,
 				Content:          "",
@@ -246,9 +246,9 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 				"fixture.ts",
 			},
 			result: domain.FindReferencingSymbolsResult{Symbols: []domain.ReferencingSymbol{{
-				Kind:            0,
-				Path:            "",
-				File:            "references.ts",
+				Kind:             0,
+				Path:             "",
+				File:             "references.ts",
 				ContentStartLine: 0,
 				ContentEndLine:   0,
 				Content:          "",
