@@ -151,6 +151,20 @@ runs:
         command -v phpactor
         command -v rust-analyzer
 
+    - name: Print Unix tool versions
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        gopls version | cat
+        typescript-language-server --version
+        marksman --version
+        basedpyright-langserver --version
+        clangd --version | head -n 1
+        phpactor --version
+        rust-analyzer --version
+
     - name: Verify Windows executables
       if: runner.os == 'Windows'
       shell: pwsh
@@ -164,3 +178,17 @@ runs:
         Get-Command clangd | Out-Null
         Get-Command phpactor | Out-Null
         Get-Command rust-analyzer | Out-Null
+
+    - name: Print Windows tool versions
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        gopls version
+        typescript-language-server --version
+        marksman --version
+        basedpyright-langserver --version
+        clangd --version | Select-Object -First 1
+        phpactor --version
+        rust-analyzer --version

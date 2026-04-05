@@ -256,18 +256,7 @@ func (s *session) closeLocked(ctx context.Context) error {
 		s.fileWatcher = nil
 	}
 
-	var (
-		baseCtx  = context.WithoutCancel(ctx)
-		closeCtx context.Context
-		cancel   context.CancelFunc
-	)
-
-	// context.WithoutCancel strips deadlines too, so we reapply the caller deadline when it exists.
-	if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
-		closeCtx, cancel = context.WithDeadline(baseCtx, deadline)
-	} else {
-		closeCtx, cancel = context.WithTimeout(baseCtx, s.config.ShutdownTimeout)
-	}
+	closeCtx, cancel := newShutdownContext(ctx, s.config.ShutdownTimeout)
 	defer cancel()
 
 	if s.conn != nil {
@@ -300,7 +289,7 @@ func (s *session) closeLocked(ctx context.Context) error {
 		<-s.done
 		closeErr = errors.Join(
 			closeErr,
-			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitError(s.waitErr)),
+			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorAfterKill(s.waitErr)),
 		)
 	}
 

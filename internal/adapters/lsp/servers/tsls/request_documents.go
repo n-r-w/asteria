@@ -34,6 +34,18 @@ func newWithRequestDocument() stdlsp.WithRequestDocumentFunc {
 	}
 }
 
+// warmRequestDocuments revisits the full open-file set after every participant is open so tsls can resolve
+// cross-file imports against a fully materialized in-memory project view.
+func warmRequestDocuments(ctx context.Context, conn jsonrpc2.Conn, absolutePaths []string) error {
+	for _, absolutePath := range absolutePaths {
+		if err := warmRequestDocument(ctx, conn, absolutePath); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // warmRequestDocument forces tsls to acknowledge one opened file through documentSymbol before the
 // adapter issues symbol or reference requests that depend on fresh indexing.
 func warmRequestDocument(ctx context.Context, conn jsonrpc2.Conn, absolutePath string) error {

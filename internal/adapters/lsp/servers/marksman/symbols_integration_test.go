@@ -231,6 +231,11 @@ func newIntegrationService(t *testing.T) *Service {
 	service, err := New()
 	require.NoError(t, err)
 
+	ctx := t.Context()
+	t.Cleanup(func() {
+		require.NoError(t, service.Close(ctx))
+	})
+
 	return service
 }
 

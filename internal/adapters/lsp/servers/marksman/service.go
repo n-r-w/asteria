@@ -71,6 +71,6 @@ func (*Service) Extensions() []string {
 }
 
 // Close shuts down the live Marksman session so process-level cleanup stays explicit.
-func (*Service) Close(_ context.Context) error {
-	return nil
+func (s *Service) Close(ctx context.Context) error {
+	return s.rt.Close(ctx)
 }

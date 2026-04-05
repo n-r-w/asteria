@@ -1,11 +1,27 @@
 package runtimelsp
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
 )
+
+// newShutdownContext gives runtime cleanup one bounded budget that is independent
+// from the caller's remaining test time.
+func newShutdownContext(ctx context.Context, shutdownTimeout time.Duration) (context.Context, context.CancelFunc) {
+	if shutdownTimeout <= 0 {
+		shutdownTimeout = defaultShutdownTimeout
+	}
+
+	if ctx == nil {
+		return context.WithTimeout(context.Background(), shutdownTimeout)
+	}
+
+	return context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+}
 
 // killProcess force-stops the language server only when graceful shutdown missed the deadline.
 func killProcess(cmd *exec.Cmd) error {
@@ -37,6 +53,20 @@ func normalizeWaitError(err error) error {
 	}
 
 	if status.Signal() == syscall.SIGPIPE || status.Signal() == syscall.SIGKILL {
+		return nil
+	}
+
+	return err
+}
+
+// normalizeWaitErrorAfterKill hides the final process exit status once runtime shutdown has already killed the server.
+func normalizeWaitErrorAfterKill(err error) error {
+	if normalizedErr := normalizeWaitError(err); normalizedErr == nil {
+		return nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
 		return nil
 	}
 

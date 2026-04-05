@@ -82,7 +82,41 @@ func runWithReferenceWorkflowFiles(
 	withRequestDocument stdlsp.WithRequestDocumentFunc,
 	run func(context.Context) error,
 ) error {
-	return helpers.RunWithReferenceWorkflowFiles(ctx, conn, workspaceRoot, relativePaths, withRequestDocument, run)
+	absolutePaths := make([]string, 0, len(relativePaths))
+	for _, relativePath := range relativePaths {
+		absolutePaths = append(absolutePaths, filepath.Join(workspaceRoot, filepath.FromSlash(relativePath)))
+	}
+
+	return runWithOpenReferenceWorkflowFiles(
+		ctx,
+		conn,
+		absolutePaths,
+		withRequestDocument,
+		func(callCtx context.Context) error {
+		if err := warmRequestDocuments(callCtx, conn, absolutePaths); err != nil {
+			return err
+		}
+
+		return run(callCtx)
+		},
+	)
+}
+
+// runWithOpenReferenceWorkflowFiles keeps the whole tsls workflow file set open until the wrapped call finishes.
+func runWithOpenReferenceWorkflowFiles(
+	ctx context.Context,
+	conn jsonrpc2.Conn,
+	absolutePaths []string,
+	withRequestDocument stdlsp.WithRequestDocumentFunc,
+	run func(context.Context) error,
+) error {
+	if len(absolutePaths) == 0 {
+		return run(ctx)
+	}
+
+	return withRequestDocument(ctx, conn, absolutePaths[0], func(callCtx context.Context) error {
+		return runWithOpenReferenceWorkflowFiles(callCtx, conn, absolutePaths[1:], withRequestDocument, run)
+	})
 }
 
 // shouldIgnoreDir filters directories that are known to add noise or excessive cost to TypeScript traversal.

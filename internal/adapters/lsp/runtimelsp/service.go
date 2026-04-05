@@ -181,7 +181,10 @@ func (r *Runtime) Close(ctx context.Context) error {
 	r.closing = true
 	r.mu.Unlock()
 
-	if waitErr := r.waitForActiveEnsureConn(ctx); waitErr != nil {
+	closeCtx, cancel := newShutdownContext(ctx, r.config.ShutdownTimeout)
+	defer cancel()
+
+	if waitErr := r.waitForActiveEnsureConn(closeCtx); waitErr != nil {
 		r.mu.Lock()
 		r.closing = false
 		r.mu.Unlock()

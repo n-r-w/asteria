@@ -125,7 +125,11 @@ func TestRunWithReferenceWorkflowFilesReusesSharedLifecycle(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
-	waitForURIMethods(t, recorder, uri.File(fixturePath), []string{protocol.MethodTextDocumentDidOpen, protocol.MethodTextDocumentDidClose})
+	waitForURIMethods(t, recorder, uri.File(fixturePath), []string{
+		protocol.MethodTextDocumentDidOpen,
+		protocol.MethodTextDocumentDocumentSymbol,
+		protocol.MethodTextDocumentDidClose,
+	})
 }
 
 // TestRunWithReferenceWorkflowFilesClosesOpenedFilesAfterRunError proves that the tsls outer workflow
@@ -156,6 +160,8 @@ func TestRunWithReferenceWorkflowFilesClosesOpenedFilesAfterRunError(t *testing.
 	waitForEvents(t, recorder, []documentLifecycleEvent{
 		{Method: protocol.MethodTextDocumentDidOpen, URI: uri.File(firstPath)},
 		{Method: protocol.MethodTextDocumentDidOpen, URI: uri.File(secondPath)},
+		{Method: protocol.MethodTextDocumentDocumentSymbol, URI: uri.File(firstPath)},
+		{Method: protocol.MethodTextDocumentDocumentSymbol, URI: uri.File(secondPath)},
 		{Method: protocol.MethodTextDocumentDidClose, URI: uri.File(secondPath)},
 		{Method: protocol.MethodTextDocumentDidClose, URI: uri.File(firstPath)},
 	})
@@ -283,7 +289,7 @@ func waitForConnDone(t *testing.T, name string, done <-chan struct{}) {
 	}
 }
 
-// newLifecycleRecorderConn builds an in-memory JSON-RPC peer that records didOpen and didClose notifications.
+	// newLifecycleRecorderConn builds an in-memory JSON-RPC peer that records didOpen, documentSymbol, and didClose calls.
 func newLifecycleRecorderConn(t *testing.T) (jsonrpc2.Conn, *lifecycleRecorder) {
 	t.Helper()
 
@@ -314,6 +320,16 @@ func newLifecycleRecorderConn(t *testing.T) (jsonrpc2.Conn, *lifecycleRecorder) 
 			recorder.addEvent(documentLifecycleEvent{Method: req.Method(), URI: params.TextDocument.URI})
 
 			return nil
+		case protocol.MethodTextDocumentDocumentSymbol:
+			var params protocol.DocumentSymbolParams
+			err := json.Unmarshal(req.Params(), &params)
+			if err != nil {
+				t.Error(err)
+				return reply(ctx, nil, err)
+			}
+			recorder.addEvent(documentLifecycleEvent{Method: req.Method(), URI: params.TextDocument.URI})
+
+			return reply(ctx, []json.RawMessage{}, nil)
 		default:
 			return jsonrpc2.MethodNotFoundHandler(ctx, reply, req)
 		}

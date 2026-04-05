@@ -56,8 +56,9 @@ func TestCloseRejectsNewEnsureConnCalls(t *testing.T) {
 	require.NoError(t, <-closeDone)
 }
 
-// TestCloseRespectsContextWhileWaitingForEnsureConn proves that shutdown does not wait forever for a stuck EnsureConn.
-func TestCloseRespectsContextWhileWaitingForEnsureConn(t *testing.T) {
+// TestCloseUsesShutdownTimeoutWhileWaitingForEnsureConn proves that runtime shutdown owns its cleanup budget
+// instead of inheriting immediate caller cancellation from cleanup-time test contexts.
+func TestCloseUsesShutdownTimeoutWhileWaitingForEnsureConn(t *testing.T) {
 	t.Parallel()
 
 	runtime, err := New(&RuntimeConfig{
@@ -65,7 +66,7 @@ func TestCloseRespectsContextWhileWaitingForEnsureConn(t *testing.T) {
 			Command:                 "gopls",
 			Args:                    nil,
 			ServerName:              "gopls",
-			ShutdownTimeout:         time.Second,
+			ShutdownTimeout:         50 * time.Millisecond,
 			ReplyConfiguration:      nil,
 			BuildClientCapabilities: func() protocol.ClientCapabilities { return protocol.ClientCapabilities{} },
 			FileWatch:               nil,
@@ -79,8 +80,8 @@ func TestCloseRespectsContextWhileWaitingForEnsureConn(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, runtime.beginEnsureConn())
 
-	closeCtx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
+	closeCtx, cancel := context.WithCancel(t.Context())
+	cancel()
 
 	closeErr := runtime.Close(closeCtx)
 	require.ErrorIs(t, closeErr, context.DeadlineExceeded)

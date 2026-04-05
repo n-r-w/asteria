@@ -288,13 +288,12 @@ func runWithOpenFiles(
 ) error {
 	t.Helper()
 
-	withRequestDocument := helpers.WithRequestDocument(languageIDForExtension)
-	if len(absolutePaths) == 0 {
-		return run(ctx)
-	}
+	return runWithOpenReferenceWorkflowFiles(ctx, conn, absolutePaths, newWithRequestDocument(), func(callCtx context.Context) error {
+		if err := warmRequestDocuments(callCtx, conn, absolutePaths); err != nil {
+			return err
+		}
 
-	return withRequestDocument(ctx, conn, absolutePaths[0], func(callCtx context.Context) error {
-		return runWithOpenFiles(t, callCtx, conn, absolutePaths[1:], run)
+		return run(callCtx)
 	})
 }
 
