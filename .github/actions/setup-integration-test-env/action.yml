@@ -160,7 +160,7 @@ runs:
         gopls version | cat
         typescript-language-server --version
         marksman --version
-        basedpyright-langserver --version
+        basedpyright --version
         clangd --version | head -n 1
         phpactor --version
         rust-analyzer --version
@@ -188,7 +188,7 @@ runs:
         gopls version
         typescript-language-server --version
         marksman --version
-        basedpyright-langserver --version
+        basedpyright --version
         clangd --version | Select-Object -First 1
         phpactor --version
         rust-analyzer --version

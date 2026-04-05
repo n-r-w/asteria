@@ -289,7 +289,7 @@ func waitForConnDone(t *testing.T, name string, done <-chan struct{}) {
 	}
 }
 
-	// newLifecycleRecorderConn builds an in-memory JSON-RPC peer that records didOpen, documentSymbol, and didClose calls.
+// newLifecycleRecorderConn builds an in-memory JSON-RPC peer that records didOpen, documentSymbol, and didClose calls.
 func newLifecycleRecorderConn(t *testing.T) (jsonrpc2.Conn, *lifecycleRecorder) {
 	t.Helper()
 

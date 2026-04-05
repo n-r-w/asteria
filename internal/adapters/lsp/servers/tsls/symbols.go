@@ -93,11 +93,11 @@ func runWithReferenceWorkflowFiles(
 		absolutePaths,
 		withRequestDocument,
 		func(callCtx context.Context) error {
-		if err := warmRequestDocuments(callCtx, conn, absolutePaths); err != nil {
-			return err
-		}
+			if err := warmRequestDocuments(callCtx, conn, absolutePaths); err != nil {
+				return err
+			}
 
-		return run(callCtx)
+			return run(callCtx)
 		},
 	)
 }
