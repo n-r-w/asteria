@@ -5,6 +5,7 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
@@ -24,6 +25,7 @@ type Service struct {
 const (
 	goplsConfigSection    = "gopls"
 	goplsSettingsCapacity = 2
+	goplsShutdownTimeout  = 15 * time.Second
 )
 
 var (
@@ -39,7 +41,7 @@ func New(config cfgadapters.GoplsConfig) (*Service, error) {
 				Command:                 "gopls",
 				Args:                    nil,
 				ServerName:              "gopls",
-				ShutdownTimeout:         0,
+				ShutdownTimeout:         goplsShutdownTimeout,
 				ReplyConfiguration:      buildReplyConfiguration(config),
 				BuildClientCapabilities: nil,
 				FileWatch: &runtimelsp.FileWatchConfig{

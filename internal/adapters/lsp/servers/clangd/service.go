@@ -2,6 +2,7 @@ package lspclangd
 
 import (
 	"context"
+	"time"
 
 	lspcache "github.com/n-r-w/asteria/internal/adapters/lsp/cache"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
@@ -10,6 +11,8 @@ import (
 	"github.com/n-r-w/asteria/internal/server"
 	"github.com/n-r-w/asteria/internal/usecase/router"
 )
+
+const clangdShutdownTimeout = 15 * time.Second
 
 // Service implements clangd-specific symbolic search logic.
 type Service struct {
@@ -50,7 +53,7 @@ func New(cacheRoot string) (*Service, error) {
 			Command:                 clangdServerName,
 			Args:                    []string{"--background-index"},
 			ServerName:              clangdServerName,
-			ShutdownTimeout:         0,
+			ShutdownTimeout:         clangdShutdownTimeout,
 			ReplyConfiguration:      nil,
 			BuildClientCapabilities: nil,
 			FileWatch: &runtimelsp.FileWatchConfig{

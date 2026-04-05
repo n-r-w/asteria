@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
@@ -13,6 +14,8 @@ import (
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )
+
+const phpactorShutdownTimeout = 15 * time.Second
 
 // Service implements phpactor-specific symbolic search logic.
 type Service struct {
@@ -48,7 +51,7 @@ func New(cacheRoot string) (*Service, error) {
 			Command:                 phpactorServerName,
 			Args:                    []string{"language-server"},
 			ServerName:              phpactorServerName,
-			ShutdownTimeout:         0,
+			ShutdownTimeout:         phpactorShutdownTimeout,
 			ReplyConfiguration:      nil,
 			BuildClientCapabilities: buildClientCapabilities,
 			FileWatch: &runtimelsp.FileWatchConfig{
