@@ -125,18 +125,14 @@ runs:
         $localBin = Join-Path $env:USERPROFILE '.local\bin'
         New-Item -ItemType Directory -Force -Path $localBin | Out-Null
 
-        Invoke-WebRequest `
-          -Uri 'https://github.com/phpactor/phpactor/releases/latest/download/phpactor.phar' `
-          -OutFile (Join-Path $localBin 'phpactor.phar')
+        Invoke-WebRequest -Uri 'https://github.com/phpactor/phpactor/releases/latest/download/phpactor.phar' -OutFile (Join-Path $localBin 'phpactor.phar')
 
         Set-Content -Path (Join-Path $localBin 'phpactor.bat') -Value @(
           '@echo off',
           'php "%~dp0phpactor.phar" %*'
         )
 
-        Invoke-WebRequest `
-          -Uri 'https://github.com/artempyanykh/marksman/releases/latest/download/marksman.exe' `
-          -OutFile (Join-Path $localBin 'marksman.exe')
+        Invoke-WebRequest -Uri 'https://github.com/artempyanykh/marksman/releases/latest/download/marksman.exe' -OutFile (Join-Path $localBin 'marksman.exe')
 
     - name: Verify Unix executables
       if: runner.os != 'Windows'
