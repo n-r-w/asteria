@@ -328,7 +328,7 @@ func TestIntegrationServiceFindSymbolReturnsUsefulDocblockInfo(t *testing.T) {
 }
 
 // TestIntegrationServiceFindSymbolUsesDirectoryFilter proves that workspace-wide PHP search excludes
-// node_modules and cache while still leaving vendor code searchable.
+// node_modules, cache, and vendor directories.
 func TestIntegrationServiceFindSymbolUsesDirectoryFilter(t *testing.T) {
 	workspaceRoot := phpactorFixtureRoot(t)
 	writeIgnoredNodeModulesFixture(t, workspaceRoot)
@@ -341,11 +341,11 @@ func TestIntegrationServiceFindSymbolUsesDirectoryFilter(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"fixture.php", filepath.ToSlash(filepath.Join("vendor", "vendor_helper.php"))}, collectFoundSymbolFiles(result.Symbols))
+	assert.Equal(t, []string{"fixture.php"}, collectFoundSymbolFiles(result.Symbols))
 }
 
 // TestIntegrationServiceFindSymbolUsesDirectoryFilterWithPersistedIndex proves that workspace-wide PHP search
-// still ignores cache and node_modules even when the workspace already contains a persisted phpactor index.
+// still ignores cache, node_modules, and vendor even when the workspace already contains a persisted phpactor index.
 func TestIntegrationServiceFindSymbolUsesDirectoryFilterWithPersistedIndex(t *testing.T) {
 	workspaceRoot := phpactorFixtureRootWithLocalState(t)
 	service, ctx := newIntegrationService(t)
@@ -359,7 +359,7 @@ func TestIntegrationServiceFindSymbolUsesDirectoryFilterWithPersistedIndex(t *te
 
 	assert.Equal(
 		t,
-		[]string{"fixture.php", filepath.ToSlash(filepath.Join("vendor", "vendor_helper.php"))},
+		[]string{"fixture.php"},
 		collectFoundSymbolFiles(result.Symbols),
 	)
 }
@@ -380,11 +380,7 @@ func TestIntegrationRouterFindSymbolUsesDirectoryFilterWithPersistedIndex(t *tes
 	})
 	require.NoError(t, err)
 
-	assert.Equal(
-		t,
-		[]string{"fixture.php", filepath.ToSlash(filepath.Join("vendor", "vendor_helper.php"))},
-		collectFoundSymbolFiles(result.Symbols),
-	)
+	assert.Equal(t, []string{"fixture.php"}, collectFoundSymbolFiles(result.Symbols))
 }
 
 // TestIntegrationServiceFindReferencingSymbolsGroupsReferences proves that live reference lookup groups PHP

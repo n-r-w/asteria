@@ -205,18 +205,32 @@ func requireEventuallyRawReferencesForScenario(
 ) {
 	t.Helper()
 
-	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		actual := rawReferencesForScenario(
-			t,
-			ctx,
-			service,
-			workspaceRoot,
-			targetRelativePath,
-			targetSymbolName,
-			relativeFiles,
-		)
-		assert.Equal(collect, expected, actual)
-	}, 5*time.Second, 100*time.Millisecond)
+	conn, err := service.rt.EnsureConn(ctx, workspaceRoot)
+	require.NoError(t, err)
+
+	targetAbsolutePath := filepath.Join(workspaceRoot, filepath.FromSlash(targetRelativePath))
+	openFiles := discoveryOpenFileSet(targetRelativePath, relativeFiles)
+	absoluteOpenFiles := make([]string, 0, len(openFiles))
+	for _, relativePath := range openFiles {
+		absoluteOpenFiles = append(absoluteOpenFiles, filepath.Join(workspaceRoot, filepath.FromSlash(relativePath)))
+	}
+
+	err = runWithOpenFiles(t, ctx, conn, absoluteOpenFiles, func(callCtx context.Context) error {
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			actual := rawReferencesForScenarioInOpenWorkflow(
+				t,
+				callCtx,
+				conn,
+				workspaceRoot,
+				targetAbsolutePath,
+				targetSymbolName,
+			)
+			assert.Equal(collect, expected, actual)
+		}, 5*time.Second, 100*time.Millisecond)
+
+		return nil
+	})
+	require.NoError(t, err)
 }
 
 func requireEventuallyRawReferencesForTextScenario(
@@ -231,18 +245,32 @@ func requireEventuallyRawReferencesForTextScenario(
 ) {
 	t.Helper()
 
-	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		actual := rawReferencesForTextScenario(
-			t,
-			ctx,
-			service,
-			workspaceRoot,
-			targetRelativePath,
-			targetText,
-			relativeFiles,
-		)
-		assert.Equal(collect, expected, actual)
-	}, 5*time.Second, 100*time.Millisecond)
+	conn, err := service.rt.EnsureConn(ctx, workspaceRoot)
+	require.NoError(t, err)
+
+	targetAbsolutePath := filepath.Join(workspaceRoot, filepath.FromSlash(targetRelativePath))
+	openFiles := discoveryOpenFileSet(targetRelativePath, relativeFiles)
+	absoluteOpenFiles := make([]string, 0, len(openFiles))
+	for _, relativePath := range openFiles {
+		absoluteOpenFiles = append(absoluteOpenFiles, filepath.Join(workspaceRoot, filepath.FromSlash(relativePath)))
+	}
+
+	err = runWithOpenFiles(t, ctx, conn, absoluteOpenFiles, func(callCtx context.Context) error {
+		require.EventuallyWithT(t, func(collect *assert.CollectT) {
+			actual := rawReferencesForTextScenarioInOpenWorkflow(
+				t,
+				callCtx,
+				conn,
+				workspaceRoot,
+				targetAbsolutePath,
+				targetText,
+			)
+			assert.Equal(collect, expected, actual)
+		}, 5*time.Second, 100*time.Millisecond)
+
+		return nil
+	})
+	require.NoError(t, err)
 }
 
 // rawReferenceOpenFileScenario keeps the compared open-file sets readable in table-driven raw-reference tests.
@@ -307,6 +335,34 @@ func rawReferencesForScenario(
 	return occurrences
 }
 
+func rawReferencesForScenarioInOpenWorkflow(
+	t *testing.T,
+	ctx context.Context,
+	conn jsonrpc2.Conn,
+	workspaceRoot string,
+	targetAbsolutePath string,
+	targetSymbolName string,
+) []rawReferenceOccurrence {
+	t.Helper()
+
+	if err := warmRequestDocument(ctx, conn, targetAbsolutePath); err != nil {
+		require.NoError(t, err)
+	}
+
+	position := rawSelectionStartForTopLevelSymbol(t, ctx, conn, targetAbsolutePath, targetSymbolName)
+	locations := rawTSLSReferences(t, ctx, conn, &protocol.ReferenceParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: protocol.TextDocumentIdentifier{URI: uri.File(targetAbsolutePath)},
+			Position:     position,
+		},
+		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
+		PartialResultParams:    protocol.PartialResultParams{},
+		Context:                protocol.ReferenceContext{IncludeDeclaration: false},
+	})
+
+	return summarizeRawReferenceLocations(t, workspaceRoot, locations)
+}
+
 // rawReferencesForTextScenario derives the target position from source text so raw-reference tests can
 // prove server behavior even when documentSymbol returns no declaration for the target file.
 func rawReferencesForTextScenario(
@@ -349,6 +405,30 @@ func rawReferencesForTextScenario(
 	require.NoError(t, err)
 
 	return occurrences
+}
+
+func rawReferencesForTextScenarioInOpenWorkflow(
+	t *testing.T,
+	ctx context.Context,
+	conn jsonrpc2.Conn,
+	workspaceRoot string,
+	targetAbsolutePath string,
+	targetText string,
+) []rawReferenceOccurrence {
+	t.Helper()
+
+	position := rawSelectionStartForUniqueText(t, targetAbsolutePath, targetText)
+	locations := rawTSLSReferences(t, ctx, conn, &protocol.ReferenceParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: protocol.TextDocumentIdentifier{URI: uri.File(targetAbsolutePath)},
+			Position:     position,
+		},
+		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
+		PartialResultParams:    protocol.PartialResultParams{},
+		Context:                protocol.ReferenceContext{IncludeDeclaration: false},
+	})
+
+	return summarizeRawReferenceLocations(t, workspaceRoot, locations)
 }
 
 // discoveryOpenFileSet keeps the target file open and adds the remaining scenario files in stable order.

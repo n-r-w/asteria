@@ -130,6 +130,63 @@ func TestWithRequestDocumentResyncOnReopenSendsDidChange(t *testing.T) {
 	)
 }
 
+// TestWithPersistentRequestDocumentKeepsDocumentOpenAcrossRequests proves that persistent lifecycle mode
+// reuses the same open document across separate requests and refreshes changed content through didChange
+// instead of closing and reopening the file.
+func TestWithPersistentRequestDocumentKeepsDocumentOpenAcrossRequests(t *testing.T) {
+	t.Parallel()
+
+	fixturePath := writeRequestDocumentFixture(t, "fixture.md")
+	conn, recorder := newLifecycleRecorderConn(t)
+	withRequestDocument := WithPersistentRequestDocument(func(_ string) string { return "markdown" })
+
+	err := withRequestDocument(t.Context(), conn, fixturePath, func(context.Context) error {
+		return nil
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(fixturePath, []byte("# updated\n"), 0o600))
+
+	err = withRequestDocument(t.Context(), conn, fixturePath, func(context.Context) error {
+		return nil
+	})
+	require.NoError(t, err)
+
+	waitForURIMethods(
+		t,
+		recorder,
+		uri.File(fixturePath),
+		[]string{"textDocument/didOpen", "textDocument/didChange"},
+	)
+}
+
+// TestWithPersistentRequestDocumentReopenOnChangeRefreshesWithFreshOpen proves that reopen-on-change mode
+// avoids full-content didChange and instead refreshes one changed file with didClose plus a fresh didOpen.
+func TestWithPersistentRequestDocumentReopenOnChangeRefreshesWithFreshOpen(t *testing.T) {
+	t.Parallel()
+
+	fixturePath := writeRequestDocumentFixture(t, "fixture.md")
+	conn, recorder := newLifecycleRecorderConn(t)
+	withRequestDocument := WithPersistentRequestDocumentReopenOnChange(func(_ string) string { return "markdown" })
+
+	err := withRequestDocument(t.Context(), conn, fixturePath, func(context.Context) error {
+		return nil
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(fixturePath, []byte("# updated\n"), 0o600))
+
+	err = withRequestDocument(t.Context(), conn, fixturePath, func(context.Context) error {
+		return nil
+	})
+	require.NoError(t, err)
+
+	waitForURIMethods(
+		t,
+		recorder,
+		uri.File(fixturePath),
+		[]string{"textDocument/didOpen", "textDocument/didClose", "textDocument/didOpen"},
+	)
+}
+
 // TestWithRequestDocumentKeepsOneOpenForConcurrentSameURI proves that overlapping callers for the same
 // file share one lifecycle state and close the document only after the last caller exits.
 func TestWithRequestDocumentKeepsOneOpenForConcurrentSameURI(t *testing.T) {

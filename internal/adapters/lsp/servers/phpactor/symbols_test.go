@@ -122,8 +122,7 @@ func TestEnsureIndexerPathExists(t *testing.T) {
 	assert.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
-// TestShouldIgnoreDir keeps PHP workspace traversal away from hidden, cache, and node_modules folders while
-// still allowing vendor code to participate in symbol search.
+// TestShouldIgnoreDir keeps PHP workspace traversal away from hidden, cache, node_modules, and vendor folders.
 func TestShouldIgnoreDir(t *testing.T) {
 	t.Parallel()
 
@@ -136,7 +135,7 @@ func TestShouldIgnoreDir(t *testing.T) {
 		{name: "nested hidden directory", relativePath: "pkg/.git", expected: true},
 		{name: "node modules directory", relativePath: "pkg/node_modules", expected: true},
 		{name: "cache directory", relativePath: "pkg/cache", expected: true},
-		{name: "vendor directory", relativePath: "vendor", expected: false},
+		{name: "vendor directory", relativePath: "vendor", expected: true},
 		{name: "source directory", relativePath: "src", expected: false},
 	}
 

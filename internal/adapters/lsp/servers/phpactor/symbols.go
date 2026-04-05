@@ -215,7 +215,7 @@ func shouldIgnoreDir(relativePath string) bool {
 	}
 
 	switch baseName {
-	case "node_modules", "cache":
+	case "node_modules", "cache", "vendor":
 		return true
 	default:
 		return false
