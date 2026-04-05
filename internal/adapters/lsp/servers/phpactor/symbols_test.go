@@ -38,16 +38,6 @@ func TestBuildClientCapabilities(t *testing.T) {
 	assert.True(t, capabilities.TextDocument.References.DynamicRegistration)
 }
 
-// TestShouldWatchPHPFile proves that runtime-managed watcher notifications stay scoped to PHP files only.
-func TestShouldWatchPHPFile(t *testing.T) {
-	t.Parallel()
-
-	assert.True(t, shouldWatchPHPFile("src/fixture.php"))
-	assert.True(t, shouldWatchPHPFile("src/FIXTURE.PHP"))
-	assert.False(t, shouldWatchPHPFile("src/fixture.txt"))
-	assert.False(t, shouldWatchPHPFile("src/fixture"))
-}
-
 // TestNormalizeFoundSymbolInfo proves that phpactor's placeholder hover text falls back to the declaration line
 // so callers still receive meaningful class info.
 func TestNormalizeFoundSymbolInfo(t *testing.T) {
@@ -83,10 +73,10 @@ func TestPatchInitializeParams(t *testing.T) {
 	params := &protocol.InitializeParams{WorkspaceFolders: workspaceFolders}
 
 	service := &Service{
-		rt:                  nil,
-		std:                 nil,
-		withRequestDocument: nil,
-		cacheRoot:           cacheRoot,
+		rt:            nil,
+		std:           nil,
+		stdReferences: nil,
+		cacheRoot:     cacheRoot,
 	}
 	err := service.patchInitializeParams(workspaceRoot, params)
 	require.NoError(t, err)

@@ -2,8 +2,6 @@ package lspphpactor
 
 import (
 	"context"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
@@ -19,10 +17,10 @@ const phpactorShutdownTimeout = 15 * time.Second
 
 // Service implements phpactor-specific symbolic search logic.
 type Service struct {
-	rt                  *runtimelsp.Runtime
-	std                 *stdlsp.Service
-	withRequestDocument stdlsp.WithRequestDocumentFunc
-	cacheRoot           string
+	rt            *runtimelsp.Runtime
+	std           *stdlsp.Service
+	stdReferences *stdlsp.Service
+	cacheRoot     string
 }
 
 var (
@@ -40,10 +38,10 @@ func New(cacheRoot string) (*Service, error) {
 
 	withRequestDocument := helpers.WithRequestDocument(func(_ string) string { return phpLanguageID })
 	service := &Service{
-		rt:                  nil,
-		std:                 nil,
-		withRequestDocument: nil,
-		cacheRoot:           normalizedCacheRoot,
+		rt:            nil,
+		std:           nil,
+		stdReferences: nil,
+		cacheRoot:     normalizedCacheRoot,
 	}
 
 	rt, err := runtimelsp.New(&runtimelsp.RuntimeConfig{
@@ -54,14 +52,11 @@ func New(cacheRoot string) (*Service, error) {
 			ShutdownTimeout:         phpactorShutdownTimeout,
 			ReplyConfiguration:      nil,
 			BuildClientCapabilities: buildClientCapabilities,
-			FileWatch: &runtimelsp.FileWatchConfig{
-				RelevantFile: shouldWatchPHPFile,
-				IgnoreDir:    shouldIgnoreDir,
-			},
-			PatchInitializeParams: service.patchInitializeParams,
-			HandleServerCallback:  nil,
-			AfterInitialized:      service.ensureIndexerPathReady,
-			WaitUntilReady:        nil,
+			FileWatch:               nil,
+			PatchInitializeParams:   service.patchInitializeParams,
+			HandleServerCallback:    nil,
+			AfterInitialized:        service.ensureIndexerPathReady,
+			WaitUntilReady:          nil,
 		},
 		BuildWorkspaceFolders: nil,
 	})
@@ -69,9 +64,32 @@ func New(cacheRoot string) (*Service, error) {
 		return nil, err
 	}
 
-	std, err := stdlsp.New(&stdlsp.Config{
+	std, err := stdlsp.New(documentSearchConfig(rt.EnsureConn, withRequestDocument))
+	if err != nil {
+		return nil, err
+	}
+
+	stdReferences, err := stdlsp.New(referenceSearchConfig(rt.EnsureConn, withRequestDocument))
+	if err != nil {
+		return nil, err
+	}
+
+	service.rt = rt
+	service.std = std
+	service.stdReferences = stdReferences
+
+	return service, nil
+}
+
+// documentSearchConfig keeps overview and symbol lookup on the Phpactor path that still benefits from one
+// request-scoped open document.
+func documentSearchConfig(
+	ensureConn stdlsp.EnsureConnFunc,
+	withRequestDocument stdlsp.WithRequestDocumentFunc,
+) *stdlsp.Config {
+	return &stdlsp.Config{
 		Extensions:                   extensions,
-		EnsureConn:                   rt.EnsureConn,
+		EnsureConn:                   ensureConn,
 		WithRequestDocument:          withRequestDocument,
 		OpenFileForDocumentSymbol:    true,
 		OpenFileForReferenceWorkflow: false,
@@ -79,16 +97,26 @@ func New(cacheRoot string) (*Service, error) {
 		IgnoreDir:                    shouldIgnoreDir,
 		SymbolTreeCache:              nil,
 		BuildSymbolTreeCacheMetadata: nil,
-	})
-	if err != nil {
-		return nil, err
 	}
+}
 
-	service.rt = rt
-	service.std = std
-	service.withRequestDocument = withRequestDocument
-
-	return service, nil
+// referenceSearchConfig keeps Phpactor references on the standard target-only open-file workflow so the target
+// document stays registered from target resolution through the later references request.
+func referenceSearchConfig(
+	ensureConn stdlsp.EnsureConnFunc,
+	withRequestDocument stdlsp.WithRequestDocumentFunc,
+) *stdlsp.Config {
+	return &stdlsp.Config{
+		Extensions:                   extensions,
+		EnsureConn:                   ensureConn,
+		WithRequestDocument:          withRequestDocument,
+		OpenFileForDocumentSymbol:    true,
+		OpenFileForReferenceWorkflow: true,
+		BuildNamePath:                nil,
+		IgnoreDir:                    shouldIgnoreDir,
+		SymbolTreeCache:              nil,
+		BuildSymbolTreeCacheMetadata: nil,
+	}
 }
 
 // buildClientCapabilities advertises the extra hover and reference features that phpactor needs for stable
@@ -107,17 +135,6 @@ func buildClientCapabilities() protocol.ClientCapabilities {
 	}
 
 	return capabilities
-}
-
-// shouldWatchPHPFile keeps runtime-managed workspace watching scoped to PHP source files.
-func shouldWatchPHPFile(relativePath string) bool {
-	for _, extension := range extensions {
-		if strings.EqualFold(filepath.Ext(relativePath), extension) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // ensureIndexerPathReady prepares the adapter-local Phpactor index directory before reference requests need it.
