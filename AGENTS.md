@@ -66,6 +66,7 @@ while still providing enough information for the LLM to understand what each too
 6. MUST avoid "test spam" - creating tests that are not meaningful and do not add value to the project.
 7. MUST NOT use deprecated params `protocol.InitializeParams.RootPath/RootURI`, use `protocol.InitializeParams.WorkspaceFolders` instead. Some legacy LSP implementations may have exceptions.
 8. When implementing LSP servers, check the work primarily with integration tests, as units can lie.
+9. ALL code MUST be cross-platform compatible (Windows, Linux, MacOS).
 
 ## Testing rules
 1. Use `t.Context()` instead of `context.Background()`
