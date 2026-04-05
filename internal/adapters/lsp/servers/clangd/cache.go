@@ -304,6 +304,7 @@ func resolveCompilationDatabaseDependency(
 		return "", cacheDisabledUnsupportedClangdCfg
 	}
 
+	// Cache manifests use workspace-relative slash paths so the same logical dependency hashes the same on every OS.
 	return filepath.ToSlash(filepath.Clean(relativeDependencyPath)), ""
 }
 

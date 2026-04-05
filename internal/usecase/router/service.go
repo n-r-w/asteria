@@ -111,6 +111,7 @@ func (s *Service) FindSymbol(
 			if relErr != nil {
 				return domain.FindSymbolResult{}, domain.NewInternalError(relErr)
 			}
+			// Adapter requests use workspace-relative slash paths even on Windows to keep routing stable.
 			relativeFilePath = filepath.ToSlash(relativeFilePath)
 
 			fileRequest := &domain.FindSymbolRequest{

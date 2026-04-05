@@ -56,6 +56,8 @@ func ResolveDocumentPath(workspaceRootPath, relativePath string) (cleanRelativeP
 			nil,
 		)
 	}
+	// Workspace-relative paths are part of the public/tool-facing contract, so keep them in
+	// slash form regardless of the host OS while still resolving local filesystem paths correctly.
 	cleanRelativePath = filepath.ToSlash(cleanRelativePath)
 
 	absolutePath = filepath.Join(workspaceRootPath, filepath.FromSlash(cleanRelativePath))
@@ -108,6 +110,7 @@ func CollectDirectoryFiles(
 			if relErr != nil {
 				return relErr
 			}
+			// Directory filters operate on workspace-relative paths, which stay in slash form across OSes.
 			relativePath = filepath.ToSlash(relativePath)
 			if ignoreDir != nil && ignoreDir(relativePath) {
 				return filepath.SkipDir
