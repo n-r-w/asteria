@@ -183,7 +183,7 @@ func TestIntegrationRawReferencesForModuleReexportTargetsResolveSourceReferences
 				"module_reexports.ts",
 				scenario.targetText,
 				moduleReexportScenarioFiles,
-					scenario.expected,
+				scenario.expected,
 			)
 		})
 	}
