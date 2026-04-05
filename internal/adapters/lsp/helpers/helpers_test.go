@@ -95,41 +95,6 @@ func TestWithRequestDocumentClosesAfterRunError(t *testing.T) {
 	waitForURIMethods(t, recorder, uri.File(fixturePath), []string{"textDocument/didOpen", "textDocument/didClose"})
 }
 
-// TestWithRequestDocumentResyncOnReopenSendsDidChange proves that reopening the same file after an
-// on-disk rewrite sends a full-content didChange so servers that have not yet fully processed the previous
-// didClose still receive the latest buffer content.
-func TestWithRequestDocumentResyncOnReopenSendsDidChange(t *testing.T) {
-	t.Parallel()
-
-	fixturePath := writeRequestDocumentFixture(t, "fixture.ts")
-	conn, recorder := newLifecycleRecorderConn(t)
-	withRequestDocument := WithRequestDocumentResyncOnReopen(func(_ string) string { return "typescript" })
-
-	err := withRequestDocument(t.Context(), conn, fixturePath, func(context.Context) error {
-		return nil
-	})
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(fixturePath, []byte("export const fixture = 2;\n"), 0o600))
-
-	err = withRequestDocument(t.Context(), conn, fixturePath, func(context.Context) error {
-		return nil
-	})
-	require.NoError(t, err)
-
-	waitForURIMethods(
-		t,
-		recorder,
-		uri.File(fixturePath),
-		[]string{
-			"textDocument/didOpen",
-			"textDocument/didClose",
-			"textDocument/didOpen",
-			"textDocument/didChange",
-			"textDocument/didClose",
-		},
-	)
-}
-
 // TestWithRequestDocumentKeepsOneOpenForConcurrentSameURI proves that overlapping callers for the same
 // file share one lifecycle state and close the document only after the last caller exits.
 func TestWithRequestDocumentKeepsOneOpenForConcurrentSameURI(t *testing.T) {
@@ -307,16 +272,6 @@ func newLifecycleRecorderConn(t *testing.T) (jsonrpc2.Conn, *lifecycleRecorder) 
 		switch req.Method() {
 		case protocol.MethodTextDocumentDidOpen:
 			var params protocol.DidOpenTextDocumentParams
-			err := json.Unmarshal(req.Params(), &params)
-			if err != nil {
-				t.Error(err)
-				return err
-			}
-			recorder.addEvent(documentLifecycleEvent{Method: req.Method(), URI: params.TextDocument.URI})
-
-			return nil
-		case protocol.MethodTextDocumentDidChange:
-			var params protocol.DidChangeTextDocumentParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)

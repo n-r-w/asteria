@@ -50,7 +50,7 @@ func New() (*Service, error) {
 		return nil, err
 	}
 
-	withRequestDocument := helpers.WithRequestDocumentResyncOnReopen(languageIDForExtension)
+	withRequestDocument := helpers.WithRequestDocument(languageIDForExtension)
 
 	std, err := stdlsp.New(&stdlsp.Config{
 		Extensions:                   extensions,
