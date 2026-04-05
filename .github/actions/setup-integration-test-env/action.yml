@@ -24,8 +24,7 @@ runs:
       with:
         php-version: "8.3"
 
-    - name: Add Unix tool paths
-      if: runner.os != 'Windows'
+    - name: Add tool paths
       shell: bash
       run: |
         python_user_base="$(python -c 'import site; print(site.USER_BASE)')"
@@ -34,21 +33,6 @@ runs:
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
         echo "${python_user_base}/bin" >> "$GITHUB_PATH"
         echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-    - name: Add Windows tool paths
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        $pythonUserBase = python -c "import site; print(site.USER_BASE)"
-        $pythonBin = Join-Path $pythonUserBase 'Scripts'
-        $goBin = Join-Path (go env GOPATH) 'bin'
-        $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
-        $localBin = Join-Path $env:USERPROFILE '.local\bin'
-
-        Add-Content -Path $env:GITHUB_PATH -Value $cargoBin
-        Add-Content -Path $env:GITHUB_PATH -Value $pythonBin
-        Add-Content -Path $env:GITHUB_PATH -Value $goBin
-        Add-Content -Path $env:GITHUB_PATH -Value $localBin
 
     - name: Install Linux system packages
       if: runner.os == 'Linux'
@@ -70,17 +54,7 @@ runs:
           echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
         fi
 
-    - name: Install Windows system packages
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-
-        choco install llvm --yes --no-progress
-        Add-Content -Path $env:GITHUB_PATH -Value 'C:\Program Files\LLVM\bin'
-
-    - name: Install Unix language servers
-      if: runner.os != 'Windows'
+    - name: Install language servers
       shell: bash
       run: |
         set -euo pipefail
@@ -115,30 +89,7 @@ runs:
           "https://github.com/artempyanykh/marksman/releases/latest/download/${marksman_asset}"
         chmod +x "$HOME/.local/bin/marksman"
 
-    - name: Install Windows language servers
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-
-        go install golang.org/x/tools/gopls@latest
-        npm install -g typescript-language-server typescript
-        python -m pip install --user basedpyright
-
-        $localBin = Join-Path $env:USERPROFILE '.local\bin'
-        New-Item -ItemType Directory -Force -Path $localBin | Out-Null
-
-        Invoke-WebRequest -Uri 'https://github.com/phpactor/phpactor/releases/latest/download/phpactor.phar' -OutFile (Join-Path $localBin 'phpactor.phar')
-
-        Set-Content -Path (Join-Path $localBin 'phpactor.bat') -Value @(
-          '@echo off',
-          'php "%~dp0phpactor.phar" %*'
-        )
-
-        Invoke-WebRequest -Uri 'https://github.com/artempyanykh/marksman/releases/latest/download/marksman.exe' -OutFile (Join-Path $localBin 'marksman.exe')
-
-    - name: Verify Unix executables
-      if: runner.os != 'Windows'
+    - name: Verify executables
       shell: bash
       run: |
         set -euo pipefail
@@ -151,8 +102,7 @@ runs:
         command -v phpactor
         command -v rust-analyzer
 
-    - name: Print Unix tool versions
-      if: runner.os != 'Windows'
+    - name: Print tool versions
       shell: bash
       run: |
         set -euo pipefail
@@ -162,33 +112,5 @@ runs:
         marksman --version
         basedpyright --version
         clangd --version | head -n 1
-        phpactor --version
-        rust-analyzer --version
-
-    - name: Verify Windows executables
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-
-        Get-Command gopls | Out-Null
-        Get-Command typescript-language-server | Out-Null
-        Get-Command marksman | Out-Null
-        Get-Command basedpyright-langserver | Out-Null
-        Get-Command clangd | Out-Null
-        Get-Command phpactor | Out-Null
-        Get-Command rust-analyzer | Out-Null
-
-    - name: Print Windows tool versions
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
-
-        gopls version
-        typescript-language-server --version
-        marksman --version
-        basedpyright --version
-        clangd --version | Select-Object -First 1
         phpactor --version
         rust-analyzer --version

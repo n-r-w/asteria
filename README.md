@@ -14,7 +14,8 @@ The server exposes a small, stable tool surface for agents that need to inspect 
 ## Project status
 
 - Project is in early development and should be considered alpha software.
-- Server has been tested on macOS, Linux (Ubuntu), and Windows 11. However, the Windows support is not guaranteed, as testing was limited.
+- Server has been tested on macOS and Linux (Ubuntu).
+- Windows is not supported because many LSP servers work poorly on it.
 
 ## Symbolic search tools
 
@@ -54,7 +55,6 @@ Prebuilt archives are produced for:
 - macOS `arm64`
 - Linux `amd64`
 - Linux `arm64`
-- Windows `amd64`
 
 Download the appropriate archive from [GitHub Releases](https://github.com/n-r-w/asteria/releases).
 
@@ -89,7 +89,7 @@ Use the commands that match the languages you want to analyze.
 ### Go
 
 - Executable: `gopls`
-- macOS / Linux / Windows:
+- macOS / Linux:
 
 ```bash
 go install golang.org/x/tools/gopls@latest
@@ -100,7 +100,7 @@ Source: <https://go.dev/gopls/>
 ### TypeScript and JavaScript
 
 - Executable: `typescript-language-server`
-- macOS / Linux / Windows:
+- macOS / Linux:
 
 ```bash
 npm install -g typescript-language-server typescript
@@ -121,10 +121,6 @@ brew install marksman
 	- If you use Homebrew, the same command as on macOS works.
 	- Otherwise use the official binary release and place `marksman` in `PATH`.
 
-- Windows:
-  - Download the prebuilt binary from the official releases page.
-  - Rename it to `marksman.exe` and place it in a directory that is in `PATH`.
-
 Source: <https://github.com/artempyanykh/marksman/blob/main/docs/install.md>
 
 ### Python
@@ -136,13 +132,13 @@ Source: <https://github.com/artempyanykh/marksman/blob/main/docs/install.md>
 uv tool install basedpyright
 ```
 
-- macOS / Linux / Windows alternative:
+- Alternative:
 
 ```bash
 pip install basedpyright
 ```
 
-Use this alternative on Windows, or on macOS and Linux if you prefer `pip` over `uv`.
+Use this alternative on macOS and Linux if you prefer `pip` over `uv`.
 
 Both commands install the `basedpyright` CLI and the `basedpyright-langserver` script.
 
@@ -168,10 +164,6 @@ sudo update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-12 100
 
 On non-Debian distributions, use the package manager or the official release binaries.
 
-- Windows:
-  - Use the official LLVM / clangd binaries from the installation page.
-  - After installation, make sure `clangd.exe` is in `PATH`.
-
 Source: <https://clangd.llvm.org/installation.html>
 
 ### PHP
@@ -188,16 +180,12 @@ mv phpactor.phar ~/.local/bin/phpactor
 
 Make sure `~/.local/bin` is in `PATH`.
 
-- Windows:
-  - Follow the official installation guide.
-  - Use the PHAR release or Composer-based installation, then make sure `phpactor` is available in `PATH`.
-
 Source: <https://phpactor.readthedocs.io/en/master/usage/standalone.html>
 
 ### Rust
 
 - Executable: `rust-analyzer`
-- macOS / Linux / Windows:
+- macOS / Linux:
 
 ```bash
 rustup component add rust-analyzer
