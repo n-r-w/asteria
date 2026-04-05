@@ -100,11 +100,11 @@ func TestIntegrationRuntimeEnsureConnRecoversFromStaleState(t *testing.T) {
 	normalizedWorkspaceRoot, rootErr := normalizeWorkspaceRoot(workspaceRoot)
 	require.NoError(t, rootErr)
 	runtime.sessions[normalizedWorkspaceRoot] = &session{
-		config:  staleConfig,
-		cmd:     &exec.Cmd{},
-		conn:    nil,
-		done:    nil,
-		waitErr: nil,
+		config:     staleConfig,
+		cmd:        &exec.Cmd{},
+		conn:       nil,
+		done:       nil,
+		waitResult: nil,
 	}
 	t.Cleanup(func() {
 		require.NoError(t, runtime.Close(ctx))

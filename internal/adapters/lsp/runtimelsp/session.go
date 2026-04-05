@@ -23,8 +23,8 @@ type session struct {
 	fileWatcher *workspaceFileWatcher
 	info        *SessionInfo
 
-	done    chan struct{}
-	waitErr error
+	done       chan struct{}
+	waitResult chan error
 }
 
 // newSession creates a reusable session holder before any server process is started.
@@ -37,7 +37,7 @@ func newSession(config *sessionConfig) *session {
 		fileWatcher: nil,
 		info:        nil,
 		done:        nil,
-		waitErr:     nil,
+		waitResult:  nil,
 	}
 }
 
@@ -131,12 +131,15 @@ func (s *session) startLocked(ctx context.Context) error {
 	// Persist the process state before the handshake so cleanup can unwind partial startup.
 	s.cmd = cmd
 	s.conn = jsonrpc2.NewConn(jsonrpc2.NewStream(&stdioConn{reader: stdout, writer: stdin}))
-	s.done = make(chan struct{})
-	s.waitErr = nil
+	done := make(chan struct{})
+	waitResult := make(chan error, 1)
+	s.done = done
+	s.waitResult = waitResult
 
 	go func() {
-		s.waitErr = cmd.Wait()
-		close(s.done)
+		waitResult <- cmd.Wait()
+		close(waitResult)
+		close(done)
 	}()
 
 	clientHandler := newClientHandler(
@@ -282,21 +285,31 @@ func (s *session) closeLocked(ctx context.Context) error {
 		s.resetLocked()
 		return closeErr
 	}
+	done := s.done
+	waitResult := s.waitResult
 
 	select {
-	case <-s.done:
+	case <-done:
 		closeErr = errors.Join(
 			closeErr,
-			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorOnShutdown(s.waitErr)),
+			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorOnShutdown(readWaitResult(waitResult))),
 		)
 	case <-closeCtx.Done():
 		killErr := wrapShutdownError("kill "+s.config.ServerName, killProcess(s.cmd))
 		closeErr = errors.Join(closeErr, killErr, closeCtx.Err())
-		<-s.done
-		closeErr = errors.Join(
-			closeErr,
-			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorOnShutdown(s.waitErr)),
-		)
+
+		postKillCtx, postKillCancel := newShutdownContext(ctx, s.config.ShutdownTimeout)
+		defer postKillCancel()
+
+		select {
+		case <-done:
+			closeErr = errors.Join(
+				closeErr,
+				wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorOnShutdown(readWaitResult(waitResult))),
+			)
+		case <-postKillCtx.Done():
+			closeErr = errors.Join(closeErr, wrapShutdownError("wait for "+s.config.ServerName, postKillCtx.Err()))
+		}
 	}
 
 	s.resetLocked()
@@ -311,5 +324,18 @@ func (s *session) resetLocked() {
 	s.fileWatcher = nil
 	s.info = nil
 	s.done = nil
-	s.waitErr = nil
+	s.waitResult = nil
+}
+
+func readWaitResult(waitResult <-chan error) error {
+	if waitResult == nil {
+		return nil
+	}
+
+	waitErr, ok := <-waitResult
+	if !ok {
+		return nil
+	}
+
+	return waitErr
 }

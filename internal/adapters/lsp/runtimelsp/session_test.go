@@ -1,10 +1,13 @@
 package runtimelsp
 
 import (
+	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -175,6 +178,45 @@ func TestGetOrCreateSessionSeparatesDifferentRoots(t *testing.T) {
 
 	assert.NotSame(t, firstSession, secondSession)
 	require.Len(t, runtime.sessions, 2)
+}
+
+// TestSessionCloseTimesOutWhenWaitNeverFinishes proves that shutdown stays bounded even if cmd.Wait never
+// reports completion after the process has already been killed.
+func TestSessionCloseTimesOutWhenWaitNeverFinishes(t *testing.T) {
+	t.Parallel()
+
+	shutdownTimeout := 50 * time.Millisecond
+	workspaceRoot := t.TempDir()
+	session := newSession(&sessionConfig{
+		LSPConfig: LSPConfig{
+			Command:                 "gopls",
+			Args:                    nil,
+			ServerName:              "gopls",
+			ShutdownTimeout:         shutdownTimeout,
+			ReplyConfiguration:      nil,
+			BuildClientCapabilities: runtimeClientCapabilities,
+			FileWatch:               nil,
+			PatchInitializeParams:   nil,
+			HandleServerCallback:    nil,
+			AfterInitialized:        nil,
+			WaitUntilReady:          nil,
+		},
+		WorkspaceRoot:    workspaceRoot,
+		WorkspaceFolders: defaultWorkspaceFolders(workspaceRoot),
+	})
+	session.cmd = &exec.Cmd{}
+	session.done = make(chan struct{})
+	session.waitResult = make(chan error, 1)
+
+	start := time.Now()
+	err := session.close(t.Context())
+	duration := time.Since(start)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.Less(t, duration, 5*shutdownTimeout)
+	assert.Nil(t, session.done)
+	assert.Nil(t, session.waitResult)
 }
 
 // newTestRuntime keeps the session tests focused on the behavior under test instead of repeated runtime setup.
