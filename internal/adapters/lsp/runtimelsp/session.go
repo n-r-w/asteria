@@ -258,6 +258,17 @@ func (s *session) closeLocked(ctx context.Context) error {
 
 	closeCtx, cancel := newShutdownContext(ctx, s.config.ShutdownTimeout)
 	defer cancel()
+	closeConnection := func() {
+		if s.conn == nil {
+			return
+		}
+
+		closeErr = errors.Join(
+			closeErr,
+			wrapShutdownError("close "+s.config.ServerName+" connection", normalizeConnCloseError(s.conn.Close())),
+		)
+		s.conn = nil
+	}
 
 	if s.conn != nil {
 		shutdownErr := protocol.Call(closeCtx, s.conn, protocol.MethodShutdown, nil, nil)
@@ -265,14 +276,9 @@ func (s *session) closeLocked(ctx context.Context) error {
 		exitErr := s.conn.Notify(closeCtx, protocol.MethodExit, nil)
 		closeErr = errors.Join(closeErr, wrapShutdownError("exit "+s.config.ServerName, exitErr))
 	}
+	closeConnection()
 
 	if s.done == nil {
-		if s.conn != nil {
-			closeErr = errors.Join(
-				closeErr,
-				wrapShutdownError("close "+s.config.ServerName+" connection", normalizeConnCloseError(s.conn.Close())),
-			)
-		}
 		s.resetLocked()
 		return closeErr
 	}
@@ -281,7 +287,7 @@ func (s *session) closeLocked(ctx context.Context) error {
 	case <-s.done:
 		closeErr = errors.Join(
 			closeErr,
-			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitError(s.waitErr)),
+			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorOnShutdown(s.waitErr)),
 		)
 	case <-closeCtx.Done():
 		killErr := wrapShutdownError("kill "+s.config.ServerName, killProcess(s.cmd))
@@ -289,14 +295,7 @@ func (s *session) closeLocked(ctx context.Context) error {
 		<-s.done
 		closeErr = errors.Join(
 			closeErr,
-			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorAfterKill(s.waitErr)),
-		)
-	}
-
-	if s.conn != nil {
-		closeErr = errors.Join(
-			closeErr,
-			wrapShutdownError("close "+s.config.ServerName+" connection", normalizeConnCloseError(s.conn.Close())),
+			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorOnShutdown(s.waitErr)),
 		)
 	}
 

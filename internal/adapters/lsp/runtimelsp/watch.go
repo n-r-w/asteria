@@ -28,6 +28,8 @@ type workspaceFileWatcher struct {
 	relevantFile  func(string) bool
 	ignoreDir     func(string) bool
 	conn          jsonrpc2.Conn
+	notifyCtx     context.Context
+	notifyCancel  context.CancelFunc
 	watcher       *fsnotify.Watcher
 	done          chan struct{}
 	closeOnce     sync.Once
@@ -54,10 +56,13 @@ func newWorkspaceFileWatcher(
 		relevantFile:  config.RelevantFile,
 		ignoreDir:     config.IgnoreDir,
 		conn:          conn,
+		notifyCtx:     nil,
+		notifyCancel:  nil,
 		watcher:       watcher,
 		done:          make(chan struct{}),
 		closeOnce:     sync.Once{},
 	}
+	fileWatcher.notifyCtx, fileWatcher.notifyCancel = context.WithCancel(context.Background())
 
 	watchDirs, err := collectWatchDirs(workspaceRoot, config.IgnoreDir)
 	if err != nil {
@@ -82,6 +87,9 @@ func (w *workspaceFileWatcher) close() error {
 
 	var closeErr error
 	w.closeOnce.Do(func() {
+		if w.notifyCancel != nil {
+			w.notifyCancel()
+		}
 		closeErr = w.watcher.Close()
 		<-w.done
 	})
@@ -136,7 +144,7 @@ func (w *workspaceFileWatcher) handleEvent(event fsnotify.Event) {
 
 	params := &protocol.DidChangeWatchedFilesParams{Changes: effect.fileEvents}
 	if notifyErr := w.conn.Notify(
-		context.Background(),
+		w.notifyCtx,
 		protocol.MethodWorkspaceDidChangeWatchedFiles,
 		params,
 	); notifyErr != nil {

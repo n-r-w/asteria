@@ -59,8 +59,8 @@ func normalizeWaitError(err error) error {
 	return err
 }
 
-// normalizeWaitErrorAfterKill hides the final process exit status once runtime shutdown has already killed the server.
-func normalizeWaitErrorAfterKill(err error) error {
+// normalizeWaitErrorOnShutdown hides the final process exit status once runtime shutdown has already started.
+func normalizeWaitErrorOnShutdown(err error) error {
 	if normalizedErr := normalizeWaitError(err); normalizedErr == nil {
 		return nil
 	}
