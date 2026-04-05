@@ -251,6 +251,9 @@ func (s *session) closeLocked(ctx context.Context) error {
 	}
 
 	var closeErr error
+	var shutdownErr error
+	var exitErr error
+	forcedStop := false
 	if s.fileWatcher != nil {
 		closeErr = errors.Join(
 			closeErr,
@@ -274,10 +277,8 @@ func (s *session) closeLocked(ctx context.Context) error {
 	}
 
 	if s.conn != nil {
-		shutdownErr := protocol.Call(closeCtx, s.conn, protocol.MethodShutdown, nil, nil)
-		closeErr = errors.Join(closeErr, wrapShutdownError("shutdown "+s.config.ServerName, shutdownErr))
-		exitErr := s.conn.Notify(closeCtx, protocol.MethodExit, nil)
-		closeErr = errors.Join(closeErr, wrapShutdownError("exit "+s.config.ServerName, exitErr))
+		shutdownErr = protocol.Call(closeCtx, s.conn, protocol.MethodShutdown, nil, nil)
+		exitErr = s.conn.Notify(closeCtx, protocol.MethodExit, nil)
 	}
 	closeConnection()
 
@@ -295,8 +296,9 @@ func (s *session) closeLocked(ctx context.Context) error {
 			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorOnShutdown(readWaitResult(waitResult))),
 		)
 	case <-closeCtx.Done():
+		forcedStop = true
 		killErr := wrapShutdownError("kill "+s.config.ServerName, killProcess(s.cmd))
-		closeErr = errors.Join(closeErr, killErr, closeCtx.Err())
+		closeErr = errors.Join(closeErr, killErr)
 
 		postKillCtx, postKillCancel := newShutdownContext(ctx, s.config.ShutdownTimeout)
 		defer postKillCancel()
@@ -311,6 +313,12 @@ func (s *session) closeLocked(ctx context.Context) error {
 			closeErr = errors.Join(closeErr, wrapShutdownError("wait for "+s.config.ServerName, postKillCtx.Err()))
 		}
 	}
+
+	closeErr = errors.Join(
+		closeErr,
+		wrapShutdownError("shutdown "+s.config.ServerName, normalizeGracefulShutdownError(shutdownErr, forcedStop)),
+		wrapShutdownError("exit "+s.config.ServerName, normalizeGracefulShutdownError(exitErr, forcedStop)),
+	)
 
 	s.resetLocked()
 

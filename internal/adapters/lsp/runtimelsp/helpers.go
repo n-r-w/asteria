@@ -86,6 +86,32 @@ func normalizeConnCloseError(err error) error {
 	return err
 }
 
+// normalizeShutdownRPCError hides expected request noise when the language server has already torn down its stream.
+func normalizeShutdownRPCError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if onlyExpectedCloseErrors(err) {
+		return nil
+	}
+
+	return err
+}
+
+// normalizeGracefulShutdownError hides graceful-shutdown deadline noise once the runtime had to force-stop the process.
+func normalizeGracefulShutdownError(err error, forcedStop bool) error {
+	if normalizedErr := normalizeShutdownRPCError(err); normalizedErr == nil {
+		return nil
+	}
+
+	if forcedStop && errors.Is(err, context.DeadlineExceeded) {
+		return nil
+	}
+
+	return err
+}
+
 func onlyExpectedCloseErrors(err error) bool {
 	if err == nil {
 		return true

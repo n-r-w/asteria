@@ -3,6 +3,8 @@ package lspmarksman
 
 import (
 	"context"
+	"path/filepath"
+	"strings"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
@@ -33,7 +35,10 @@ func New() (*Service, error) {
 				ShutdownTimeout:         0,
 				ReplyConfiguration:      nil,
 				BuildClientCapabilities: nil,
-				FileWatch:               nil,
+				FileWatch: &runtimelsp.FileWatchConfig{
+					RelevantFile: shouldWatchMarksmanFile,
+					IgnoreDir:    nil,
+				},
 				PatchInitializeParams:   nil,
 				HandleServerCallback:    nil,
 				AfterInitialized:        nil,
@@ -68,6 +73,18 @@ func New() (*Service, error) {
 // Extensions returns the list of file extensions supported by this LSP implementation.
 func (*Service) Extensions() []string {
 	return extensions
+}
+
+// shouldWatchMarksmanFile keeps runtime-managed watched-files focused on supported Markdown sources.
+func shouldWatchMarksmanFile(relativePath string) bool {
+	extension := filepath.Ext(relativePath)
+	for _, supportedExtension := range extensions {
+		if strings.EqualFold(extension, supportedExtension) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Close shuts down the live Marksman session so process-level cleanup stays explicit.
