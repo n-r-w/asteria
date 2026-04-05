@@ -4,6 +4,7 @@ package lsptsls
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -844,10 +845,67 @@ func tslsFixtureRootByName(t *testing.T, fixtureName string) string {
 	t.Helper()
 
 	requireTSLSInstalled(t)
-	fixtureRoot := absoluteFixturePath(t, filepath.Join("testdata", fixtureName))
+	fixtureRoot := trackedTSLSFixtureRoot(t, fixtureName)
 	ensureFixtureDependenciesInstalled(t, fixtureRoot)
 
 	return fixtureRoot
+}
+
+// copyTSLSFixtureRoot copies one tracked fixture tree into a temp workspace so raw wire-level integration
+// checks do not inherit filesystem state from earlier package tests.
+func copyTSLSFixtureRoot(t *testing.T, fixtureName string) string {
+	t.Helper()
+
+	trackedRoot := tslsFixtureRootByName(t, fixtureName)
+	workspaceRoot := filepath.Join(t.TempDir(), fixtureName)
+	require.NotEqual(t, trackedRoot, workspaceRoot)
+	require.NoError(t, copyTSLSFixtureTree(trackedRoot, workspaceRoot))
+
+	return workspaceRoot
+}
+
+// copyTSLSFixtureTree recreates the tracked fixture files under a temp workspace so live tsls integration
+// checks can run without sharing mutable fixture state across the package.
+func copyTSLSFixtureTree(sourceRoot string, destinationRoot string) error {
+	return filepath.WalkDir(sourceRoot, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relativePath, err := filepath.Rel(sourceRoot, path)
+		if err != nil {
+			return err
+		}
+
+		if relativePath == "." {
+			return os.MkdirAll(destinationRoot, 0o755)
+		}
+
+		entryInfo, err := entry.Info()
+		if err != nil {
+			return err
+		}
+
+		destinationPath := filepath.Join(destinationRoot, relativePath)
+		if entry.IsDir() {
+			return os.MkdirAll(destinationPath, entryInfo.Mode().Perm())
+		}
+
+		fileContent, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		return os.WriteFile(destinationPath, fileContent, entryInfo.Mode().Perm())
+	})
+}
+
+// trackedTSLSFixtureRoot returns the repository fixture root so helper code can choose explicitly between the
+// shared tracked workspace and an isolated temp copy.
+func trackedTSLSFixtureRoot(t *testing.T, fixtureName string) string {
+	t.Helper()
+
+	return absoluteFixturePath(t, filepath.Join("testdata", fixtureName))
 }
 
 // absoluteFixturePath resolves one fixture directory relative to the adapter package.

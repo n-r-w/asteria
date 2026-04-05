@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/stretchr/testify/assert"
@@ -32,7 +33,7 @@ func TestIntegrationRawReferencesOpenFileSetsForMakeBucket(t *testing.T) {
 	// execution makes the observed wire-level behavior flaky without changing the
 	// production adapter logic we want to document.
 
-	workspaceRoot := tslsFixtureRoot(t)
+	workspaceRoot := copyTSLSFixtureRoot(t, "basic")
 
 	scenarios := []rawReferenceOpenFileScenario{
 		{
@@ -53,8 +54,16 @@ func TestIntegrationRawReferencesOpenFileSetsForMakeBucket(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Run(scenario.Name, func(t *testing.T) {
 			service, ctx := newIntegrationService(t)
-			actual := rawReferencesForScenario(t, ctx, service, workspaceRoot, "fixture.ts", "makeBucket", scenario.RelativeFiles)
-			assert.Equal(t, scenario.Expected, actual)
+			requireEventuallyRawReferencesForScenario(
+				t,
+				ctx,
+				service,
+				workspaceRoot,
+				"fixture.ts",
+				"makeBucket",
+				scenario.RelativeFiles,
+				scenario.Expected,
+			)
 		})
 	}
 }
@@ -62,7 +71,7 @@ func TestIntegrationRawReferencesOpenFileSetsForMakeBucket(t *testing.T) {
 // TestIntegrationRawReferencesOpenFileSetsForFixtureBucket documents how each open-file set affects raw
 // class references for FixtureBucket in the live TypeScript server.
 func TestIntegrationRawReferencesOpenFileSetsForFixtureBucket(t *testing.T) {
-	workspaceRoot := tslsFixtureRoot(t)
+	workspaceRoot := copyTSLSFixtureRoot(t, "basic")
 
 	scenarios := []rawReferenceOpenFileScenario{
 		{
@@ -88,8 +97,16 @@ func TestIntegrationRawReferencesOpenFileSetsForFixtureBucket(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Run(scenario.Name, func(t *testing.T) {
 			service, ctx := newIntegrationService(t)
-			actual := rawReferencesForScenario(t, ctx, service, workspaceRoot, "fixture.ts", "FixtureBucket", scenario.RelativeFiles)
-			assert.Equal(t, scenario.Expected, actual)
+			requireEventuallyRawReferencesForScenario(
+				t,
+				ctx,
+				service,
+				workspaceRoot,
+				"fixture.ts",
+				"FixtureBucket",
+				scenario.RelativeFiles,
+				scenario.Expected,
+			)
 		})
 	}
 }
@@ -97,7 +114,7 @@ func TestIntegrationRawReferencesOpenFileSetsForFixtureBucket(t *testing.T) {
 // TestIntegrationRawDocumentSymbolsForModuleReexports proves the live tsls documentSymbol payload for
 // module_reexports.ts before any shared-service fallback changes rely on it.
 func TestIntegrationRawDocumentSymbolsForModuleReexports(t *testing.T) {
-	workspaceRoot := tslsFixtureRoot(t)
+	workspaceRoot := copyTSLSFixtureRoot(t, "basic")
 	service, ctx := newIntegrationService(t)
 
 	conn, err := service.rt.EnsureConn(ctx, workspaceRoot)
@@ -119,32 +136,46 @@ func TestIntegrationRawDocumentSymbolsForModuleReexports(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestIntegrationRawReferencesForModuleReexportTargetsStayEmpty proves the live tsls server returns no raw
-// references for re-export declarations in module_reexports.ts, even with the whole scenario file set open.
-func TestIntegrationRawReferencesForModuleReexportTargetsStayEmpty(t *testing.T) {
-	workspaceRoot := tslsFixtureRoot(t)
+// TestIntegrationRawReferencesForModuleReexportTargetsResolveSourceReferences proves that once tsls finishes
+// alias-resolution work for the open project, raw references for module re-export declarations point at the
+// source usages in `advanced.ts`.
+func TestIntegrationRawReferencesForModuleReexportTargetsResolveSourceReferences(t *testing.T) {
+	workspaceRoot := copyTSLSFixtureRoot(t, "basic")
 	scenarios := []struct {
 		name       string
 		targetText string
+		expected   []rawReferenceOccurrence
 	}{
 		{
 			name:       "default export alias",
 			targetText: "defaultBucket",
+			expected: []rawReferenceOccurrence{
+				{File: "advanced.ts", Line: 1, Character: 9},
+				{File: "advanced.ts", Line: 1, Character: 26},
+				{File: "advanced.ts", Line: 30, Character: 35},
+			},
 		},
 		{
 			name:       "named export alias",
 			targetText: "aliasBucket",
+			expected: []rawReferenceOccurrence{
+				{File: "advanced.ts", Line: 50, Character: 54},
+			},
 		},
 		{
 			name:       "type re-export alias",
 			targetText: "ReexportedShape",
+			expected: []rawReferenceOccurrence{
+				{File: "advanced.ts", Line: 2, Character: 14},
+				{File: "advanced.ts", Line: 15, Character: 51},
+			},
 		},
 	}
 
 	for _, scenario := range scenarios {
 		t.Run(scenario.name, func(t *testing.T) {
 			service, ctx := newIntegrationService(t)
-			actual := rawReferencesForTextScenario(
+			requireEventuallyRawReferencesForTextScenario(
 				t,
 				ctx,
 				service,
@@ -152,10 +183,62 @@ func TestIntegrationRawReferencesForModuleReexportTargetsStayEmpty(t *testing.T)
 				"module_reexports.ts",
 				scenario.targetText,
 				moduleReexportScenarioFiles,
+					scenario.expected,
 			)
-			assert.Empty(t, actual)
 		})
 	}
+}
+
+func requireEventuallyRawReferencesForScenario(
+	t *testing.T,
+	ctx context.Context,
+	service *Service,
+	workspaceRoot string,
+	targetRelativePath string,
+	targetSymbolName string,
+	relativeFiles []string,
+	expected []rawReferenceOccurrence,
+) {
+	t.Helper()
+
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		actual := rawReferencesForScenario(
+			t,
+			ctx,
+			service,
+			workspaceRoot,
+			targetRelativePath,
+			targetSymbolName,
+			relativeFiles,
+		)
+		assert.Equal(collect, expected, actual)
+	}, 5*time.Second, 100*time.Millisecond)
+}
+
+func requireEventuallyRawReferencesForTextScenario(
+	t *testing.T,
+	ctx context.Context,
+	service *Service,
+	workspaceRoot string,
+	targetRelativePath string,
+	targetText string,
+	relativeFiles []string,
+	expected []rawReferenceOccurrence,
+) {
+	t.Helper()
+
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		actual := rawReferencesForTextScenario(
+			t,
+			ctx,
+			service,
+			workspaceRoot,
+			targetRelativePath,
+			targetText,
+			relativeFiles,
+		)
+		assert.Equal(collect, expected, actual)
+	}, 5*time.Second, 100*time.Millisecond)
 }
 
 // rawReferenceOpenFileScenario keeps the compared open-file sets readable in table-driven raw-reference tests.
