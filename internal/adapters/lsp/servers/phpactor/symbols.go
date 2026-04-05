@@ -117,7 +117,7 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, indexErr
 	}
 
-	result, err := s.stdReferences.FindReferencingSymbols(ctx, request)
+	result, err := s.std.FindReferencingSymbols(ctx, request)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
