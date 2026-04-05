@@ -171,25 +171,87 @@ func augmentFindSymbolWithPHPConstants(
 	return result, nil
 }
 
-// collectReferenceRows resolves CLI or text-backed PHP reference rows into grouped Asteria results and skips
-// the declaration row that must not appear in the final non-declaration response.
-func (s *Service) collectReferenceRows(
+// augmentPropertyReferenceResults supplements the LSP reference result with phpactor's member-reference CLI
+// output for PHP properties, which closes cases where the LSP transport returns no field usages.
+func (s *Service) augmentPropertyReferenceResults(
 	ctx context.Context,
 	workspaceRoot string,
 	request *domain.FindReferencingSymbolsRequest,
-	skipFile string,
-	skipLine int,
+	result domain.FindReferencingSymbolsResult,
+) (domain.FindReferencingSymbolsResult, error) {
+	targetSymbol, ok, err := s.findFallbackPropertyTarget(ctx, request)
+	if err != nil || !ok {
+		return result, err
+	}
+
+	referenceTarget, propertyName, splitOK := phpactorPropertyReferenceTarget(&targetSymbol)
+	if !splitOK {
+		return result, nil
+	}
+
+	referenceRows, err := runPHPActorPropertyReferences(ctx, s.cacheRoot, workspaceRoot, referenceTarget, propertyName)
+	if err != nil {
+		return result, err
+	}
+	if len(referenceRows) == 0 {
+		return result, nil
+	}
+
+	existingSymbols := make(map[string]struct{}, len(result.Symbols))
+	for _, symbol := range result.Symbols {
+		existingSymbols[phpReferencingSymbolKey(symbol)] = struct{}{}
+	}
+
+	augmentedSymbols, err := s.collectAugmentedPropertyReferences(
+		ctx,
+		workspaceRoot,
+		request,
+		&targetSymbol,
+		referenceRows,
+		existingSymbols,
+	)
+	if err != nil {
+		return result, err
+	}
+	result.Symbols = append(result.Symbols, augmentedSymbols...)
+
+	sort.Slice(result.Symbols, func(leftIndex, rightIndex int) bool {
+		left := result.Symbols[leftIndex]
+		right := result.Symbols[rightIndex]
+		if left.File != right.File {
+			return left.File < right.File
+		}
+		if left.ContentStartLine != right.ContentStartLine {
+			return left.ContentStartLine < right.ContentStartLine
+		}
+		if left.ContentEndLine != right.ContentEndLine {
+			return left.ContentEndLine < right.ContentEndLine
+		}
+
+		return left.Path < right.Path
+	})
+
+	return result, nil
+}
+
+// collectAugmentedPropertyReferences resolves CLI property-reference rows into grouped Asteria results and skips
+// declaration lines that should not appear in the final reference response.
+func (s *Service) collectAugmentedPropertyReferences(
+	ctx context.Context,
+	workspaceRoot string,
+	request *domain.FindReferencingSymbolsRequest,
+	targetSymbol *domain.FoundSymbol,
 	referenceRows []phpactorReferenceRow,
 	existingSymbols map[string]struct{},
 ) ([]domain.ReferencingSymbol, error) {
 	overviewCache := make(map[string][]domain.SymbolLocation)
 	augmentedSymbols := make([]domain.ReferencingSymbol, 0)
 	for _, referenceRow := range referenceRows {
-		if referenceRow.File == skipFile && referenceRow.Line == skipLine {
+		if referenceRow.File == targetSymbol.File && referenceRow.Line == targetSymbol.StartLine {
 			continue
 		}
 
-		containerSymbol, foundContainer, err := s.referenceContainer(
+		containerSymbol, foundContainer, err := s.propertyReferenceContainer(
 			ctx,
 			workspaceRoot,
 			request,
@@ -213,9 +275,43 @@ func (s *Service) collectReferenceRows(
 	return augmentedSymbols, nil
 }
 
-// referenceContainer maps one PHP reference row back to the smallest containing symbol that should be exposed
-// through Asteria's grouped reference contract.
-func (s *Service) referenceContainer(
+// findFallbackPropertyTarget resolves the exact property symbol that should be used for the phpactor
+// member-reference fallback and rejects non-property targets.
+func (s *Service) findFallbackPropertyTarget(
+	ctx context.Context,
+	request *domain.FindReferencingSymbolsRequest,
+) (domain.FoundSymbol, bool, error) {
+	trimmedPath := strings.TrimSpace(request.Path)
+	if trimmedPath == "" {
+		return domain.FoundSymbol{}, false, nil
+	}
+
+	result, err := s.std.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{
+			Path:              "/" + strings.TrimLeft(trimmedPath, "/"),
+			IncludeKinds:      []int{int(protocol.SymbolKindProperty), int(protocol.SymbolKindField)},
+			ExcludeKinds:      nil,
+			Depth:             0,
+			IncludeBody:       false,
+			IncludeInfo:       false,
+			SubstringMatching: false,
+		},
+		WorkspaceRoot: request.WorkspaceRoot,
+		Scope:         request.File,
+	})
+	if err != nil {
+		return domain.FoundSymbol{}, false, err
+	}
+	if len(result.Symbols) != 1 {
+		return domain.FoundSymbol{}, false, nil
+	}
+
+	return result.Symbols[0], true, nil
+}
+
+// propertyReferenceContainer maps one phpactor CLI reference line back to the smallest containing symbol that
+// should be exposed through Asteria's grouped reference contract.
+func (s *Service) propertyReferenceContainer(
 	ctx context.Context,
 	workspaceRoot string,
 	request *domain.FindReferencingSymbolsRequest,
@@ -308,6 +404,11 @@ func runPHPActorPropertyReferences(
 	configExtra, err := phpactorConfigExtra(indexPath)
 	if err != nil {
 		return nil, err
+	}
+
+	buildErr := buildPHPActorIndex(ctx, cacheRoot, workspaceRoot)
+	if buildErr != nil {
+		return nil, buildErr
 	}
 
 	stdout := bytes.Buffer{}
