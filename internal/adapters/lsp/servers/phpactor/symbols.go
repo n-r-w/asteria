@@ -124,11 +124,8 @@ func (s *Service) FindReferencingSymbols(
 	}
 
 	var result domain.FindReferencingSymbolsResult
-	liveCtx, cancel := context.WithTimeout(ctx, phpactorReferenceTimeout)
-	defer cancel()
-
-	liveErr := helpers.RunWithReferenceWorkflowFiles(
-		liveCtx,
+	err = helpers.RunWithReferenceWorkflowFiles(
+		ctx,
 		conn,
 		workspaceRoot,
 		referenceWorkflowFiles,
@@ -140,40 +137,8 @@ func (s *Service) FindReferencingSymbols(
 			return callErr
 		},
 	)
-	if liveErr != nil && !errors.Is(liveErr, context.DeadlineExceeded) {
-		return domain.FindReferencingSymbolsResult{}, liveErr
-	}
-
-	if errors.Is(liveErr, context.DeadlineExceeded) {
-		logFallbackWarning(
-			ctx,
-			"phpactor live reference request timed out; trying fallback",
-			liveErr,
-			"file_path", request.File,
-			"symbol_path", request.Path,
-		)
-	}
-
-	functionAugmentedResult, functionFallbackUsed, functionAugmentErr := s.augmentFunctionReferenceResults(
-		ctx,
-		workspaceRoot,
-		request,
-		result,
-	)
-	if functionAugmentErr != nil {
-		logFallbackWarning(
-			ctx,
-			"skip phpactor function reference fallback",
-			functionAugmentErr,
-			"file_path", request.File,
-			"symbol_path", request.Path,
-		)
-	} else if functionFallbackUsed {
-		result = functionAugmentedResult
-	}
-
-	if errors.Is(liveErr, context.DeadlineExceeded) && !functionFallbackUsed {
-		return domain.FindReferencingSymbolsResult{}, liveErr
+	if err != nil {
+		return domain.FindReferencingSymbolsResult{}, err
 	}
 
 	augmentedResult, augmentErr := s.augmentPropertyReferenceResults(

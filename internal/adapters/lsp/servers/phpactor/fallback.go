@@ -233,67 +233,6 @@ func (s *Service) augmentPropertyReferenceResults(
 	return result, nil
 }
 
-// augmentFunctionReferenceResults supplements the live LSP result for top-level PHP functions when phpactor
-// reference requests time out or return no cross-file usages.
-func (s *Service) augmentFunctionReferenceResults(
-	ctx context.Context,
-	workspaceRoot string,
-	request *domain.FindReferencingSymbolsRequest,
-	result domain.FindReferencingSymbolsResult,
-) (domain.FindReferencingSymbolsResult, bool, error) {
-	targetSymbol, ok, err := s.findFallbackFunctionTarget(ctx, request)
-	if err != nil || !ok {
-		return result, false, err
-	}
-
-	referenceRows, err := collectPHPFunctionReferenceRows(workspaceRoot, &targetSymbol)
-	if err != nil {
-		return result, false, err
-	}
-	if len(referenceRows) == 0 {
-		return result, false, nil
-	}
-
-	existingSymbols := make(map[string]struct{}, len(result.Symbols))
-	for _, symbol := range result.Symbols {
-		existingSymbols[phpReferencingSymbolKey(symbol)] = struct{}{}
-	}
-
-	augmentedSymbols, err := s.collectAugmentedPropertyReferences(
-		ctx,
-		workspaceRoot,
-		request,
-		&targetSymbol,
-		referenceRows,
-		existingSymbols,
-	)
-	if err != nil {
-		return result, false, err
-	}
-	if len(augmentedSymbols) == 0 {
-		return result, false, nil
-	}
-
-	result.Symbols = append(result.Symbols, augmentedSymbols...)
-	sort.Slice(result.Symbols, func(leftIndex, rightIndex int) bool {
-		left := result.Symbols[leftIndex]
-		right := result.Symbols[rightIndex]
-		if left.File != right.File {
-			return left.File < right.File
-		}
-		if left.ContentStartLine != right.ContentStartLine {
-			return left.ContentStartLine < right.ContentStartLine
-		}
-		if left.ContentEndLine != right.ContentEndLine {
-			return left.ContentEndLine < right.ContentEndLine
-		}
-
-		return left.Path < right.Path
-	})
-
-	return result, true, nil
-}
-
 // collectAugmentedPropertyReferences resolves CLI property-reference rows into grouped Asteria results and skips
 // declaration lines that should not appear in the final reference response.
 func (s *Service) collectAugmentedPropertyReferences(
@@ -350,39 +289,6 @@ func (s *Service) findFallbackPropertyTarget(
 		FindSymbolFilter: domain.FindSymbolFilter{
 			Path:              "/" + strings.TrimLeft(trimmedPath, "/"),
 			IncludeKinds:      []int{int(protocol.SymbolKindProperty), int(protocol.SymbolKindField)},
-			ExcludeKinds:      nil,
-			Depth:             0,
-			IncludeBody:       false,
-			IncludeInfo:       false,
-			SubstringMatching: false,
-		},
-		WorkspaceRoot: request.WorkspaceRoot,
-		Scope:         request.File,
-	})
-	if err != nil {
-		return domain.FoundSymbol{}, false, err
-	}
-	if len(result.Symbols) != 1 {
-		return domain.FoundSymbol{}, false, nil
-	}
-
-	return result.Symbols[0], true, nil
-}
-
-// findFallbackFunctionTarget resolves one exact top-level PHP function declaration for the text fallback path.
-func (s *Service) findFallbackFunctionTarget(
-	ctx context.Context,
-	request *domain.FindReferencingSymbolsRequest,
-) (domain.FoundSymbol, bool, error) {
-	trimmedPath := strings.TrimSpace(request.Path)
-	if trimmedPath == "" || strings.Contains(trimmedPath, "/") {
-		return domain.FoundSymbol{}, false, nil
-	}
-
-	result, err := s.std.FindSymbol(ctx, &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{
-			Path:              "/" + strings.TrimLeft(trimmedPath, "/"),
-			IncludeKinds:      []int{int(protocol.SymbolKindFunction)},
 			ExcludeKinds:      nil,
 			Depth:             0,
 			IncludeBody:       false,
@@ -516,81 +422,6 @@ func runPHPActorPropertyReferences(
 	}
 
 	return parsePHPActorReferenceRows(stdout.String())
-}
-
-func collectPHPFunctionReferenceRows(
-	workspaceRoot string,
-	targetSymbol *domain.FoundSymbol,
-) ([]phpactorReferenceRow, error) {
-	referenceFiles, err := collectReferenceWorkflowFiles(workspaceRoot, targetSymbol.File)
-	if err != nil {
-		return nil, err
-	}
-
-	functionName := stripPHPPathDiscriminator(targetSymbol.Path)
-	callPattern := regexp.MustCompile(`\b` + regexp.QuoteMeta(functionName) + `\s*\(`)
-	declarationPattern := regexp.MustCompile(`\bfunction\s+&?\s*` + regexp.QuoteMeta(functionName) + `\s*\(`)
-
-	references := make([]phpactorReferenceRow, 0)
-	seen := make(map[string]struct{})
-	for _, relativePath := range referenceFiles {
-		_, absolutePath, resolveErr := helpers.ResolveDocumentPath(workspaceRoot, relativePath)
-		if resolveErr != nil {
-			return nil, resolveErr
-		}
-		safeAbsolutePath := filepath.Clean(absolutePath)
-
-		fileContent, readErr := os.ReadFile(safeAbsolutePath)
-		if readErr != nil {
-			return nil, readErr
-		}
-
-		for lineIndex, line := range strings.Split(strings.ReplaceAll(string(fileContent), "\r\n", "\n"), "\n") {
-			if relativePath == targetSymbol.File && lineIndex == targetSymbol.StartLine {
-				continue
-			}
-			if !isTopLevelPHPFunctionReferenceLine(line, callPattern, declarationPattern) {
-				continue
-			}
-
-			reference := phpactorReferenceRow{File: relativePath, Line: lineIndex}
-			key := fmt.Sprintf("%s\x00%d", reference.File, reference.Line)
-			if _, exists := seen[key]; exists {
-				continue
-			}
-
-			references = append(references, reference)
-			seen[key] = struct{}{}
-		}
-	}
-
-	return references, nil
-}
-
-func isTopLevelPHPFunctionReferenceLine(
-	line string,
-	callPattern *regexp.Regexp,
-	declarationPattern *regexp.Regexp,
-) bool {
-	if declarationPattern.MatchString(line) {
-		return false
-	}
-
-	matchIndexes := callPattern.FindAllStringIndex(line, -1)
-	for _, matchIndex := range matchIndexes {
-		if matchIndex[0] == 0 {
-			return true
-		}
-
-		previousCharacter := line[matchIndex[0]-1]
-		if previousCharacter == '>' || previousCharacter == ':' || previousCharacter == '$' {
-			continue
-		}
-
-		return true
-	}
-
-	return false
 }
 
 // buildPHPActorIndex prepares phpactor's project index before CLI fallback queries rely on class resolution.
