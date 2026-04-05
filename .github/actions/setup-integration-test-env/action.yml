@@ -28,8 +28,11 @@ runs:
       if: runner.os != 'Windows'
       shell: bash
       run: |
+        python_user_base="$(python -c 'import site; print(site.USER_BASE)')"
+
         echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        echo "${python_user_base}/bin" >> "$GITHUB_PATH"
         echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
     - name: Add Windows tool paths
