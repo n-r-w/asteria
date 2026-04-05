@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/caarlos0/env/v11 v11.4.0
+	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/modelcontextprotocol/go-sdk v1.4.1
 	github.com/samber/lo v1.53.0

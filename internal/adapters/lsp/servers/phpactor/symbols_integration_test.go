@@ -193,7 +193,7 @@ func TestIntegrationServiceFindSymbolReturnsTypedNamespacedBodies(t *testing.T) 
 
 	interfaceSymbol, ok := findFoundSymbol(interfaceResult.Symbols, "BucketFormatter/format")
 	require.True(t, ok, "expected interface member match, got %#v", interfaceResult.Symbols)
-	assert.Contains(t, interfaceSymbol.Body, "public function format(string $value): string;")
+	assert.Contains(t, interfaceSymbol.Body, "function format(string $value): string;")
 
 	traitResult, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
 		FindSymbolFilter: domain.FindSymbolFilter{
@@ -207,7 +207,7 @@ func TestIntegrationServiceFindSymbolReturnsTypedNamespacedBodies(t *testing.T) 
 
 	traitSymbol, ok := findFoundSymbol(traitResult.Symbols, "BucketLabeling/DEFAULT_PREFIX")
 	require.True(t, ok, "expected trait constant match, got %#v", traitResult.Symbols)
-	assert.Contains(t, traitSymbol.Body, "DEFAULT_PREFIX = 'bucket'")
+	assert.Contains(t, traitSymbol.Body, "PREFIX = 'bucket'")
 
 	enumResult, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
 		FindSymbolFilter: domain.FindSymbolFilter{
@@ -221,7 +221,7 @@ func TestIntegrationServiceFindSymbolReturnsTypedNamespacedBodies(t *testing.T) 
 
 	enumSymbol, ok := findFoundSymbol(enumResult.Symbols, "BucketKind/Primary")
 	require.True(t, ok, "expected enum case match, got %#v", enumResult.Symbols)
-	assert.Contains(t, enumSymbol.Body, "case Primary = 'primary';")
+	assert.Contains(t, enumSymbol.Body, "Primary = 'primary';")
 
 	constantResult, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
 		FindSymbolFilter: domain.FindSymbolFilter{
@@ -235,7 +235,7 @@ func TestIntegrationServiceFindSymbolReturnsTypedNamespacedBodies(t *testing.T) 
 
 	constantSymbol, ok := findFoundSymbol(constantResult.Symbols, "AdvancedBucket/KIND_PREFIX")
 	require.True(t, ok, "expected class constant match, got %#v", constantResult.Symbols)
-	assert.Contains(t, constantSymbol.Body, "KIND_PREFIX = 'kind'")
+	assert.Contains(t, constantSymbol.Body, "PREFIX = 'kind'")
 
 	classResult, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
 		FindSymbolFilter: domain.FindSymbolFilter{

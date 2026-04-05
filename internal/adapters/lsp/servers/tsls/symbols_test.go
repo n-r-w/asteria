@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
@@ -192,6 +193,81 @@ func TestRunWithReferenceWorkflowFilesClosesOpenedFilesAfterOpenFailure(t *testi
 	require.ErrorContains(t, err, fmt.Sprintf("read request document %q", filepath.Join(workspaceRoot, "missing.ts")))
 	require.ErrorIs(t, err, os.ErrNotExist)
 	waitForURIMethods(t, recorder, uri.File(firstPath), []string{protocol.MethodTextDocumentDidOpen, protocol.MethodTextDocumentDidClose})
+}
+
+// TestShouldRetryReferenceResult proves that tsls retries cross-file reference lookups only while results are
+// still empty or target-file-only despite additional workflow files being open.
+func TestShouldRetryReferenceResult(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                  string
+		targetRelativePath    string
+		referenceWorkflowFiles []string
+		result                domain.FindReferencingSymbolsResult
+		expected              bool
+	}{
+		{
+			name:                  "single target file does not retry",
+			targetRelativePath:    "fixture.ts",
+			referenceWorkflowFiles: []string{"fixture.ts"},
+			result:                domain.FindReferencingSymbolsResult{},
+			expected:              false,
+		},
+		{
+			name:                  "empty cross file result retries",
+			targetRelativePath:    "fixture.ts",
+			referenceWorkflowFiles: []string{"references.ts", "fixture.ts"},
+			result:                domain.FindReferencingSymbolsResult{},
+			expected:              true,
+		},
+		{
+			name:               "target file only result retries",
+			targetRelativePath: "fixture.ts",
+			referenceWorkflowFiles: []string{
+				"references.ts",
+				"fixture.ts",
+			},
+			result: domain.FindReferencingSymbolsResult{Symbols: []domain.ReferencingSymbol{{
+				Kind:            0,
+				Path:            "",
+				File:            "fixture.ts",
+				ContentStartLine: 0,
+				ContentEndLine:   0,
+				Content:          "",
+			}}},
+			expected: true,
+		},
+		{
+			name:               "cross file result stops retry",
+			targetRelativePath: "fixture.ts",
+			referenceWorkflowFiles: []string{
+				"references.ts",
+				"fixture.ts",
+			},
+			result: domain.FindReferencingSymbolsResult{Symbols: []domain.ReferencingSymbol{{
+				Kind:            0,
+				Path:            "",
+				File:            "references.ts",
+				ContentStartLine: 0,
+				ContentEndLine:   0,
+				Content:          "",
+			}}},
+			expected: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(
+				t,
+				testCase.expected,
+				shouldRetryReferenceResult(testCase.targetRelativePath, testCase.referenceWorkflowFiles, testCase.result),
+			)
+		})
+	}
 }
 
 // documentLifecycleEvent records one didOpen or didClose notification for later assertions.

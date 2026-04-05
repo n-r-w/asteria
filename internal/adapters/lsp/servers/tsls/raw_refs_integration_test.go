@@ -25,8 +25,9 @@ var rawReferenceScenarioFiles = []string{"fixture.js", "fixture.ts", "references
 
 var moduleReexportScenarioFiles = []string{"advanced.ts", "module_contracts.ts", "module_reexports.ts"}
 
-// TestIntegrationRawReferencesOpenFileSetsForMakeBucket documents how each open-file set affects raw
-// cross-file function references for makeBucket in the live TypeScript server.
+// TestIntegrationRawReferencesOpenFileSetsForMakeBucket documents the stable eventual raw-reference behavior
+// for `makeBucket`: once tsls finishes project indexing, cross-file references appear even if only the target
+// file was explicitly opened through the request-document workflow.
 func TestIntegrationRawReferencesOpenFileSetsForMakeBucket(t *testing.T) {
 	// These raw-server checks intentionally run serially. They exercise live tsls
 	// indexing immediately after a burst of didOpen notifications, and parallel
@@ -39,7 +40,10 @@ func TestIntegrationRawReferencesOpenFileSetsForMakeBucket(t *testing.T) {
 		{
 			Name:          "target file only",
 			RelativeFiles: []string{"fixture.ts"},
-			Expected:      []rawReferenceOccurrence{},
+			Expected: []rawReferenceOccurrence{
+				{File: "references.ts", Line: 0, Character: 39},
+				{File: "references.ts", Line: 4, Character: 18},
+			},
 		},
 		{
 			Name:          "scenario file set with reference participants",

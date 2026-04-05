@@ -1,5 +1,7 @@
 package lsptsls
 
+import "time"
+
 // extensions lists the file extensions supported by the TypeScript language server.
 //
 //nolint:gochecknoglobals // ok for adapter-level constants
@@ -11,6 +13,8 @@ const (
 	languageIDTypeScriptReact = "typescriptreact"
 	languageIDJavaScript      = "javascript"
 	languageIDJavaScriptReact = "javascriptreact"
+	tslsReferenceRetryTimeout = 2 * time.Second
+	tslsReferenceRetryPoll    = 100 * time.Millisecond
 )
 
 // languageIDForExtension maps one file extension to the language ID expected by the language server.

@@ -6,11 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/domain"
 	"go.lsp.dev/jsonrpc2"
 )
+
+var errTSLSReferencesNotReady = errors.New("tsls references are not ready")
 
 // FindReferencingSymbols keeps the target-directory file set open for the whole shared workflow so
 // tsls can resolve cross-file references before stdlsp groups the final result.
@@ -54,7 +57,13 @@ func (s *Service) FindReferencingSymbols(
 			}
 
 			var callErr error
-			result, callErr = s.Service.FindReferencingSymbols(callCtx, resolvedRequest)
+			result, callErr = s.findReferencingSymbolsWithRetry(
+				callCtx,
+				conn,
+				resolvedRequest,
+				referenceWorkflowFiles,
+				absoluteWorkflowPaths(workspaceRoot, referenceWorkflowFiles),
+			)
 
 			return callErr
 		},
@@ -64,6 +73,84 @@ func (s *Service) FindReferencingSymbols(
 	}
 
 	return result, nil
+}
+
+func (s *Service) findReferencingSymbolsWithRetry(
+	ctx context.Context,
+	conn jsonrpc2.Conn,
+	request *domain.FindReferencingSymbolsRequest,
+	referenceWorkflowFiles []string,
+	absoluteWorkflowPaths []string,
+) (domain.FindReferencingSymbolsResult, error) {
+	attempt := 0
+	result, err := backoff.Retry(ctx, func() (domain.FindReferencingSymbolsResult, error) {
+		if attempt > 0 {
+			if warmErr := warmRequestDocuments(ctx, conn, absoluteWorkflowPaths); warmErr != nil {
+				return domain.FindReferencingSymbolsResult{}, backoff.Permanent(warmErr)
+			}
+		}
+		attempt++
+
+		currentResult, currentErr := s.Service.FindReferencingSymbols(ctx, request)
+		if currentErr != nil {
+			return currentResult, backoff.Permanent(currentErr)
+		}
+		if shouldRetryReferenceResult(request.File, referenceWorkflowFiles, currentResult) {
+			return currentResult, errTSLSReferencesNotReady
+		}
+
+		return currentResult, nil
+	},
+		backoff.WithBackOff(backoff.NewConstantBackOff(tslsReferenceRetryPoll)),
+		backoff.WithMaxElapsedTime(tslsReferenceRetryTimeout),
+	)
+	if errors.Is(err, errTSLSReferencesNotReady) {
+		return result, nil
+	}
+
+	return result, err
+}
+
+func shouldRetryReferenceResult(
+	targetRelativePath string,
+	referenceWorkflowFiles []string,
+	result domain.FindReferencingSymbolsResult,
+) bool {
+	if !referenceWorkflowIncludesAdditionalFiles(targetRelativePath, referenceWorkflowFiles) {
+		return false
+	}
+	if len(result.Symbols) == 0 {
+		return true
+	}
+
+	normalizedTargetPath := filepath.ToSlash(filepath.Clean(targetRelativePath))
+	for _, symbol := range result.Symbols {
+		if filepath.ToSlash(filepath.Clean(symbol.File)) != normalizedTargetPath {
+			return false
+		}
+	}
+
+	return true
+}
+
+func referenceWorkflowIncludesAdditionalFiles(targetRelativePath string, referenceWorkflowFiles []string) bool {
+	normalizedTargetPath := filepath.ToSlash(filepath.Clean(targetRelativePath))
+	for _, relativePath := range referenceWorkflowFiles {
+		if filepath.ToSlash(filepath.Clean(relativePath)) != normalizedTargetPath {
+			return true
+		}
+	}
+
+	return false
+}
+
+func absoluteWorkflowPaths(workspaceRoot string, relativePaths []string) []string {
+	absolutePaths := make([]string, 0, len(relativePaths))
+	for _, relativePath := range relativePaths {
+		absolutePaths = append(absolutePaths, filepath.Join(workspaceRoot, filepath.FromSlash(relativePath)))
+	}
+
+	return absolutePaths
 }
 
 // collectReferenceWorkflowFiles returns the tsls reference-workflow file set for one target file: all
@@ -82,10 +169,7 @@ func runWithReferenceWorkflowFiles(
 	withRequestDocument stdlsp.WithRequestDocumentFunc,
 	run func(context.Context) error,
 ) error {
-	absolutePaths := make([]string, 0, len(relativePaths))
-	for _, relativePath := range relativePaths {
-		absolutePaths = append(absolutePaths, filepath.Join(workspaceRoot, filepath.FromSlash(relativePath)))
-	}
+	absolutePaths := absoluteWorkflowPaths(workspaceRoot, relativePaths)
 
 	return runWithOpenReferenceWorkflowFiles(
 		ctx,
