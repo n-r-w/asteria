@@ -94,8 +94,8 @@ func (s *Service) FindSymbol(
 	return result, nil
 }
 
-// FindReferencingSymbols keeps one bounded same-directory PHP file set open so phpactor can resolve nearby
-// cross-file references without the cost of recursively opening nested workspace trees.
+// FindReferencingSymbols routes Phpactor references through adapter-owned reference helpers instead of the live
+// LSP references request that still hangs on Windows in this environment.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
@@ -117,30 +117,7 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, indexErr
 	}
 
-	result, err := s.stdReferences.FindReferencingSymbols(ctx, request)
-	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
-	}
-
-	augmentedResult, augmentErr := s.augmentPropertyReferenceResults(
-		ctx,
-		workspaceRoot,
-		request,
-		result,
-	)
-	if augmentErr != nil {
-		logFallbackWarning(
-			ctx,
-			"skip phpactor property reference fallback",
-			augmentErr,
-			"file_path", request.File,
-			"symbol_path", request.Path,
-		)
-
-		return result, nil
-	}
-
-	return augmentedResult, nil
+	return s.findReferencingSymbolsViaPHPActor(ctx, workspaceRoot, request)
 }
 
 // patchInitializeParams keeps the deprecated startup workaround local to phpactor while disabling helper
