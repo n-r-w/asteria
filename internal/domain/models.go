@@ -2,15 +2,8 @@
 package domain
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"hash"
-	"io"
-	"os"
-	"path/filepath"
-	"slices"
 	"strings"
 
 	lspprotocol "go.lsp.dev/protocol"
@@ -45,11 +38,6 @@ func (r *GetSymbolsOverviewFilter) Validate() error {
 	return nil
 }
 
-// hash writes a hash representation of the symbols overview filter parameters.
-func (r *GetSymbolsOverviewFilter) hash(h hash.Hash) {
-	_, _ = fmt.Fprintf(h, "d%d", r.Depth)
-}
-
 // GetSymbolsOverviewRequest is input model for symbols overview operation.
 type GetSymbolsOverviewRequest struct {
 	GetSymbolsOverviewFilter
@@ -70,28 +58,6 @@ func (r *GetSymbolsOverviewRequest) Validate() error {
 		err = errors.Join(err, errors.New("file is required"))
 	}
 	return errors.Join(err, r.GetSymbolsOverviewFilter.Validate())
-}
-
-// GetSymbolsOverviewCacheRequest is input model for symbols overview operation.
-type GetSymbolsOverviewCacheRequest struct {
-	GetSymbolsOverviewFilter
-
-	// FilePath is the absolute file path to inspect, used for file cache queries.
-	FilePath string
-}
-
-// GetHash computes a hash string for the symbols.
-func (r *GetSymbolsOverviewCacheRequest) GetHash() (string, error) {
-	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "p%s", filepath.Clean(r.FilePath))
-
-	if err := fileHash(h, r.FilePath); err != nil {
-		return "", fmt.Errorf("failed to compute file hash: %w", err)
-	}
-
-	r.hash(h)
-
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // GetSymbolsOverviewResult is output model for symbols overview operation.
@@ -141,40 +107,6 @@ func (r *FindSymbolFilter) Validate() error {
 	return err
 }
 
-// hash writes a hash representation of the symbol lookup filter parameters.
-func (r *FindSymbolFilter) hash(h hash.Hash) {
-	_, _ = fmt.Fprintf(h, "p%s", r.Path)
-	_, _ = fmt.Fprintf(h, "d%d", r.Depth)
-	if r.IncludeBody {
-		h.Write([]byte{1})
-	} else {
-		h.Write([]byte{0})
-	}
-	if r.IncludeInfo {
-		h.Write([]byte{1})
-	} else {
-		h.Write([]byte{0})
-	}
-	if r.SubstringMatching {
-		h.Write([]byte{1})
-	} else {
-		h.Write([]byte{0})
-	}
-
-	// sort for deterministic hashing
-	includeKinds := append([]int(nil), r.IncludeKinds...)
-	excludeKinds := append([]int(nil), r.ExcludeKinds...)
-	slices.Sort(includeKinds)
-	slices.Sort(excludeKinds)
-
-	for _, kind := range includeKinds {
-		_, _ = fmt.Fprintf(h, "ik%d", kind)
-	}
-	for _, kind := range excludeKinds {
-		_, _ = fmt.Fprintf(h, "ek%d", kind)
-	}
-}
-
 // FindSymbolRequest is input model for symbol lookup operation.
 type FindSymbolRequest struct {
 	FindSymbolFilter
@@ -193,28 +125,6 @@ func (r *FindSymbolRequest) Validate() error {
 	}
 
 	return errors.Join(err, r.FindSymbolFilter.Validate())
-}
-
-// FindSymbolCacheRequest is input model for symbol lookup cache operation.
-type FindSymbolCacheRequest struct {
-	FindSymbolFilter
-
-	// FilePath is the absolute file path to inspect, used for file cache queries.
-	FilePath string
-}
-
-// GetHash computes a hash string for the symbol lookup parameters.
-func (r *FindSymbolCacheRequest) GetHash() (string, error) {
-	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "p%s", filepath.Clean(r.FilePath))
-
-	if err := fileHash(h, r.FilePath); err != nil {
-		return "", fmt.Errorf("failed to compute file hash: %w", err)
-	}
-
-	r.hash(h)
-
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // FindSymbolResult is output model for symbol lookup operation.
@@ -322,19 +232,5 @@ func validateLSPKind(kind int) error {
 		return fmt.Errorf("invalid symbol kind (allowed 1-26): %d", kind)
 	}
 
-	return nil
-}
-
-// fileHash writes the file content at the given path into the provided hash state.
-func fileHash(h hash.Hash, path string) error {
-	f, err := os.Open(filepath.Clean(path))
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer f.Close() //nolint:errcheck // ok to ignore close error here
-
-	if _, err = io.Copy(h, f); err != nil {
-		return fmt.Errorf("failed to read file content: %w", err)
-	}
 	return nil
 }

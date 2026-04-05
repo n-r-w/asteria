@@ -313,7 +313,7 @@ func resolveCompilationDatabaseDependency(
 func deduplicateDependencies(dependencies []string) []string {
 	uniqueDependencies := make([]string, 0, len(dependencies))
 	for _, dependency := range dependencies {
-		cleanDependency := filepath.Clean(dependency)
+		cleanDependency := filepath.ToSlash(filepath.Clean(dependency))
 		if slices.Contains(uniqueDependencies, cleanDependency) {
 			continue
 		}

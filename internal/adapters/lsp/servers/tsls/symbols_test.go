@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -182,7 +183,7 @@ func TestRunWithReferenceWorkflowFilesClosesOpenedFilesAfterOpenFailure(t *testi
 		},
 	)
 	require.Error(t, err)
-	require.ErrorContains(t, err, `read request document `+"\""+filepath.Join(workspaceRoot, "missing.ts")+"\"")
+	require.ErrorContains(t, err, fmt.Sprintf("read request document %q", filepath.Join(workspaceRoot, "missing.ts")))
 	require.ErrorIs(t, err, os.ErrNotExist)
 	waitForURIMethods(t, recorder, uri.File(firstPath), []string{protocol.MethodTextDocumentDidOpen, protocol.MethodTextDocumentDidClose})
 }

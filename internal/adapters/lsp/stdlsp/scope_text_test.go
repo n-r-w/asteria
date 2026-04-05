@@ -26,7 +26,7 @@ func TestCollectScopeFilesAppliesAdapterIgnoreRules(t *testing.T) {
 		return filepath.Base(relativePath) == ".hidden"
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []string{filepath.Join("pkg", "kept.go")}, files)
+	assert.Equal(t, []string{filepath.ToSlash(filepath.Join("pkg", "kept.go"))}, files)
 }
 
 // TestReferenceEvidenceCandidateFromRangeReadsSnippet proves that stdlsp keeps snippet shaping
