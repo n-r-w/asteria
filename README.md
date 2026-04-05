@@ -11,6 +11,11 @@ The server exposes a small, stable tool surface for agents that need to inspect 
 > If the required language server is not found in `PATH`, the corresponding adapter fails on the first request.
 > See [Language server installation](README.md#language-server-installation) for installation commands.
 
+## Project status
+
+- Project is in early development and should be considered alpha software.
+- Server has been tested on macOS, Linux (Ubuntu), and Windows 11. However, the Windows support is not guaranteed, as testing was limited.
+
 ## Symbolic search tools
 
 - `get_symbols_overview`: returns a compact overview of symbols in one file, grouped by LSP symbol kind
