@@ -98,7 +98,6 @@ func TestPatchInitializeParams(t *testing.T) {
 	assert.Equal(t, uri.File(workspaceRoot), params.RootURI)
 	assert.Equal(t, map[string]any{
 		phpactorIndexerPathKey:       filepath.Join(expectedCacheDir, phpactorIndexerDirName),
-		"indexer.enabled_watchers":   []string{"lsp"},
 		phpactorPHPStanEnabledKey:    false,
 		phpactorPsalmEnabledKey:      false,
 		phpactorPHPCSFixerEnabledKey: false,

@@ -177,7 +177,6 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 	//nolint:staticcheck // Phpactor initialize does not answer in this environment unless RootURI is set.
 	params.RootURI = uri.File(workspaceRoot)
 	params.InitializationOptions = map[string]any{
-		phpactorEnabledWatchersKey:   []string{phpactorLSPWatcherName},
 		phpactorIndexerPathKey:       indexPath,
 		phpactorPHPStanEnabledKey:    false,
 		phpactorPsalmEnabledKey:      false,

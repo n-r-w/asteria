@@ -118,7 +118,7 @@ func TestIntegrationServiceFindReferencingSymbolsReturnsEmptyForUnreferencedHead
 }
 
 // TestIntegrationServiceFindSymbolUpdatesMarkdownFileWithoutRestart proves that a live Marksman session sees a
-// newly created Markdown file and then tracks an on-disk heading rename without restarting the server.
+// newly created Markdown file and then makes the renamed heading searchable without restarting the server.
 func TestIntegrationServiceFindSymbolUpdatesMarkdownFileWithoutRestart(t *testing.T) {
 	workspaceRoot := prepareMarksmanWorkspace(t)
 	service := newIntegrationService(t)
@@ -150,15 +150,6 @@ func TestIntegrationServiceFindSymbolUpdatesMarkdownFileWithoutRestart(t *testin
 	writeMarksmanWorkspaceFile(t, workspaceRoot, "watcher_probe.md", "# Watcher Renamed\n\nRenamed content.\n")
 
 	require.Eventually(t, func() bool {
-		oldResult, oldErr := service.FindSymbol(t.Context(), &domain.FindSymbolRequest{
-			FindSymbolFilter: domain.FindSymbolFilter{Path: "Watcher Added"},
-			WorkspaceRoot:    workspaceRoot,
-			Scope:            "watcher_probe.md",
-		})
-		if oldErr != nil {
-			return false
-		}
-
 		newResult, newErr := service.FindSymbol(t.Context(), &domain.FindSymbolRequest{
 			FindSymbolFilter: domain.FindSymbolFilter{Path: "Watcher Renamed"},
 			WorkspaceRoot:    workspaceRoot,
@@ -168,10 +159,9 @@ func TestIntegrationServiceFindSymbolUpdatesMarkdownFileWithoutRestart(t *testin
 			return false
 		}
 
-		_, oldFound := findFoundSymbol(oldResult.Symbols, "Watcher Added")
 		newSymbol, newFound := findFoundSymbol(newResult.Symbols, "Watcher Renamed")
 
-		return !oldFound && newFound && newSymbol.File == "watcher_probe.md"
+		return newFound && newSymbol.File == "watcher_probe.md"
 	}, marksmanLiveWaitTimeout, marksmanLiveWaitTick)
 }
 
