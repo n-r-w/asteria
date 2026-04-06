@@ -83,22 +83,6 @@ func TestNewRegistersSchemaPropertyNames(t *testing.T) {
 	require.ElementsMatch(t, []string{"exclude_kinds", "file_path", "include_kinds", "symbol_path", "workspace_root"}, schemaPropertyNames(t, findReferencesTool))
 }
 
-// TestNewPublishesFindReferencesAsUsageSearch verifies that the public MCP contract
-// makes it explicit that find_referencing_symbols excludes the declaration itself.
-func TestNewPublishesFindReferencesAsUsageSearch(t *testing.T) {
-	t.Parallel()
-
-	cfg, err := config.Load()
-	require.NoError(t, err)
-
-	svc := New("v0.0.0", nil, cfg)
-	tools := listTestTools(t, svc)
-
-	findReferencesTool := findToolByName(t, tools, "find_referencing_symbols")
-	require.Contains(t, findReferencesTool.Description, "non-declaration references")
-	require.Contains(t, findReferencesTool.Description, "declaration itself is excluded")
-}
-
 // TestGetSymbolsOverviewToolRejectsOmittedWorkspaceRoot proves that the public MCP boundary rejects calls
 // that omit the now-required workspace_root.
 func TestGetSymbolsOverviewToolRejectsOmittedWorkspaceRoot(t *testing.T) {

@@ -157,7 +157,7 @@ func (s *Service) FindSymbol(
 	return domain.FindSymbolResult{Symbols: results}, nil
 }
 
-// FindReferencingSymbols returns non-declaration references for a target symbol.
+// FindReferencingSymbols returns references for a target symbol.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context, request *domain.FindReferencingSymbolsRequest,
 ) (domain.FindReferencingSymbolsResult, error) {

@@ -15,7 +15,7 @@ type ILSP interface {
 		ctx context.Context, request *domain.GetSymbolsOverviewRequest) (domain.GetSymbolsOverviewResult, error)
 	// FindSymbol finds symbols matching the pattern.
 	FindSymbol(ctx context.Context, request *domain.FindSymbolRequest) (domain.FindSymbolResult, error)
-	// FindReferencingSymbols returns non-declaration references for a target symbol.
+	// FindReferencingSymbols returns references for a target symbol.
 	FindReferencingSymbols(
 		ctx context.Context, request *domain.FindReferencingSymbolsRequest) (domain.FindReferencingSymbolsResult, error)
 }
