@@ -570,17 +570,22 @@ func TestIntegrationServiceFindReferencingSymbolsReturnsAdvancedCCallers(t *test
 	workspaceRoot := clangdFixtureRootByName(t, "advanced_c")
 	service, ctx, _ := newIntegrationService(t)
 
-	result, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
-		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "apply_mode"},
-		WorkspaceRoot:                workspaceRoot,
-		File:                         "c_api.h",
-	})
-	require.NoError(t, err)
+	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+		result, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+			FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "apply_mode"},
+			WorkspaceRoot:                workspaceRoot,
+			File:                         "c_api.h",
+		})
+		assert.NoError(collect, err)
 
-	symbol, ok := findReferencingSymbol(result.Symbols, "use_c_api")
-	require.True(t, ok, "expected use_c_api reference container, got %#v", result.Symbols)
-	assert.Equal(t, "consumer.c", symbol.File)
-	assert.Contains(t, symbol.Content, "handler.transform = apply_mode")
+		symbol, ok := findReferencingSymbol(result.Symbols, "use_c_api")
+		if !assert.Truef(collect, ok, "expected use_c_api reference container, got %#v", result.Symbols) {
+			return
+		}
+
+		assert.Equal(collect, "consumer.c", symbol.File)
+		assert.Contains(collect, symbol.Content, "handler.transform = apply_mode")
+	}, clangdLiveWaitTimeout, clangdLiveWaitTick)
 }
 
 // TestIntegrationServiceKeepsRootCachesSeparate proves that different workspace roots keep isolated runtime
