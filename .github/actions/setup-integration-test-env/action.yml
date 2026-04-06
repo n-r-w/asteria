@@ -60,7 +60,7 @@ runs:
         set -euo pipefail
 
         go install golang.org/x/tools/gopls@latest
-        npm install -g typescript-language-server typescript
+        npm install -g typescript-language-server@5.1.3 typescript
         python -m pip install --user basedpyright
 
         mkdir -p "$HOME/.local/bin"
