@@ -21,7 +21,7 @@ The server exposes a small, stable tool surface for agents that need to inspect 
 
 - `get_symbols_overview`: returns a compact overview of symbols in one file, grouped by LSP symbol kind
 - `find_symbol`: finds symbols by path-like query across a workspace, file, or directory
-- `find_referencing_symbols`: finds non-declaration usages of a symbol and groups them by file and logical container
+- `find_referencing_symbols`: finds usages of a symbol and groups them by file and logical container
 
 No special prompts are required. In most cases, LLM will prefer symbolic searches in accordance with its own asteria prompt.
 

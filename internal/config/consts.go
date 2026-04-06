@@ -17,7 +17,7 @@ const (
 	For tracing logic and understanding code structure, symbol information without their bodies and additional info is usually sufficient.
 	🚨 MUST be preferred over ANY other search methods for locating code elements. 🚨`
 
-	toolFindReferencesDesc = `Finds non-declaration references (usages) of the symbol identified by 'file_path' + 'symbol_path'.
+	toolFindReferencesDesc = `Finds references (usages) of the symbol identified by 'file_path' + 'symbol_path'.
 	Returns one referencing-symbol entry per logical container, with one representative code snippet and the snippet's line range.
 	Repeated references inside the same logical container are collapsed into one entry.
 	The symbol declaration itself is excluded from the results, so symbols with no external usages return an empty 'files' array.
