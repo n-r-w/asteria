@@ -15,7 +15,12 @@ import (
 func (s *Service) GetSymbolsOverview(
 	ctx context.Context, request *domain.GetSymbolsOverviewRequest,
 ) (domain.GetSymbolsOverviewResult, error) {
-	return s.std.GetSymbolsOverview(ctx, request)
+	result, err := s.std.GetSymbolsOverview(ctx, request)
+	if request == nil {
+		return result, sanitizeGoplsPublicError("file_path", "", err)
+	}
+
+	return result, sanitizeGoplsPublicError("file_path", request.File, err)
 }
 
 // FindSymbol normalizes accepted Go query variants before the first shared stdlsp search starts.
@@ -26,7 +31,12 @@ func (s *Service) FindSymbol(
 		request.Path = normalizeGoQueryPath(request.Path)
 	}
 
-	return s.std.FindSymbol(ctx, request)
+	result, err := s.std.FindSymbol(ctx, request)
+	if request == nil {
+		return result, sanitizeGoplsPublicError("scope_path", "", err)
+	}
+
+	return result, sanitizeGoplsPublicError("scope_path", request.Scope, err)
 }
 
 // FindReferencingSymbols normalizes accepted Go query variants before stdlsp resolves the target symbol.
@@ -34,12 +44,16 @@ func (s *Service) FindReferencingSymbols(
 	ctx context.Context, request *domain.FindReferencingSymbolsRequest,
 ) (domain.FindReferencingSymbolsResult, error) {
 	if request == nil {
-		return s.std.FindReferencingSymbols(ctx, nil)
+		result, err := s.std.FindReferencingSymbols(ctx, nil)
+
+		return result, sanitizeGoplsPublicError("file_path", "", err)
 	}
 
 	request.Path = normalizeGoQueryPath(request.Path)
 
-	return s.std.FindReferencingSymbols(ctx, request)
+	result, err := s.std.FindReferencingSymbols(ctx, request)
+
+	return result, sanitizeGoplsPublicError("file_path", request.File, err)
 }
 
 // shouldIgnoreDir keeps gopls directory traversal aligned with the previous hidden-directory skip behavior.

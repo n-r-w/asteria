@@ -671,6 +671,28 @@ func TestIntegrationServiceFindReferencingSymbolsSupportsTaggedOnlyBuildFlags(t 
 	assert.Contains(t, twice.Content, "TaggedOnly")
 }
 
+// TestIntegrationServiceFindReferencingSymbolsReturnsBuildConfigMessageForTaggedOnlyFileWithoutBuildFlags proves
+// that tagged-only files outside the active Go build graph return one safe public message instead of raw gopls
+// metadata errors.
+func TestIntegrationServiceFindReferencingSymbolsReturnsBuildConfigMessageForTaggedOnlyFileWithoutBuildFlags(t *testing.T) {
+	workspaceRoot := goplsBuildTagsFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	result, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "TaggedOnly"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "tagged_only_featurex.go",
+	})
+	require.Error(t, err)
+	assert.ErrorContains(
+		t,
+		err,
+		`file_path "tagged_only_featurex.go" is excluded from the active Go build configuration`,
+	)
+	assert.NotContains(t, err.Error(), "no package metadata for file")
+	assert.Empty(t, result.Symbols)
+}
+
 // TestIntegrationServiceFindReferencingSymbolsUsesTaggedVariantBuildFlags proves that callers can select
 // the correct custom-tagged build variant instead of falling back to the default reference graph.
 func TestIntegrationServiceFindReferencingSymbolsUsesTaggedVariantBuildFlags(t *testing.T) {
