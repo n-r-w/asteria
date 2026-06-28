@@ -13,7 +13,6 @@ The server exposes a small, stable tool surface for agents that need to inspect 
 
 ## Project status
 
-- Project is in early development and should be considered alpha software.
 - Server has been tested on macOS and Linux (Ubuntu).
 - Windows is not supported because many LSP servers work poorly on it.
 
