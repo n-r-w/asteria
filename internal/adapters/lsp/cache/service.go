@@ -350,7 +350,6 @@ func writeAtomically(targetPath string, content []byte) (writeErr error) {
 	if err = temporaryFile.Close(); err != nil {
 		return fmt.Errorf("close temporary cache file: %w", err)
 	}
-	//nolint:gosec // Both paths are derived from the validated cache root and cleaned internal path components.
 	if err = os.Rename(filepath.Clean(temporaryPath), cleanTargetPath); err != nil {
 		return fmt.Errorf("rename cache file: %w", err)
 	}

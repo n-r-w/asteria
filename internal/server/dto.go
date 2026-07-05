@@ -106,6 +106,8 @@ type findReferencingSymbolsOutput struct {
 	// Files contains non-declaration referencing symbols grouped by file with one representative snippet per logical container.
 	// Empty means the target symbol has no usages outside its declaration or no references survived the requested filters.
 	Files []referencingFileDTO `json:"files"`
+	// Incomplete warns callers that missing workspace index data may have omitted some references.
+	Incomplete bool `json:"incomplete,omitempty"`
 	// ReturnedPercent is the approximate percentage of logical result objects returned when the response is truncated.
 	ReturnedPercent int `json:"returned_percent,omitempty"`
 }

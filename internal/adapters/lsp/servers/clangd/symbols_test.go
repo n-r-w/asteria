@@ -231,6 +231,7 @@ func TestPatchInitializeParamsSetsCompilationDatabasePath(t *testing.T) {
 		std:                 nil,
 		withRequestDocument: nil,
 		cacheRoot:           filepath.Join(t.TempDir(), "cache"),
+		indexProgress:       newBackgroundIndexProgress(),
 	}
 	workspaceRoot := t.TempDir()
 	require.NoError(t, os.WriteFile(
@@ -261,6 +262,7 @@ func TestPatchInitializeParamsSkipsCompilationDatabasePathWithoutManagedDatabase
 		std:                 nil,
 		withRequestDocument: nil,
 		cacheRoot:           filepath.Join(t.TempDir(), "cache"),
+		indexProgress:       newBackgroundIndexProgress(),
 	}
 	workspaceRoot := t.TempDir()
 

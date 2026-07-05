@@ -235,7 +235,7 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 				ContentStartLine: 0,
 				ContentEndLine:   0,
 				Content:          "",
-			}}},
+			}}, Incomplete: false},
 			expected: true,
 		},
 		{
@@ -252,7 +252,7 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 				ContentStartLine: 0,
 				ContentEndLine:   0,
 				Content:          "",
-			}}},
+			}}, Incomplete: false},
 			expected: false,
 		},
 	}

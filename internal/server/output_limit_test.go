@@ -76,11 +76,12 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 				{Kind: 12, Path: "B/Four", Range: "3", Content: "four"},
 			},
 		},
-	}, ReturnedPercent: 0}
+	}, Incomplete: false, ReturnedPercent: 0}
 
 	limited, err := svc.limitFindReferencingSymbolsOutput(output)
 	require.NoError(t, err)
 	assert.Equal(t, 50, limited.ReturnedPercent)
+	assert.False(t, limited.Incomplete)
 	assert.Len(t, limited.Files, 1)
 	require.Len(t, limited.Files[0].Symbols, 2)
 	assert.Equal(t, "A/One", limited.Files[0].Symbols[0].Path)

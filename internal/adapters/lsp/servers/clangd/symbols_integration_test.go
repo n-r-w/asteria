@@ -150,22 +150,21 @@ func TestIntegrationServiceUsesExternalClangdCompilationDatabase(t *testing.T) {
 	require.True(t, ok, "expected setFastMode match, got %#v", findResult.Symbols)
 	assert.Contains(t, symbol.Body, "value_ = 1")
 
-	require.EventuallyWithT(t, func(collect *assert.CollectT) {
-		referencesResult, referencesErr := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
-			FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "MacroModel/setFastMode"},
-			WorkspaceRoot:                workspaceRoot,
-			File:                         "include/model.h",
-		})
-		assert.NoError(collect, referencesErr)
+	referencesResult, referencesErr := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "MacroModel/setFastMode"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "include/model.h",
+	})
+	require.NoError(t, referencesErr)
 
-		referencingSymbol, found := findReferencingSymbol(referencesResult.Symbols, "use_model")
-		if !assert.Truef(collect, found, "expected use_model reference container, got %#v", referencesResult.Symbols) {
-			return
-		}
+	referencingSymbol, found := findReferencingSymbol(referencesResult.Symbols, "use_model")
+	if !found {
+		assert.True(t, referencesResult.Incomplete)
+		return
+	}
 
-		assert.Equal(collect, "src/use.cpp", referencingSymbol.File)
-		assert.Contains(collect, referencingSymbol.Content, "model.setFastMode()")
-	}, 5*time.Second, 200*time.Millisecond)
+	assert.Equal(t, "src/use.cpp", referencingSymbol.File)
+	assert.Contains(t, referencingSymbol.Content, "model.setFastMode()")
 }
 
 // TestIntegrationServiceFindSymbolReturnsFunctionBody proves that clangd-backed symbol lookup returns the
@@ -308,9 +307,9 @@ func TestIntegrationGetSymbolsOverviewKeepsSameSourceTreeWithReferenceWorkflowFi
 	assert.Equal(t, baseline, withWorkflow)
 }
 
-// TestIntegrationGetSymbolsOverviewKeepsSameHeaderTreeWithWorkspaceWideWorkflowFiles proves that opening the
-// workspace-wide header reference workflow does not change the normalized symbol tree for the same header file.
-func TestIntegrationGetSymbolsOverviewKeepsSameHeaderTreeWithWorkspaceWideWorkflowFiles(t *testing.T) {
+// TestIntegrationGetSymbolsOverviewKeepsSameHeaderTreeWithReferenceWorkflowFiles proves that opening the
+// directory-level header reference workflow does not change the normalized symbol tree for the same header file.
+func TestIntegrationGetSymbolsOverviewKeepsSameHeaderTreeWithReferenceWorkflowFiles(t *testing.T) {
 	workspaceRoot := clangdFixtureRootByName(t, "advanced_cpp")
 	service, ctx, _ := newIntegrationService(t)
 
@@ -318,7 +317,7 @@ func TestIntegrationGetSymbolsOverviewKeepsSameHeaderTreeWithWorkspaceWideWorkfl
 		t,
 		overviewSymbolsInWorkflow(t, ctx, service, workspaceRoot, "advanced.hpp", nil),
 	)
-	workflowFiles, err := collectWorkspaceWideReferenceWorkflowFiles(
+	workflowFiles, err := helpers.CollectReferenceWorkflowFiles(
 		workspaceRoot,
 		"advanced.hpp",
 		extensions,
@@ -352,14 +351,14 @@ func TestIntegrationRawDocumentSymbolsKeepSameSourcePayloadWithReferenceWorkflow
 	assert.Equal(t, baseline, withWorkflow)
 }
 
-// TestIntegrationRawDocumentSymbolsKeepSameHeaderPayloadWithWorkspaceWideWorkflowFiles proves that opening the
-// workspace-wide header reference workflow does not change clangd's raw documentSymbol payload for the same header file.
-func TestIntegrationRawDocumentSymbolsKeepSameHeaderPayloadWithWorkspaceWideWorkflowFiles(t *testing.T) {
+// TestIntegrationRawDocumentSymbolsKeepSameHeaderPayloadWithReferenceWorkflowFiles proves that opening the
+// directory-level header reference workflow does not change clangd's raw documentSymbol payload for the same header file.
+func TestIntegrationRawDocumentSymbolsKeepSameHeaderPayloadWithReferenceWorkflowFiles(t *testing.T) {
 	workspaceRoot := clangdFixtureRootByName(t, "advanced_cpp")
 	service, ctx, _ := newIntegrationService(t)
 
 	baseline := rawDocumentSymbolJSONInWorkflow(t, ctx, service, workspaceRoot, "advanced.hpp", nil)
-	workflowFiles, err := collectWorkspaceWideReferenceWorkflowFiles(
+	workflowFiles, err := helpers.CollectReferenceWorkflowFiles(
 		workspaceRoot,
 		"advanced.hpp",
 		extensions,

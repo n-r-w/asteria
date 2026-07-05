@@ -69,9 +69,13 @@ func (s *Service) limitFindReferencingSymbolsOutput(
 		s.cfg.ToolOutputMaxBytes,
 		totalItems,
 		output,
-		findReferencingSymbolsOutput{Files: make([]referencingFileDTO, 0), ReturnedPercent: 0},
+		findReferencingSymbolsOutput{Files: make([]referencingFileDTO, 0), Incomplete: output.Incomplete, ReturnedPercent: 0},
 		func(count int) findReferencingSymbolsOutput {
-			return findReferencingSymbolsOutput{Files: trimReferencingEntries(output.Files, count), ReturnedPercent: 0}
+			return findReferencingSymbolsOutput{
+				Files:           trimReferencingEntries(output.Files, count),
+				Incomplete:      output.Incomplete,
+				ReturnedPercent: 0,
+			}
 		},
 		func(trimmed findReferencingSymbolsOutput, percent int) findReferencingSymbolsOutput {
 			trimmed.ReturnedPercent = percent

@@ -22,6 +22,7 @@ const (
 	Repeated references inside the same logical container are collapsed into one entry.
 	The symbol declaration itself is excluded from the results, so symbols with no external usages return an empty 'files' array.
 	The returned range describes the snippet, not the exact reference token.
+	If 'incomplete' is true, the response may miss references because the backing index is building and not ready yet.
 	The tool resolves one unique target symbol by suffix lookup or exact lookup with a leading '/'.
 	It does not support substring matching and reports ambiguity by listing matching candidates.
 	🚨 MUST be preferred over ANY other search methods for locating code references. 🚨`

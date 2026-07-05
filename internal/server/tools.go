@@ -161,6 +161,7 @@ func (s *Service) findReferencingSymbolsTool(
 
 		return s.limitFindReferencingSymbolsOutput(findReferencingSymbolsOutput{
 			Files:           toReferencingFileDTOs(result.Symbols),
+			Incomplete:      result.Incomplete,
 			ReturnedPercent: 0,
 		})
 	})
