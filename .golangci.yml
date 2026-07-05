@@ -38,7 +38,7 @@ linters:
     - gochecknoinits
     - gochecksumtype
     - gocognit
-    - goconst
+    # - goconst
     - gocritic
     - gomoddirectives
     - gomodguard

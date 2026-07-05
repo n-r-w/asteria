@@ -20,6 +20,7 @@ type Service struct {
 	std                 *stdlsp.Service
 	withRequestDocument stdlsp.WithRequestDocumentFunc
 	cacheRoot           string
+	indexProgress       *backgroundIndexProgress
 }
 
 var (
@@ -34,6 +35,7 @@ func New(cacheRoot string) (*Service, error) {
 		std:                 nil,
 		withRequestDocument: nil,
 		cacheRoot:           "",
+		indexProgress:       newBackgroundIndexProgress(),
 	}
 
 	normalizedCacheRoot, err := helpers.ResolveCacheRoot(cacheRoot)
@@ -61,7 +63,7 @@ func New(cacheRoot string) (*Service, error) {
 				IgnoreDir:    shouldIgnoreDir,
 			},
 			PatchInitializeParams: service.patchInitializeParams,
-			HandleServerCallback:  nil,
+			HandleServerCallback:  service.indexProgress.handleCallback,
 			AfterInitialized:      nil,
 			WaitUntilReady:        nil,
 		},

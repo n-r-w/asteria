@@ -78,14 +78,6 @@ func (s *Service) FindReferencingSymbols(
 		extensions,
 		shouldIgnoreDir,
 	)
-	if requiresWorkspaceWideReferenceWorkflow(request.File) {
-		referenceWorkflowFiles, err = collectWorkspaceWideReferenceWorkflowFiles(
-			workspaceRoot,
-			request.File,
-			extensions,
-			shouldIgnoreDir,
-		)
-	}
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
@@ -112,53 +104,9 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
+	result.Incomplete = s.indexProgress.incomplete(workspaceRoot)
 
 	return result, nil
-}
-
-// requiresWorkspaceWideReferenceWorkflow broadens the temporary open-file set
-// for declarations that act as cross-translation-unit interfaces.
-func requiresWorkspaceWideReferenceWorkflow(relativePath string) bool {
-	switch strings.ToLower(filepath.Ext(relativePath)) {
-	case ".h", ".hh", ".hpp", ".hxx", ".ccm", ".cppm", ".cxxm", ".c++m":
-		return true
-	default:
-		return false
-	}
-}
-
-// collectWorkspaceWideReferenceWorkflowFiles keeps interface-file reference
-// lookups stable by opening all supported workspace files while still leaving
-// the target file last in the request sequence.
-func collectWorkspaceWideReferenceWorkflowFiles(
-	workspaceRoot string,
-	targetRelativePath string,
-	extensions []string,
-	ignoreDir func(relativePath string) bool,
-) ([]string, error) {
-	cleanTargetRelativePath, _, err := helpers.ResolveDocumentPath(workspaceRoot, targetRelativePath)
-	if err != nil {
-		return nil, err
-	}
-
-	referenceWorkflowFiles, err := helpers.CollectDirectoryFiles(
-		workspaceRoot,
-		workspaceRoot,
-		extensions,
-		ignoreDir,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	workflowFiles := make([]string, 0, len(referenceWorkflowFiles))
-	for _, relativePath := range referenceWorkflowFiles {
-		if relativePath != cleanTargetRelativePath {
-			workflowFiles = append(workflowFiles, relativePath)
-		}
-	}
-
-	return append(workflowFiles, cleanTargetRelativePath), nil
 }
 
 // patchInitializeParams points clangd at the managed compilation database directory
@@ -230,10 +178,11 @@ func prepareManagedCompilationDatabase(workspaceRoot, cacheDir string) (bool, er
 	if err != nil {
 		return false, err
 	}
-	if err = os.MkdirAll(cacheDir, clangdCacheDirPermissions); err != nil {
+	cleanCacheDir := filepath.Clean(cacheDir)
+	if err = os.MkdirAll(cleanCacheDir, clangdCacheDirPermissions); err != nil {
 		return false, fmt.Errorf("create clangd cache directory: %w", err)
 	}
-	if cleanupErr := cleanupManagedCompilationDatabase(cacheDir); cleanupErr != nil {
+	if cleanupErr := cleanupManagedCompilationDatabase(cleanCacheDir); cleanupErr != nil {
 		return false, cleanupErr
 	}
 
@@ -242,7 +191,7 @@ func prepareManagedCompilationDatabase(workspaceRoot, cacheDir string) (bool, er
 		if materializeErr := materializeCompileCommands(
 			normalizedWorkspaceRoot,
 			compileCommandsPath,
-			filepath.Join(cacheDir, compileCommandsFileName),
+			filepath.Join(cleanCacheDir, compileCommandsFileName),
 		); materializeErr != nil {
 			return false, materializeErr
 		}
@@ -256,12 +205,8 @@ func prepareManagedCompilationDatabase(workspaceRoot, cacheDir string) (bool, er
 		if readErr != nil {
 			return false, fmt.Errorf("read compile flags: %w", readErr)
 		}
-		if writeErr := os.WriteFile(
-			filepath.Join(cacheDir, compileFlagsFileName),
-			content,
-			clangdManagedFilePermissions,
-		); writeErr != nil {
-			return false, fmt.Errorf("write managed compile flags: %w", writeErr)
+		if writeErr := writeManagedCompileFlags(cleanCacheDir, content); writeErr != nil {
+			return false, writeErr
 		}
 
 		return true, nil
@@ -278,6 +223,39 @@ func cleanupManagedCompilationDatabase(cacheDir string) error {
 		if err := os.Remove(filePath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove stale managed %s: %w", fileName, err)
 		}
+	}
+
+	return nil
+}
+
+// writeManagedCompileFlags writes the managed compile flags copy consumed by clangd initialization.
+func writeManagedCompileFlags(cacheDir string, content []byte) (err error) {
+	temporaryFile, err := os.CreateTemp(cacheDir, compileFlagsFileName+"-*")
+	if err != nil {
+		return fmt.Errorf("create managed compile flags temp file: %w", err)
+	}
+	temporaryPath := temporaryFile.Name()
+	temporaryFileClosed := false
+	defer func() {
+		if !temporaryFileClosed {
+			err = errors.Join(err, temporaryFile.Close())
+		}
+		if err != nil {
+			err = errors.Join(err, os.Remove(temporaryPath))
+		}
+	}()
+
+	if _, err = temporaryFile.Write(content); err != nil {
+		return fmt.Errorf("write managed compile flags temp file: %w", err)
+	}
+	if err = temporaryFile.Close(); err != nil {
+		return fmt.Errorf("close managed compile flags temp file: %w", err)
+	}
+	temporaryFileClosed = true
+
+	managedCompileFlagsPath := filepath.Join(cacheDir, compileFlagsFileName)
+	if err = os.Rename(temporaryPath, managedCompileFlagsPath); err != nil {
+		return fmt.Errorf("rename managed compile flags: %w", err)
 	}
 
 	return nil

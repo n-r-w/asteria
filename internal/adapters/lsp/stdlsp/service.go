@@ -248,7 +248,7 @@ func (s *Service) findReferencingSymbolsResult(
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
-	return domain.FindReferencingSymbolsResult{Symbols: groupReferenceMatches(referenceMatches)}, nil
+	return domain.FindReferencingSymbolsResult{Symbols: groupReferenceMatches(referenceMatches), Incomplete: false}, nil
 }
 
 // loadSymbolTree loads one file's symbols and maps them into the normalized stdlsp tree.

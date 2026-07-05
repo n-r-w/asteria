@@ -574,6 +574,7 @@ func TestServiceFindReferencingSymbols(t *testing.T) {
 			ContentEndLine:   48,
 			Content:          "GetSymbolsOverview",
 		}},
+		Incomplete: false,
 	}
 
 	goLSP.EXPECT().FindReferencingSymbols(t.Context(), lspRequest).Return(expected, nil)
@@ -767,6 +768,7 @@ func TestServiceFindReferencingSymbolsUsesExplicitWorkspaceRoot(t *testing.T) {
 			ContentEndLine:   1,
 			Content:          "Service()",
 		}},
+		Incomplete: false,
 	}
 
 	goLSP.EXPECT().FindReferencingSymbols(t.Context(), lspRequest).Return(expected, nil)

@@ -145,7 +145,7 @@ func TestFindSymbolOutputJSONKeepsKindRangeAndFile(t *testing.T) {
 func TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray(t *testing.T) {
 	t.Parallel()
 
-	payload, err := json.Marshal(findReferencingSymbolsOutput{Files: toReferencingFileDTOs(nil), ReturnedPercent: 0})
+	payload, err := json.Marshal(findReferencingSymbolsOutput{Files: toReferencingFileDTOs(nil), Incomplete: false, ReturnedPercent: 0})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"files":[]}`, string(payload))
 }
@@ -162,9 +162,18 @@ func TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields(t *testing.T) 
 			Range:   "0-2",
 			Content: "",
 		}},
-	}}, ReturnedPercent: 0})
+	}}, Incomplete: false, ReturnedPercent: 0})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"files":[{"file":"references.go","symbols":[{"kind":12,"path":"UseMakeBucketOnce","range":"0-2","content":""}]}]}`, string(payload))
+}
+
+// TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet warns callers only when reference coverage is uncertain.
+func TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet(t *testing.T) {
+	t.Parallel()
+
+	payload, err := json.Marshal(findReferencingSymbolsOutput{Files: toReferencingFileDTOs(nil), Incomplete: true, ReturnedPercent: 0})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"files":[],"incomplete":true}`, string(payload))
 }
 
 // TestProcessErrorKeepsSafeMessages proves that MCP tool responses keep only the public-safe message.
@@ -372,13 +381,14 @@ func TestFindReferencingSymbolsToolMapsWorkspaceRoot(t *testing.T) {
 		WorkspaceRoot: "/tmp/workspace",
 		File:          "fixture.go",
 	}
-	expectedResult := domain.FindReferencingSymbolsResult{Symbols: nil}
+	expectedResult := domain.FindReferencingSymbolsResult{Symbols: nil, Incomplete: true}
 
 	search.EXPECT().FindReferencingSymbols(gomock.Any(), expectedRequest).Return(expectedResult, nil)
 
 	_, output, err := service.findReferencingSymbolsTool(t.Context(), nil, input)
 	require.NoError(t, err)
 	assert.Empty(t, output.Files)
+	assert.True(t, output.Incomplete)
 }
 
 // TestFindReferencingSymbolsToolReturnsPublicTimeoutError proves that heavy tool calls stop at the configured server deadline.

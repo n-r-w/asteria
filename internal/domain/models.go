@@ -224,6 +224,8 @@ func (r *FindReferencingSymbolsRequest) Validate() error {
 type FindReferencingSymbolsResult struct {
 	// Symbols contains referencing symbols grouped with their unique reference lines.
 	Symbols []ReferencingSymbol
+	// Incomplete reports that the backing language server may not have indexed the whole workspace yet.
+	Incomplete bool
 }
 
 // validateLSPKind checks if the provided symbol kind is a valid LSP SymbolKind.
