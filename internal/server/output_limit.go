@@ -8,6 +8,9 @@ import (
 )
 
 const (
+	outputTooLargePublicMessage = "tool response is too large; narrow the query"
+	toolOutputMaxBytesEnvName   = "ASTERIAMCP_TOOL_OUTPUT_MAX_BYTES"
+
 	binarySearchDivisor = 2
 	percentBase         = 100
 	minReturnedPercent  = 1
@@ -111,8 +114,13 @@ func limitOutputByBytes[T any](
 	}
 	if baseBytes >= maxBytes {
 		return zeroValue[T](), domain.NewSafeError(
-			"tool response exceeds minimum size budget; narrow the query or increase ASTERIAMCP_TOOL_OUTPUT_MAX_BYTES",
-			fmt.Errorf("base output size %d exceeds configured maximum %d", baseBytes, maxBytes),
+			outputTooLargePublicMessage,
+			fmt.Errorf(
+				"base output size %d exceeds configured maximum %d; increase %s",
+				baseBytes,
+				maxBytes,
+				toolOutputMaxBytesEnvName,
+			),
 		)
 	}
 
@@ -129,8 +137,8 @@ func limitOutputByBytes[T any](
 
 	if bestCount <= 0 {
 		return zeroValue[T](), domain.NewSafeError(
-			"tool response exceeds minimum size budget; narrow the query or increase ASTERIAMCP_TOOL_OUTPUT_MAX_BYTES",
-			fmt.Errorf("no logical result objects fit within %d bytes", maxBytes),
+			outputTooLargePublicMessage,
+			fmt.Errorf("no logical result objects fit within %d bytes; increase %s", maxBytes, toolOutputMaxBytesEnvName),
 		)
 	}
 

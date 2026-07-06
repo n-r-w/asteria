@@ -1,10 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -16,6 +18,28 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+// lockedLogBuffer protects test log capture from concurrent writes by parallel tests.
+type lockedLogBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+// Write appends one slog payload to the captured test log stream.
+func (b *lockedLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return b.buf.Write(p)
+}
+
+// Snapshot returns a stable copy of the captured log bytes.
+func (b *lockedLogBuffer) Snapshot() []byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	return append([]byte(nil), b.buf.Bytes()...)
+}
 
 // TestToFoundSymbolDTOsKeepsFileForSingleFileScope keeps file information stable even for single-file search results.
 func TestToFoundSymbolDTOsKeepsFileForSingleFileScope(t *testing.T) {
@@ -181,11 +205,60 @@ func TestProcessErrorKeepsSafeMessages(t *testing.T) {
 	t.Parallel()
 
 	err := processError(
-		context.Background(),
+		t.Context(),
 		domain.ToolNameFindReferencingSymbols,
 		domain.NewSafeError("use a more specific symbol_path", errors.New("internal detail")),
 	)
 	require.EqualError(t, err, "find_referencing_symbols: use a more specific symbol_path")
+}
+
+// TestProcessErrorLogsReturnedMessageAsPublicError proves that logs expose the exact MCP client error text.
+func TestProcessErrorLogsReturnedMessageAsPublicError(t *testing.T) {
+	t.Parallel()
+
+	assertProcessErrorPublicLog(
+		t,
+		domain.ToolNameFindReferencingSymbols,
+		domain.NewSafeError("use a more specific symbol_path", errors.New("internal detail")),
+		"find_referencing_symbols: use a more specific symbol_path",
+	)
+	assertProcessErrorPublicLog(
+		t,
+		domain.ToolNameFindSymbol,
+		errors.New("boom *lspgopls.Service"),
+		"find_symbol: internal error",
+	)
+}
+
+// assertProcessErrorPublicLog verifies that public_error equals the returned MCP error text.
+func assertProcessErrorPublicLog(t *testing.T, toolName string, inputErr error, expected string) {
+	t.Helper()
+
+	originalLogger := slog.Default()
+	var logBuffer lockedLogBuffer
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logBuffer, nil)))
+	defer slog.SetDefault(originalLogger)
+
+	err := processError(t.Context(), toolName, inputErr, "expected_public_error", expected)
+	require.EqualError(t, err, expected)
+
+	var matchedRecord map[string]any
+	for rawRecord := range bytes.SplitSeq(logBuffer.Snapshot(), []byte("\n")) {
+		trimmedRecord := bytes.TrimSpace(rawRecord)
+		if len(trimmedRecord) == 0 {
+			continue
+		}
+
+		var record map[string]any
+		require.NoError(t, json.Unmarshal(trimmedRecord, &record))
+		if record["expected_public_error"] == expected {
+			matchedRecord = record
+			break
+		}
+	}
+
+	require.NotNil(t, matchedRecord)
+	assert.Equal(t, expected, matchedRecord["public_error"])
 }
 
 // TestSafeErrorLogLevelKeepsExpectedPublicFailuresOutOfErrorNoise proves that user-facing validation and
@@ -212,7 +285,7 @@ func TestSafeErrorLogLevelKeepsInternalCauseAtErrorLevel(t *testing.T) {
 func TestProcessErrorHidesUnexpectedInternalDetails(t *testing.T) {
 	t.Parallel()
 
-	err := processError(context.Background(), domain.ToolNameFindSymbol, errors.New("boom *lspgopls.Service"))
+	err := processError(t.Context(), domain.ToolNameFindSymbol, errors.New("boom *lspgopls.Service"))
 	require.EqualError(t, err, "find_symbol: internal error")
 }
 

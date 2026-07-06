@@ -305,23 +305,25 @@ func processError(ctx context.Context, toolName string, err error, logAttrs ...a
 	}
 
 	if safeErr, ok := errors.AsType[*domain.SafeError](err); ok {
+		publicErr := fmt.Errorf("%s: %s", toolName, safeErr.Error())
 		logLevel := safeErrorLogLevel(safeErr)
 		cause := safeErr.Cause()
 		if cause != nil {
-			attrs := append([]any{"error", cause, "public_error", safeErr.Error()}, logAttrs...)
+			attrs := append([]any{"error", cause, "public_error", publicErr.Error()}, logAttrs...)
 			slog.Log(ctx, logLevel, toolName, attrs...)
 		} else {
-			attrs := append([]any{"error", safeErr.Error()}, logAttrs...)
+			attrs := append([]any{"error", safeErr.Error(), "public_error", publicErr.Error()}, logAttrs...)
 			slog.Log(ctx, logLevel, toolName, attrs...)
 		}
 
-		return fmt.Errorf("%s: %s", toolName, safeErr.Error())
+		return publicErr
 	}
 
-	attrs := append([]any{"error", err}, logAttrs...)
+	publicErr := fmt.Errorf("%s: internal error", toolName)
+	attrs := append([]any{"error", err, "public_error", publicErr.Error()}, logAttrs...)
 	slog.ErrorContext(ctx, toolName, attrs...)
 
-	return fmt.Errorf("%s: internal error", toolName)
+	return publicErr
 }
 
 // safeErrorLogLevel keeps expected public validation and routing failures out of the error-level server noise.

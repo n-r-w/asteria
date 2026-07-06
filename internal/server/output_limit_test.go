@@ -46,6 +46,31 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 		string(payload))
 }
 
+// TestLimitFindSymbolOutputReturnsPublicSizeError proves that oversized responses do not expose server configuration names.
+func TestLimitFindSymbolOutputReturnsPublicSizeError(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{ //nolint:exhaustruct // only cfg is relevant for output limiting
+		cfg: &config.Config{
+			CacheRoot:              "",
+			SystemPrompt:           "",
+			GetSymbolsOverviewDesc: "",
+			FindSymbolDesc:         "",
+			FindReferencesDesc:     "",
+			ToolTimeout:            10 * time.Second,
+			ToolOutputMaxBytes:     1,
+			Log:                    config.LogConfig{},
+			Adapters:               cfgadapters.Config{},
+		},
+	}
+
+	_, err := svc.limitFindSymbolOutput(findSymbolOutput{
+		Symbols:         []foundSymbolDTO{{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "0"}},
+		ReturnedPercent: 0,
+	})
+	require.EqualError(t, err, outputTooLargePublicMessage)
+}
+
 // TestLimitFindReferencingSymbolsOutputCountsNestedSymbols proves that returned percentage is based on logical reference objects, not file buckets.
 func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 	t.Parallel()
