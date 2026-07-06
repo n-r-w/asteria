@@ -456,6 +456,7 @@ func newToolTestService(search ILSP) *Service {
 			FindReferencesDesc:     "",
 			ToolTimeout:            10 * time.Second,
 			ToolOutputMaxBytes:     0,
+			Log:                    config.LogConfig{},
 			Adapters:               cfgadapters.Config{},
 		},
 		mcpServer: nil,

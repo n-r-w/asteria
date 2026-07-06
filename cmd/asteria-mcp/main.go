@@ -5,12 +5,15 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/n-r-w/asteria/internal/adapters/logging"
 	"github.com/n-r-w/asteria/internal/appinit"
+	"github.com/n-r-w/asteria/internal/config"
 )
 
 // build-time variables that can be set via ldflags
@@ -63,21 +66,38 @@ func main() {
 		os.Exit(0)
 	}
 
-	//nolint:exhaustruct // SDK struct with optional fields
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
-	slog.SetDefault(logger)
+	logging.SetupStderrLogger()
 
-	if err := run(ctx, info.version); err != nil {
-		slog.Error("server failed", slog.String("error", err.Error()))
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("load config", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	closeLogger, err := logging.SetupFileLogger(cfg.Log)
+	if err != nil {
+		slog.Error("setup file logger", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	runErr := run(ctx, info.version, cfg)
+	if runErr != nil {
+		slog.Error("server failed", slog.String("error", runErr.Error()))
+		if closeErr := closeLogger(); closeErr != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "close logger: %v\n", closeErr)
+		}
+		os.Exit(1)
+	}
+	closeErr := closeLogger()
+	if closeErr != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "close logger: %v\n", closeErr)
 		os.Exit(1)
 	}
 }
 
 // run builds the real application graph once and keeps the signal-aware server lifecycle isolated from DI setup.
-func run(ctx context.Context, version string) (runErr error) {
-	di, err := appinit.CreateDIContainer(version)
+func run(ctx context.Context, version string, cfg *config.Config) (runErr error) {
+	di, err := appinit.CreateDIContainer(version, cfg)
 	if err != nil {
 		return err
 	}
@@ -102,11 +122,16 @@ func runServerLifecycle(
 		}
 	}()
 
-	slog.Info("starting server")
+	workingDirectory, cwdErr := os.Getwd()
+	if cwdErr != nil {
+		slog.Warn("resolve working directory", slog.String("error", cwdErr.Error()))
+	}
+
+	slog.Info("starting server", "working_directory", workingDirectory)
 	if errSrv := runServer(ctxStop); errSrv != nil {
 		return errSrv
 	}
 
-	slog.Info("server stopped gracefully")
+	slog.Info("server stopped gracefully", "working_directory", workingDirectory)
 	return nil
 }

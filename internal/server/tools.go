@@ -33,11 +33,16 @@ func (s *Service) getSymbolsOverviewTool(
 		WorkspaceRoot: input.WorkspaceRoot,
 		File:          input.FilePath,
 	}
+	logAttrs := []any{
+		"workspace_root", searchRequest.WorkspaceRoot,
+		"file_path", searchRequest.File,
+	}
 	if err := searchRequest.Validate(); err != nil {
 		return nil, getSymbolsOverviewOutput{}, processError(
 			ctx,
 			domain.ToolNameGetSymbolsOverview,
 			sanitizeValidationError(domain.ToolNameGetSymbolsOverview, err),
+			logAttrs...,
 		)
 	}
 
@@ -53,7 +58,7 @@ func (s *Service) getSymbolsOverviewTool(
 			Groups:          toOverviewKindGroupDTOs(result.Symbols),
 			ReturnedPercent: 0,
 		})
-	})
+	}, logAttrs...)
 	if err != nil {
 		return nil, getSymbolsOverviewOutput{}, err
 	}
@@ -88,11 +93,17 @@ func (s *Service) findSymbolTool(
 		WorkspaceRoot: input.WorkspaceRoot,
 		Scope:         input.ScopePath,
 	}
+	logAttrs := []any{
+		"workspace_root", searchRequest.WorkspaceRoot,
+		"symbol_query", searchRequest.Path,
+		"scope_path", searchRequest.Scope,
+	}
 	if err := searchRequest.Validate(); err != nil {
 		return nil, findSymbolOutput{}, processError(
 			ctx,
 			domain.ToolNameFindSymbol,
 			sanitizeValidationError(domain.ToolNameFindSymbol, err),
+			logAttrs...,
 		)
 	}
 
@@ -111,6 +122,7 @@ func (s *Service) findSymbolTool(
 				ReturnedPercent: 0,
 			})
 		},
+		logAttrs...,
 	)
 	if err != nil {
 		return nil, findSymbolOutput{}, err
@@ -143,11 +155,17 @@ func (s *Service) findReferencingSymbolsTool(
 		WorkspaceRoot: input.WorkspaceRoot,
 		File:          input.FilePath,
 	}
+	logAttrs := []any{
+		"workspace_root", searchRequest.WorkspaceRoot,
+		"file_path", searchRequest.File,
+		"symbol_path", searchRequest.Path,
+	}
 	if err := searchRequest.Validate(); err != nil {
 		return nil, findReferencingSymbolsOutput{}, processError(
 			ctx,
 			domain.ToolNameFindReferencingSymbols,
 			sanitizeValidationError(domain.ToolNameFindReferencingSymbols, err),
+			logAttrs...,
 		)
 	}
 
@@ -164,7 +182,7 @@ func (s *Service) findReferencingSymbolsTool(
 			Incomplete:      result.Incomplete,
 			ReturnedPercent: 0,
 		})
-	})
+	}, logAttrs...)
 	if err != nil {
 		return nil, findReferencingSymbolsOutput{}, err
 	}
@@ -178,6 +196,7 @@ func runWithToolTimeout[T any](
 	s *Service,
 	toolName string,
 	run func(context.Context) (T, error),
+	logAttrs ...any,
 ) (T, error) {
 	timeoutErr := domain.NewSafeError(
 		fmt.Sprintf("tool execution timed out after %s", s.cfg.ToolTimeout),
@@ -189,10 +208,10 @@ func runWithToolTimeout[T any](
 	result, err := run(timeoutCtx)
 	if err != nil {
 		if errors.Is(context.Cause(timeoutCtx), timeoutErr) {
-			return zeroValue[T](), processError(timeoutCtx, toolName, timeoutErr)
+			return zeroValue[T](), processError(timeoutCtx, toolName, timeoutErr, logAttrs...)
 		}
 
-		return zeroValue[T](), processError(timeoutCtx, toolName, err)
+		return zeroValue[T](), processError(timeoutCtx, toolName, err, logAttrs...)
 	}
 
 	return result, nil
@@ -279,8 +298,8 @@ func formatRange(startLine, endLine int) string {
 	return fmt.Sprintf("%d-%d", startLine, endLine)
 }
 
-// processError logs the error with context and returns a formatted error for the tool response.
-func processError(ctx context.Context, toolName string, err error) error {
+// processError logs the error with request context and returns a formatted error for the tool response.
+func processError(ctx context.Context, toolName string, err error, logAttrs ...any) error {
 	if err == nil {
 		return nil
 	}
@@ -289,15 +308,18 @@ func processError(ctx context.Context, toolName string, err error) error {
 		logLevel := safeErrorLogLevel(safeErr)
 		cause := safeErr.Cause()
 		if cause != nil {
-			slog.Log(ctx, logLevel, toolName, "error", cause, "public_error", safeErr.Error())
+			attrs := append([]any{"error", cause, "public_error", safeErr.Error()}, logAttrs...)
+			slog.Log(ctx, logLevel, toolName, attrs...)
 		} else {
-			slog.Log(ctx, logLevel, toolName, "error", safeErr.Error())
+			attrs := append([]any{"error", safeErr.Error()}, logAttrs...)
+			slog.Log(ctx, logLevel, toolName, attrs...)
 		}
 
 		return fmt.Errorf("%s: %s", toolName, safeErr.Error())
 	}
 
-	slog.ErrorContext(ctx, toolName, "error", err)
+	attrs := append([]any{"error", err}, logAttrs...)
+	slog.ErrorContext(ctx, toolName, attrs...)
 
 	return fmt.Errorf("%s: internal error", toolName)
 }
