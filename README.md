@@ -245,6 +245,29 @@ For the full implementation rules, package layout, multi-workspace behavior, cac
 	- Global timeout for one MCP tool call.
 	- Must be greater than `0`.
 
+- `ASTERIAMCP_LOG_FILE` (optional)
+	- JSON log file path.
+	- Defaults:
+		- macOS: `~/Library/Logs/asteria/asteria.log`
+		- Linux: `${XDG_STATE_HOME:-~/.local/state}/asteria/logs/asteria.log`
+		- Windows: `%LOCALAPPDATA%\asteria\logs\asteria.log`
+	- Must be absolute when set.
+
+- `ASTERIAMCP_LOG_MAX_SIZE_MB` (optional, default: `20`)
+	- Active log file size limit in megabytes before rotation.
+	- Must be greater than `0`.
+
+- `ASTERIAMCP_LOG_MAX_AGE_DAYS` (optional, default: `14`)
+	- Retention horizon for rotated log files.
+	- Must be greater than `0`.
+
+- `ASTERIAMCP_LOG_MAX_BACKUPS` (optional, default: `20`)
+	- Maximum number of rotated log files to keep.
+	- Must be greater than `0`.
+
+- `ASTERIAMCP_LOG_COMPRESS` (optional, default: `true`)
+	- Compresses rotated log files with gzip.
+
 - `ASTERIAMCP_TOOL_OUTPUT_MAX_BYTES` (optional, default: `32768`)
 	- Maximum serialized JSON size for one tool response.
 	- Must be greater than `0`.

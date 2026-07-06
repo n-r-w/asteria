@@ -24,6 +24,7 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 			FindReferencesDesc:     "",
 			ToolTimeout:            10 * time.Second,
 			ToolOutputMaxBytes:     120,
+			Log:                    config.LogConfig{},
 			Adapters:               cfgadapters.Config{},
 		},
 	}
@@ -58,6 +59,7 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 			FindReferencesDesc:     "",
 			ToolTimeout:            10 * time.Second,
 			ToolOutputMaxBytes:     150,
+			Log:                    config.LogConfig{},
 			Adapters:               cfgadapters.Config{},
 		},
 	}
