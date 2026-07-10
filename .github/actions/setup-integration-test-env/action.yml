@@ -49,10 +49,8 @@ runs:
       run: |
         set -euo pipefail
 
-        if ! command -v clangd >/dev/null; then
-          brew install llvm
-          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
-        fi
+        brew install llvm@18
+        echo "$(brew --prefix llvm@18)/bin" >> "$GITHUB_PATH"
 
     - name: Install language servers
       shell: bash
@@ -60,7 +58,7 @@ runs:
         set -euo pipefail
 
         go install golang.org/x/tools/gopls@latest
-        npm install -g typescript-language-server@5.1.3 typescript
+        npm install -g typescript-language-server@5.1.3 typescript@5.9.3
         python -m pip install --user basedpyright
 
         mkdir -p "$HOME/.local/bin"
