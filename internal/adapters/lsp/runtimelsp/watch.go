@@ -201,13 +201,14 @@ func addWatchDirs(watchDirAdder func(string) error, workspaceRoot string, watchD
 	return nil
 }
 
-// shouldIgnoreWatchDirError keeps transient nested-directory churn from aborting one whole LSP session startup.
+// shouldIgnoreWatchDirError keeps the watcher usable when a nested directory disappears or cannot be read.
+// The workspace root remains mandatory because no coherent watch set can be built without access to it.
 func shouldIgnoreWatchDirError(workspaceRoot, path string, err error) bool {
-	if !errors.Is(err, fs.ErrNotExist) {
+	if filepath.Clean(path) == filepath.Clean(workspaceRoot) {
 		return false
 	}
 
-	return filepath.Clean(path) != filepath.Clean(workspaceRoot)
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission)
 }
 
 // translateWatchEvent maps one fsnotify event into recursive watch updates and filtered LSP file notifications.

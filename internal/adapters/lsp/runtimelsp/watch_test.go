@@ -41,39 +41,67 @@ func TestCollectWatchDirsSkipsIgnoredDirectories(t *testing.T) {
 	assert.Equal(t, []string{".", filepath.Join("src"), filepath.Join("src", "nested")}, relativeDirs)
 }
 
-// TestAddWatchDirsSkipsMissingNestedDirectories proves that one transient nested directory cannot abort
-// watcher startup for the whole workspace.
-func TestAddWatchDirsSkipsMissingNestedDirectories(t *testing.T) {
+// TestAddWatchDirsSkipsUnavailableNestedDirectories proves that one inaccessible or transient nested directory
+// cannot abort watcher startup for the rest of the workspace.
+func TestAddWatchDirsSkipsUnavailableNestedDirectories(t *testing.T) {
 	t.Parallel()
 
-	workspaceRoot := filepath.Join(string(filepath.Separator), "workspace")
-	missingDir := filepath.Join(workspaceRoot, "gone")
-	trackedDir := filepath.Join(workspaceRoot, "src")
-	called := make([]string, 0, 3)
+	testCases := []struct {
+		name     string
+		watchErr error
+	}{
+		{name: "missing directory", watchErr: fs.ErrNotExist},
+		{name: "permission denied", watchErr: fs.ErrPermission},
+	}
 
-	err := addWatchDirs(func(path string) error {
-		called = append(called, path)
-		if path == missingDir {
-			return fs.ErrNotExist
-		}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
 
-		return nil
-	}, workspaceRoot, []string{workspaceRoot, missingDir, trackedDir})
-	require.NoError(t, err)
-	assert.Equal(t, []string{workspaceRoot, missingDir, trackedDir}, called)
+			workspaceRoot := filepath.Join(string(filepath.Separator), "workspace")
+			unavailableDir := filepath.Join(workspaceRoot, "unavailable")
+			trackedDir := filepath.Join(workspaceRoot, "src")
+			called := make([]string, 0, 3)
+
+			err := addWatchDirs(func(path string) error {
+				called = append(called, path)
+				if path == unavailableDir {
+					return testCase.watchErr
+				}
+
+				return nil
+			}, workspaceRoot, []string{workspaceRoot, unavailableDir, trackedDir})
+			require.NoError(t, err)
+			assert.Equal(t, []string{workspaceRoot, unavailableDir, trackedDir}, called)
+		})
+	}
 }
 
-// TestAddWatchDirsRejectsMissingWorkspaceRoot proves that startup still fails when the workspace root itself
-// is gone, because that session cannot produce a coherent watch set anymore.
-func TestAddWatchDirsRejectsMissingWorkspaceRoot(t *testing.T) {
+// TestAddWatchDirsRejectsUnavailableWorkspaceRoot proves that startup fails when the workspace root cannot
+// be reached, because that session cannot produce a coherent watch set.
+func TestAddWatchDirsRejectsUnavailableWorkspaceRoot(t *testing.T) {
 	t.Parallel()
 
-	workspaceRoot := filepath.Join(string(filepath.Separator), "workspace")
+	testCases := []struct {
+		name     string
+		watchErr error
+	}{
+		{name: "missing directory", watchErr: fs.ErrNotExist},
+		{name: "permission denied", watchErr: fs.ErrPermission},
+	}
 
-	err := addWatchDirs(func(string) error {
-		return fs.ErrNotExist
-	}, workspaceRoot, []string{workspaceRoot})
-	require.ErrorIs(t, err, fs.ErrNotExist)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			workspaceRoot := filepath.Join(string(filepath.Separator), "workspace")
+
+			err := addWatchDirs(func(string) error {
+				return testCase.watchErr
+			}, workspaceRoot, []string{workspaceRoot})
+			require.ErrorIs(t, err, testCase.watchErr)
+		})
+	}
 }
 
 // TestTranslateWatchEventFiltersUnsupportedExtensions proves that runtime-managed notifications reach the LSP
