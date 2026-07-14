@@ -392,6 +392,84 @@ func TestIntegrationServiceFindSymbolReturnsModuleReexportBodies(t *testing.T) {
 	assert.Contains(t, shapeAliasSymbol.Body, "export type { ModuleShape as ReexportedShape }")
 }
 
+// TestIntegrationServiceFindSymbolIgnoresUnrelatedUnresolvedReexport proves that an unavailable package
+// does not block a search when its re-export alias cannot match the requested symbol.
+func TestIntegrationServiceFindSymbolIgnoresUnrelatedUnresolvedReexport(t *testing.T) {
+	workspaceRoot := tslsFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	result, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "localReexportTarget"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            ".",
+	})
+	require.NoError(t, err)
+
+	symbol, ok := findFoundSymbol(result.Symbols, "localReexportTarget")
+	require.True(t, ok, "expected local symbol despite unrelated unresolved re-export, got %#v", result.Symbols)
+	assert.Equal(t, "unresolved_reexports.ts", symbol.File)
+}
+
+// TestIntegrationServiceFindReferencingSymbolsIgnoresUnrelatedUnresolvedReexport proves that reference
+// lookup resolves only a re-export alias that matches the requested target.
+func TestIntegrationServiceFindReferencingSymbolsIgnoresUnrelatedUnresolvedReexport(t *testing.T) {
+	workspaceRoot := tslsFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	result, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "localReexportTarget"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "unresolved_reexports.ts",
+	})
+	require.NoError(t, err)
+
+	symbol, ok := findReferencingSymbol(result.Symbols, "readLocalReexportTarget")
+	require.True(t, ok, "expected local symbol reference despite unrelated unresolved re-export, got %#v", result.Symbols)
+	assert.Equal(t, "unresolved_reexports_usage.ts", symbol.File)
+	assert.Contains(t, symbol.Content, "return localReexportTarget")
+}
+
+// TestIntegrationServiceFindSymbolReportsUnresolvedMatchingReexport proves that a requested unavailable
+// package re-export produces an actionable client-safe error instead of an internal error.
+func TestIntegrationServiceFindSymbolReportsUnresolvedMatchingReexport(t *testing.T) {
+	workspaceRoot := tslsFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	_, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "MissingWidget"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            "unresolved_reexports.ts",
+	})
+	require.EqualError(
+		t,
+		err,
+		`cannot resolve module specifier "@missing/ui" from "unresolved_reexports.ts"`,
+	)
+	var safeErr *domain.SafeError
+	require.ErrorAs(t, err, &safeErr)
+	assert.Nil(t, safeErr.Cause())
+}
+
+// TestIntegrationServiceGetSymbolsOverviewReportsUnresolvedReexport proves that overview reports the
+// unavailable package as an expected project error because it must resolve every alias in the target file.
+func TestIntegrationServiceGetSymbolsOverviewReportsUnresolvedReexport(t *testing.T) {
+	workspaceRoot := tslsFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	_, err := service.GetSymbolsOverview(ctx, &domain.GetSymbolsOverviewRequest{
+		WorkspaceRoot: workspaceRoot,
+		File:          "unresolved_reexports.ts",
+	})
+	require.EqualError(
+		t,
+		err,
+		`cannot resolve module specifier "@missing/ui" from "unresolved_reexports.ts"`,
+	)
+	var safeErr *domain.SafeError
+	require.ErrorAs(t, err, &safeErr)
+	assert.Nil(t, safeErr.Cause())
+}
+
 // TestIntegrationServiceFindReferencingSymbolsTracksAdvancedModuleImports proves that richer module
 // flows stay referenceable through direct imports, alias imports, and namespace imports.
 func TestIntegrationServiceFindReferencingSymbolsTracksAdvancedModuleImports(t *testing.T) {

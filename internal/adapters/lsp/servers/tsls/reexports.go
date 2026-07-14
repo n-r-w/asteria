@@ -2,6 +2,7 @@ package lsptsls
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/domain"
+	"github.com/samber/lo"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
@@ -106,22 +108,18 @@ func (s *Service) FindSymbol(
 
 	trimmedPath := strings.TrimSpace(request.Path)
 	for _, relativePath := range searchFiles {
-		resolvedAliases, resolveErr := s.resolveReexportAliases(
+		// Resolve only aliases that can enter the result so an unrelated unavailable package cannot abort the search.
+		resolvedAliases, resolveErr := s.resolveMatchingReexportAliases(
 			ctx,
 			workspaceRoot,
 			relativePath,
+			trimmedPath,
+			request.SubstringMatching,
 		)
 		if resolveErr != nil {
 			return domain.FindSymbolResult{}, resolveErr
 		}
 		for _, resolvedAlias := range resolvedAliases {
-			if !matchesSyntheticAliasPath(
-				trimmedPath,
-				request.SubstringMatching,
-				resolvedAlias.Alias.Name,
-			) {
-				continue
-			}
 			if !matchesSyntheticAliasKind(
 				request.IncludeKinds,
 				request.ExcludeKinds,
@@ -155,21 +153,19 @@ func (s *Service) resolveReferenceTarget(
 	workspaceRoot string,
 	request *domain.FindReferencingSymbolsRequest,
 ) (*domain.FindReferencingSymbolsRequest, error) {
-	resolvedAliases, err := s.resolveReexportAliases(
+	// Reference lookup needs at most the exact requested alias; resolving other aliases can introduce unrelated failures.
+	resolvedAliases, err := s.resolveMatchingReexportAliases(
 		ctx,
 		workspaceRoot,
 		strings.TrimSpace(request.File),
+		strings.TrimSpace(request.Path),
+		false,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	trimmedPath := strings.TrimSpace(request.Path)
 	for _, resolvedAlias := range resolvedAliases {
-		if !matchesSyntheticAliasPath(trimmedPath, false, resolvedAlias.Alias.Name) {
-			continue
-		}
-
 		rewrittenRequest := *request
 		rewrittenRequest.File = resolvedAlias.SourceFile
 		rewrittenRequest.Path = resolvedAlias.SourcePath
@@ -180,8 +176,7 @@ func (s *Service) resolveReferenceTarget(
 	return request, nil
 }
 
-// resolveReexportAliases parses one file and resolves each re-export alias back
-// to the source symbol that TypeScript defines.
+// resolveReexportAliases resolves every explicit alias declaration needed by a complete file overview.
 func (s *Service) resolveReexportAliases(
 	ctx context.Context,
 	workspaceRoot string,
@@ -191,20 +186,47 @@ func (s *Service) resolveReexportAliases(
 	if err != nil {
 		return nil, err
 	}
-	if len(aliases) == 0 {
-		return nil, nil
+
+	return s.resolveParsedReexportAliases(ctx, workspaceRoot, relativePath, aliases)
+}
+
+// resolveMatchingReexportAliases filters aliases before resolution so unrelated project errors cannot affect a query.
+func (s *Service) resolveMatchingReexportAliases(
+	ctx context.Context,
+	workspaceRoot string,
+	relativePath string,
+	query string,
+	substringMatching bool,
+) ([]resolvedReexportAlias, error) {
+	aliases, err := parseReexportAliases(workspaceRoot, relativePath)
+	if err != nil {
+		return nil, err
 	}
 
+	matchingAliases := lo.Filter(aliases, func(alias reexportAlias, _ int) bool {
+		return matchesSyntheticAliasPath(query, substringMatching, alias.Name)
+	})
+
+	return s.resolveParsedReexportAliases(ctx, workspaceRoot, relativePath, matchingAliases)
+}
+
+// resolveParsedReexportAliases resolves the selected declarations and stops when one selected alias is invalid.
+func (s *Service) resolveParsedReexportAliases(
+	ctx context.Context,
+	workspaceRoot string,
+	relativePath string,
+	aliases []reexportAlias,
+) ([]resolvedReexportAlias, error) {
 	result := make([]resolvedReexportAlias, 0, len(aliases))
 	for aliasIndex := range aliases {
-		resolvedAlias, resolveErr := s.resolveReexportAliasDefinition(
+		resolvedAlias, err := s.resolveReexportAliasDefinition(
 			ctx,
 			workspaceRoot,
 			relativePath,
 			&aliases[aliasIndex],
 		)
-		if resolveErr != nil {
-			return nil, resolveErr
+		if err != nil {
+			return nil, err
 		}
 		result = append(result, resolvedAlias)
 	}
@@ -226,27 +248,93 @@ func (s *Service) resolveReexportAliasDefinition(
 		relativePath,
 		alias.SelectionRange.Start,
 	)
+	if err != nil && !isExpectedReexportResolutionMiss(err) {
+		// Transport, process, and protocol failures are internal errors; a filesystem fallback must not hide them.
+		return resolvedReexportAlias{}, err
+	}
 	if err == nil {
-		sourceRelativePath, relativeErr := relativePathFromDefinitionURI(workspaceRoot, definitionLocation.URI)
-		if relativeErr == nil && sourceRelativePath != relativePath {
-			sourceSymbol, sourceErr := s.findDefinitionOverviewSymbol(
-				ctx,
-				workspaceRoot,
-				sourceRelativePath,
-				definitionLocation.Range.Start,
-			)
-			if sourceErr == nil {
-				return resolvedReexportAlias{
-					Alias:      *alias,
-					SourceFile: sourceRelativePath,
-					SourcePath: sourceSymbol.Path,
-					SourceKind: sourceSymbol.Kind,
-				}, nil
-			}
+		resolvedAlias, found, resolveErr := s.reexportFromDefinitionLocation(
+			ctx,
+			workspaceRoot,
+			relativePath,
+			alias,
+			definitionLocation,
+		)
+		if resolveErr != nil {
+			return resolvedReexportAlias{}, resolveErr
+		}
+		if found {
+			return resolvedAlias, nil
 		}
 	}
 
+	// The local resolver understands source-relative imports only; package resolution belongs to TypeScript.
+	if !isRelativeModuleSpecifier(alias.ModuleSpecifier) {
+		return resolvedReexportAlias{}, newUnresolvedReexportError(relativePath, alias.ModuleSpecifier)
+	}
+
 	return s.resolveExplicitReexportSource(ctx, workspaceRoot, relativePath, alias)
+}
+
+// reexportFromDefinitionLocation builds a resolved alias when TypeScript points to a usable workspace symbol.
+func (s *Service) reexportFromDefinitionLocation(
+	ctx context.Context,
+	workspaceRoot string,
+	relativePath string,
+	alias *reexportAlias,
+	definitionLocation protocol.Location,
+) (resolvedReexportAlias, bool, error) {
+	sourceRelativePath, err := relativePathFromDefinitionURI(workspaceRoot, definitionLocation.URI)
+	if err != nil {
+		return resolvedReexportAlias{}, false, err
+	}
+	if sourceRelativePath == relativePath {
+		return resolvedReexportAlias{}, false, nil
+	}
+
+	sourceSymbol, err := s.findDefinitionOverviewSymbol(
+		ctx,
+		workspaceRoot,
+		sourceRelativePath,
+		definitionLocation.Range.Start,
+	)
+	if err != nil {
+		if isExpectedReexportResolutionMiss(err) {
+			return resolvedReexportAlias{}, false, nil
+		}
+		return resolvedReexportAlias{}, false, err
+	}
+
+	return resolvedReexportAlias{
+		Alias:      *alias,
+		SourceFile: sourceRelativePath,
+		SourcePath: sourceSymbol.Path,
+		SourceKind: sourceSymbol.Kind,
+	}, true, nil
+}
+
+// isExpectedReexportResolutionMiss identifies project-level lookup misses that are safe to report to clients.
+func isExpectedReexportResolutionMiss(err error) bool {
+	safeErr, ok := errors.AsType[*domain.SafeError](err)
+	return ok && safeErr.Cause() == nil
+}
+
+// isRelativeModuleSpecifier reports whether the filesystem resolver can interpret a TypeScript module specifier.
+func isRelativeModuleSpecifier(moduleSpecifier string) bool {
+	return moduleSpecifier == "." || moduleSpecifier == ".." ||
+		strings.HasPrefix(moduleSpecifier, "./") || strings.HasPrefix(moduleSpecifier, "../")
+}
+
+// newUnresolvedReexportError reports a project dependency or configuration problem without exposing server internals.
+func newUnresolvedReexportError(relativePath, moduleSpecifier string) *domain.SafeError {
+	return domain.NewSafeError(
+		fmt.Sprintf(
+			"cannot resolve module specifier %q from %q",
+			moduleSpecifier,
+			domain.NormalizePublicPath(relativePath),
+		),
+		nil,
+	)
 }
 
 // resolveExplicitReexportSource resolves one alias through its explicit `from`
@@ -657,7 +745,7 @@ func resolveReexportSourceFile(workspaceRoot, relativePath, moduleSpecifier stri
 		}
 	}
 
-	return "", fmt.Errorf("no source file matches module specifier %q", moduleSpecifier)
+	return "", newUnresolvedReexportError(relativePath, moduleSpecifier)
 }
 
 // findDefaultExportPosition finds the `default` keyword position in one source
