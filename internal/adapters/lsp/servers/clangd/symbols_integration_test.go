@@ -279,7 +279,7 @@ func TestIntegrationServiceFindReferencingSymbolsReturnsAdvancedCPPCallers(t *te
 
 		assert.Equal(collect, "consumer.cpp", symbol.File)
 		assert.Contains(collect, symbol.Content, "demo::make_box")
-	}, 5*time.Second, 200*time.Millisecond)
+	}, clangdLiveWaitTimeout, clangdLiveWaitTick)
 }
 
 // TestIntegrationGetSymbolsOverviewKeepsSameSourceTreeWithReferenceWorkflowFiles proves that opening the
