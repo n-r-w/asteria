@@ -102,8 +102,17 @@ Source: <https://go.dev/gopls/>
 - macOS / Linux:
 
 ```bash
-npm install -g typescript-language-server typescript
+npm install -g typescript-language-server@6.0.0 typescript@6.0.3
 ```
+
+Asteria tests these version pairs:
+
+| `typescript-language-server` | TypeScript | Node.js |
+| --- | --- | --- |
+| `6.0.0` | `6.0.3` | `>=22.22.2` |
+| `5.1.3` | `5.9.3` | `>=20` |
+
+`typescript-language-server@6.0.0` cannot use TypeScript 7 because TypeScript 7 does not provide `lib/tsserver.js`.
 
 Source: <https://github.com/typescript-language-server/typescript-language-server>
 

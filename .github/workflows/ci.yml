@@ -78,12 +78,17 @@ jobs:
         run: task lint
 
   itest:
-    name: Integration tests (${{ matrix.os }})
+    name: Integration tests (${{ matrix.os }}, TSLS ${{ matrix.tsls.server_version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        tsls:
+          - server_version: "5.1.3"
+            typescript_version: "5.9.3"
+          - server_version: "6.0.0"
+            typescript_version: "6.0.3"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -102,6 +107,9 @@ jobs:
 
       - name: Install integration test dependencies
         uses: ./.github/actions/setup-integration-test-env
+        with:
+          tsls_version: ${{ matrix.tsls.server_version }}
+          typescript_version: ${{ matrix.tsls.typescript_version }}
 
       - name: Run integration tests
         run: task itest
