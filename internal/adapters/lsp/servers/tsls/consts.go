@@ -5,9 +5,26 @@ import "time"
 // extensions lists the file extensions supported by the TypeScript language server.
 //
 //nolint:gochecknoglobals // ok for adapter-level constants
-var extensions = []string{".ts", ".tsx", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"}
+var extensions = []string{
+	tsExtension,
+	tsxExtension,
+	jsExtension,
+	jsxExtension,
+	mtsExtension,
+	ctsExtension,
+	mjsExtension,
+	cjsExtension,
+}
 
 const (
+	tsExtension               = ".ts"
+	tsxExtension              = ".tsx"
+	jsExtension               = ".js"
+	jsxExtension              = ".jsx"
+	mtsExtension              = ".mts"
+	ctsExtension              = ".cts"
+	mjsExtension              = ".mjs"
+	cjsExtension              = ".cjs"
 	tslsServerName            = "typescript-language-server"
 	languageIDTypeScript      = "typescript"
 	languageIDTypeScriptReact = "typescriptreact"
@@ -20,13 +37,13 @@ const (
 // languageIDForExtension maps one file extension to the language ID expected by the language server.
 func languageIDForExtension(ext string) string {
 	switch ext {
-	case ".ts", ".mts", ".cts":
+	case tsExtension, mtsExtension, ctsExtension:
 		return languageIDTypeScript
-	case ".tsx":
+	case tsxExtension:
 		return languageIDTypeScriptReact
-	case ".js", ".mjs", ".cjs":
+	case jsExtension, mjsExtension, cjsExtension:
 		return languageIDJavaScript
-	case ".jsx":
+	case jsxExtension:
 		return languageIDJavaScriptReact
 	default:
 		return languageIDTypeScript

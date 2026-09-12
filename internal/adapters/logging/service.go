@@ -18,7 +18,7 @@ const logDirPermission = 0o700
 
 // SetupStderrLogger installs the startup logger used before file logging configuration is loaded.
 func SetupStderrLogger() {
-	//nolint:exhaustruct // stdlib options use zero values for optional behavior.
+	//nolint:exhaustruct_v5 // stdlib options use zero values for optional behavior.
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -32,7 +32,7 @@ func SetupFileLogger(cfg config.LogConfig) (func() error, error) {
 		return nil, fmt.Errorf("create log directory %q: %w", logDir, err)
 	}
 
-	//nolint:exhaustruct // lumberjack optional fields keep documented package defaults.
+	//nolint:exhaustruct_v5 // lumberjack optional fields keep documented package defaults.
 	rotatingFile := &lumberjack.Logger{
 		Filename:   cfg.File,
 		MaxSize:    cfg.MaxSizeMB,
@@ -42,7 +42,7 @@ func SetupFileLogger(cfg config.LogConfig) (func() error, error) {
 	}
 	writer := io.MultiWriter(os.Stderr, rotatingFile)
 
-	//nolint:exhaustruct // stdlib options use zero values for optional behavior.
+	//nolint:exhaustruct_v5 // stdlib options use zero values for optional behavior.
 	logger := slog.New(slog.NewJSONHandler(writer, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))

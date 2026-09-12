@@ -19,9 +19,9 @@ func TestRunReturnsNilOnContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	svc := &Service{ //nolint:exhaustruct // only mcpServer is relevant for context cancellation behavior
+	svc := &Service{ //nolint:exhaustruct_v5 // only mcpServer is relevant for context cancellation behavior
 		mcpServer: mcp.NewServer(
-			&mcp.Implementation{ //nolint:exhaustruct // optional SDK fields are irrelevant for shutdown test
+			&mcp.Implementation{ //nolint:exhaustruct_v5 // optional SDK fields are irrelevant for shutdown test
 				Name:    "test-server",
 				Version: "v0.0.0",
 			},
@@ -97,7 +97,7 @@ func TestGetSymbolsOverviewToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 
 	_, err := clientSession.CallTool(
 		t.Context(),
-		&mcp.CallToolParams{ //nolint:exhaustruct // only tool name and arguments matter for the test
+		&mcp.CallToolParams{ //nolint:exhaustruct_v5 // only tool name and arguments matter for the test
 			Name: "get_symbols_overview",
 			Arguments: map[string]any{
 				"file_path": "internal/server/service.go",
@@ -117,7 +117,7 @@ func TestFindSymbolToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 
 	_, err := clientSession.CallTool(
 		t.Context(),
-		&mcp.CallToolParams{ //nolint:exhaustruct // only tool name and arguments matter for the test
+		&mcp.CallToolParams{ //nolint:exhaustruct_v5 // only tool name and arguments matter for the test
 			Name: "find_symbol",
 			Arguments: map[string]any{
 				"symbol_query": "New",
@@ -137,7 +137,7 @@ func TestFindReferencingSymbolsToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 
 	_, err := clientSession.CallTool(
 		t.Context(),
-		&mcp.CallToolParams{ //nolint:exhaustruct // only tool name and arguments matter for the test
+		&mcp.CallToolParams{ //nolint:exhaustruct_v5 // only tool name and arguments matter for the test
 			Name: "find_referencing_symbols",
 			Arguments: map[string]any{
 				"file_path":   "internal/server/service.go",
@@ -169,7 +169,7 @@ func newTestClientSession(t *testing.T, svc *Service) *mcp.ClientSession {
 	t.Helper()
 
 	client := mcp.NewClient(
-		&mcp.Implementation{ //nolint:exhaustruct // optional SDK fields are irrelevant for test transport setup
+		&mcp.Implementation{ //nolint:exhaustruct_v5 // optional SDK fields are irrelevant for test transport setup
 			Name:    "test-client",
 			Version: "v0.0.0",
 		},

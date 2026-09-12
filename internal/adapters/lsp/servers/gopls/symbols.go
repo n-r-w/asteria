@@ -67,7 +67,7 @@ func shouldWatchGoFile(relativePath string) bool {
 	case "go.mod", "go.sum", "go.work", "go.work.sum":
 		return true
 	default:
-		return filepath.Ext(relativePath) == ".go"
+		return filepath.Ext(relativePath) == goExtension
 	}
 }
 

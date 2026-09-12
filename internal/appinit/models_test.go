@@ -15,7 +15,7 @@ func TestDIContainerCloseCallsRegisteredFuncs(t *testing.T) {
 	t.Parallel()
 
 	called := make([]string, 0, 2)
-	//nolint:exhaustruct // This unit test exercises only CloseFuncs-driven shutdown behavior.
+	//nolint:exhaustruct_v5 // This unit test exercises only CloseFuncs-driven shutdown behavior.
 	di := &DIContainer{
 		CloseFuncs: []CloseFunc{
 			func(_ context.Context) error {
@@ -40,7 +40,7 @@ func TestDIContainerCloseJoinsErrors(t *testing.T) {
 
 	firstErr := errors.New("first close failed")
 	secondErr := errors.New("second close failed")
-	//nolint:exhaustruct // This unit test exercises only CloseFuncs-driven shutdown behavior.
+	//nolint:exhaustruct_v5 // This unit test exercises only CloseFuncs-driven shutdown behavior.
 	di := &DIContainer{
 		CloseFuncs: []CloseFunc{
 			nil,

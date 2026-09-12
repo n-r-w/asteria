@@ -93,7 +93,8 @@ func TestToReferencingFileDTOsGroupsByFile(t *testing.T) {
 			File:             "internal/adapters/lsp/servers/gopls/testdata/basic/references.go",
 			ContentStartLine: 3,
 			ContentEndLine:   5,
-			Content:          "func UseMakeBucketTwice(value string) string {\n\tleft := MakeBucket(value)\n\tright := MakeBucket(left.Describe())",
+			Content: "func UseMakeBucketTwice(value string) string {\n" +
+				"\tleft := MakeBucket(value)\n\tright := MakeBucket(left.Describe())",
 		},
 		{
 			Kind:             12,
@@ -134,7 +135,8 @@ func TestToOverviewKindGroupDTOsGroupsByKind(t *testing.T) {
 	assert.Equal(t, []overviewGroupSymbolDTO{{Path: "MakeBucket", Range: "34-39"}}, result[1].Symbols)
 }
 
-// TestGetSymbolsOverviewOutputJSONGroupsSymbolsByKind preserves grouped overview output while keeping zero-based line ranges.
+// TestGetSymbolsOverviewOutputJSONGroupsSymbolsByKind preserves grouped overview output while keeping
+// zero-based line ranges.
 func TestGetSymbolsOverviewOutputJSONGroupsSymbolsByKind(t *testing.T) {
 	t.Parallel()
 
@@ -170,7 +172,8 @@ func TestFindSymbolOutputJSONKeepsKindRangeAndFile(t *testing.T) {
 	)
 }
 
-// TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray keeps no-hit results explicit instead of collapsing the payload shape.
+// TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray keeps no-hit results explicit instead
+// of collapsing the payload shape.
 func TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray(t *testing.T) {
 	t.Parallel()
 
@@ -181,7 +184,8 @@ func TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray(t *testing.T) {
 	assert.JSONEq(t, `{"files":[]}`, string(payload))
 }
 
-// TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields preserves grouped symbol metadata in the published payload.
+// TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields preserves grouped symbol metadata
+// in the published payload.
 func TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields(t *testing.T) {
 	t.Parallel()
 
@@ -202,7 +206,8 @@ func TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields(t *testing.T) 
 	)
 }
 
-// TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet warns callers only when reference coverage is uncertain.
+// TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet warns callers only when reference
+// coverage is uncertain.
 func TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet(t *testing.T) {
 	t.Parallel()
 
@@ -302,7 +307,8 @@ func TestProcessErrorHidesUnexpectedInternalDetails(t *testing.T) {
 	require.EqualError(t, err, "find_symbol: internal error")
 }
 
-// TestSanitizeValidationErrorUsesPublicArgumentNames keeps MCP validation feedback aligned with the public tool contract.
+// TestSanitizeValidationErrorUsesPublicArgumentNames keeps MCP validation feedback aligned
+// with the public tool contract.
 func TestSanitizeValidationErrorUsesPublicArgumentNames(t *testing.T) {
 	t.Parallel()
 
@@ -473,7 +479,8 @@ func TestFindReferencingSymbolsToolMapsWorkspaceRoot(t *testing.T) {
 	assert.True(t, output.Incomplete)
 }
 
-// TestFindReferencingSymbolsToolReturnsPublicTimeoutError proves that heavy tool calls stop at the configured server deadline.
+// TestFindReferencingSymbolsToolReturnsPublicTimeoutError proves that heavy tool calls stop
+// at the configured server deadline.
 func TestFindReferencingSymbolsToolReturnsPublicTimeoutError(t *testing.T) {
 	t.Parallel()
 

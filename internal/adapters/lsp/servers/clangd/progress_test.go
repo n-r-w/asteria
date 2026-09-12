@@ -6,7 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestBackgroundIndexProgressReportsIncompleteUntilIndexingEnds proves that active clangd indexing marks references incomplete.
+// TestBackgroundIndexProgressReportsIncompleteUntilIndexingEnds proves that active clangd indexing
+// marks references incomplete.
 func TestBackgroundIndexProgressReportsIncompleteUntilIndexingEnds(t *testing.T) {
 	t.Parallel()
 
@@ -44,7 +45,8 @@ func TestBackgroundIndexProgressIgnoresUnrelatedProgress(t *testing.T) {
 	assert.False(t, progress.incomplete(workspaceRoot))
 }
 
-// TestBackgroundIndexProgressIsWorkspaceScoped prevents one workspace's idle index from clearing another workspace warning.
+// TestBackgroundIndexProgressIsWorkspaceScoped prevents one workspace's idle index from clearing
+// another workspace warning.
 func TestBackgroundIndexProgressIsWorkspaceScoped(t *testing.T) {
 	t.Parallel()
 

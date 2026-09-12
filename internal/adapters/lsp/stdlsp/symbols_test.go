@@ -66,6 +66,7 @@ func TestFindContainingNodePrefersInnermost(t *testing.T) {
 				Start: protocol.Position{Line: 3, Character: 1},
 				End:   protocol.Position{Line: 3, Character: 6},
 			},
+			Children: nil,
 		}},
 	}
 
@@ -279,6 +280,7 @@ func TestCollectMatchedNodesFlattensRequestedDepth(t *testing.T) {
 		Kind:         int(protocol.SymbolKindStruct),
 		NamePath:     "Service",
 		RelativePath: "fixture.go",
+		Range:        protocol.Range{},
 		SelectionRange: protocol.Range{
 			Start: protocol.Position{Line: 1, Character: 5},
 			End:   protocol.Position{Line: 1, Character: 12},
@@ -287,6 +289,7 @@ func TestCollectMatchedNodesFlattensRequestedDepth(t *testing.T) {
 			Kind:         int(protocol.SymbolKindMethod),
 			NamePath:     "Service/GetSymbolsOverview",
 			RelativePath: "fixture.go",
+			Range:        protocol.Range{},
 			SelectionRange: protocol.Range{
 				Start: protocol.Position{Line: 4, Character: 5},
 				End:   protocol.Position{Line: 4, Character: 23},
@@ -295,10 +298,12 @@ func TestCollectMatchedNodesFlattensRequestedDepth(t *testing.T) {
 				Kind:         int(protocol.SymbolKindVariable),
 				NamePath:     "Service/GetSymbolsOverview/request",
 				RelativePath: "fixture.go",
+				Range:        protocol.Range{},
 				SelectionRange: protocol.Range{
 					Start: protocol.Position{Line: 6, Character: 1},
 					End:   protocol.Position{Line: 6, Character: 8},
 				},
+				Children: nil,
 			}},
 		}},
 	}}
@@ -325,19 +330,23 @@ func TestFindUniqueNodeSuggestsCandidates(t *testing.T) {
 			Kind:         int(protocol.SymbolKindMethod),
 			NamePath:     "Service/Register",
 			RelativePath: "fixture.go",
+			Range:        protocol.Range{},
 			SelectionRange: protocol.Range{
 				Start: protocol.Position{Line: 4, Character: 1},
 				End:   protocol.Position{Line: 4, Character: 9},
 			},
+			Children: nil,
 		},
 		{
 			Kind:         int(protocol.SymbolKindMethod),
 			NamePath:     "Server/Register",
 			RelativePath: "fixture.go",
+			Range:        protocol.Range{},
 			SelectionRange: protocol.Range{
 				Start: protocol.Position{Line: 14, Character: 1},
 				End:   protocol.Position{Line: 14, Character: 9},
 			},
+			Children: nil,
 		},
 	}, "Register")
 	require.Error(t, err)

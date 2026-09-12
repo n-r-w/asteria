@@ -19,7 +19,7 @@ func TestPatchInitializeParamsSetsRootURI(t *testing.T) {
 		URI:  string(uri.File(workspaceRoot)),
 		Name: "workspace",
 	}}
-	//nolint:exhaustruct // The test exercises only workspace-root initialization fields.
+	//nolint:exhaustruct_v5 // The test exercises only workspace-root initialization fields.
 	params := &protocol.InitializeParams{WorkspaceFolders: workspaceFolders}
 
 	err := patchInitializeParams(workspaceRoot, params)

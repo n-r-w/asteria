@@ -86,7 +86,9 @@ func TestPatchInitializeParams(t *testing.T) {
 	workspaceFolders := []protocol.WorkspaceFolder{
 		{URI: string(protocol.DocumentURI(filepath.ToSlash("file://" + workspaceRoot))), Name: "workspace"},
 	}
-	//nolint:exhaustruct // protocol.InitializeParams has many optional SDK fields that this unit test does not exercise.
+	// protocol.InitializeParams has many optional SDK fields that this unit test does not
+	// exercise.
+	//nolint:exhaustruct_v5 // See the preceding comment.
 	params := &protocol.InitializeParams{WorkspaceFolders: workspaceFolders}
 
 	err := service.patchInitializeParams(workspaceRoot, params)

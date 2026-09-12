@@ -38,9 +38,9 @@ var (
 func New(config cfgadapters.GoplsConfig) (*Service, error) {
 	rt, err := runtimelsp.New(
 		&runtimelsp.RuntimeConfig{
-			Command:                 "gopls",
+			Command:                 goplsConfigSection,
 			Args:                    nil,
-			ServerName:              "gopls",
+			ServerName:              goplsConfigSection,
 			ShutdownTimeout:         goplsShutdownTimeout,
 			ReplyConfiguration:      buildReplyConfiguration(config),
 			BuildClientCapabilities: nil,

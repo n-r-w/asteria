@@ -13,6 +13,13 @@ import (
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
+const (
+	logErrorKey         = "error"
+	logFilePathKey      = "file_path"
+	logPublicErrorKey   = "public_error"
+	logWorkspaceRootKey = "workspace_root"
+)
+
 // getSymbolsOverviewTool handles get_symbols_overview requests.
 func (s *Service) getSymbolsOverviewTool(
 	ctx context.Context,
@@ -33,8 +40,8 @@ func (s *Service) getSymbolsOverviewTool(
 		File:          input.FilePath,
 	}
 	logAttrs := []any{
-		"workspace_root", searchRequest.WorkspaceRoot,
-		"file_path", searchRequest.File,
+		logWorkspaceRootKey, searchRequest.WorkspaceRoot,
+		logFilePathKey, searchRequest.File,
 	}
 	if err := searchRequest.Validate(); err != nil {
 		return nil, getSymbolsOverviewOutput{}, processError(
@@ -91,7 +98,7 @@ func (s *Service) findSymbolTool(
 		Scope:             input.ScopePath,
 	}
 	logAttrs := []any{
-		"workspace_root", searchRequest.WorkspaceRoot,
+		logWorkspaceRootKey, searchRequest.WorkspaceRoot,
 		"symbol_query", searchRequest.Path,
 		"scope_path", searchRequest.Scope,
 	}
@@ -151,8 +158,8 @@ func (s *Service) findReferencingSymbolsTool(
 		File:          input.FilePath,
 	}
 	logAttrs := []any{
-		"workspace_root", searchRequest.WorkspaceRoot,
-		"file_path", searchRequest.File,
+		logWorkspaceRootKey, searchRequest.WorkspaceRoot,
+		logFilePathKey, searchRequest.File,
 		"symbol_path", searchRequest.Path,
 	}
 	if err := searchRequest.Validate(); err != nil {
@@ -304,10 +311,10 @@ func processError(ctx context.Context, toolName string, err error, logAttrs ...a
 		logLevel := safeErrorLogLevel(safeErr)
 		cause := safeErr.Cause()
 		if cause != nil {
-			attrs := append([]any{"error", cause, "public_error", publicErr.Error()}, logAttrs...)
+			attrs := append([]any{logErrorKey, cause, logPublicErrorKey, publicErr.Error()}, logAttrs...)
 			slog.Log(ctx, logLevel, toolName, attrs...)
 		} else {
-			attrs := append([]any{"error", safeErr.Error(), "public_error", publicErr.Error()}, logAttrs...)
+			attrs := append([]any{logErrorKey, safeErr.Error(), logPublicErrorKey, publicErr.Error()}, logAttrs...)
 			slog.Log(ctx, logLevel, toolName, attrs...)
 		}
 
@@ -315,7 +322,7 @@ func processError(ctx context.Context, toolName string, err error, logAttrs ...a
 	}
 
 	publicErr := fmt.Errorf("%s: internal error", toolName)
-	attrs := append([]any{"error", err, "public_error", publicErr.Error()}, logAttrs...)
+	attrs := append([]any{logErrorKey, err, logPublicErrorKey, publicErr.Error()}, logAttrs...)
 	slog.ErrorContext(ctx, toolName, attrs...)
 
 	return publicErr

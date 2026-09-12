@@ -448,9 +448,9 @@ func (s *Service) symbolTreeForReferencePath(
 func (s *Service) requestRawDocumentSymbols(
 	ctx context.Context,
 	workspaceRoot string,
-	relativePath string,
-) (string, []json.RawMessage, error) {
-	cleanRelativePath, absolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, relativePath)
+	requestedRelativePath string,
+) (relativePath string, symbols []json.RawMessage, err error) {
+	cleanRelativePath, absolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, requestedRelativePath)
 	if err != nil {
 		return "", nil, err
 	}
@@ -468,14 +468,13 @@ func (s *Service) requestRawDocumentSymbols(
 		},
 	}
 
-	var rawSymbols []json.RawMessage
 	requestDocumentSymbols := func(callCtx context.Context) error {
 		return protocol.Call(
 			callCtx,
 			conn,
 			protocol.MethodTextDocumentDocumentSymbol,
 			params,
-			&rawSymbols,
+			&symbols,
 		)
 	}
 
@@ -489,7 +488,7 @@ func (s *Service) requestRawDocumentSymbols(
 		return "", nil, fmt.Errorf("request document symbols: %w", callErr)
 	}
 
-	return cleanRelativePath, rawSymbols, nil
+	return cleanRelativePath, symbols, nil
 }
 
 // requestReferenceLocations asks the standard LSP server for all non-declaration

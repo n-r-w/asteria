@@ -107,7 +107,8 @@ func TestServiceGetSymbolsOverviewRejectsUnsupportedExtension(t *testing.T) {
 	assert.ErrorContains(t, getErr, `files with extension ".md" are not supported`)
 }
 
-// TestServiceGetSymbolsOverviewRejectsMissingFileWithoutFilesystemNoise keeps user-facing errors free of syscall details.
+// TestServiceGetSymbolsOverviewRejectsMissingFileWithoutFilesystemNoise keeps user-facing errors
+// free of syscall details.
 func TestServiceGetSymbolsOverviewRejectsMissingFileWithoutFilesystemNoise(t *testing.T) {
 	t.Parallel()
 	workspaceRoot := t.TempDir()
@@ -521,7 +522,8 @@ func TestServiceFindSymbol(t *testing.T) {
 	})
 }
 
-// TestServiceFindSymbolUsesExplicitWorkspaceRoot proves that router path resolution and adapter forwarding switch to the selected root.
+// TestServiceFindSymbolUsesExplicitWorkspaceRoot proves that router path resolution and adapter forwarding
+// switch to the selected root.
 func TestServiceFindSymbolUsesExplicitWorkspaceRoot(t *testing.T) {
 	t.Parallel()
 
@@ -620,7 +622,8 @@ func TestServiceFindReferencingSymbols(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
-// TestServiceGetSymbolsOverviewUsesExplicitWorkspaceRoot proves file-scoped overview routing uses the caller-selected root.
+// TestServiceGetSymbolsOverviewUsesExplicitWorkspaceRoot proves file-scoped overview routing uses
+// the caller-selected root.
 func TestServiceGetSymbolsOverviewUsesExplicitWorkspaceRoot(t *testing.T) {
 	t.Parallel()
 
@@ -804,7 +807,8 @@ func TestServiceFindReferencingSymbolsUsesExplicitWorkspaceRoot(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
-// TestServiceFindReferencingSymbolsRejectsUnsupportedExtensionWithoutLSPLeak keeps router details out of the published error.
+// TestServiceFindReferencingSymbolsRejectsUnsupportedExtensionWithoutLSPLeak keeps router details
+// out of the published error.
 func TestServiceFindReferencingSymbolsRejectsUnsupportedExtensionWithoutLSPLeak(t *testing.T) {
 	t.Parallel()
 	workspaceRoot := t.TempDir()
@@ -828,7 +832,8 @@ func TestServiceFindReferencingSymbolsRejectsUnsupportedExtensionWithoutLSPLeak(
 	assert.EqualError(t, findErr, `files with extension ".md" are not supported`)
 }
 
-// TestSanitizePublicErrorReturnsTimeoutWarmupMessage keeps LSP startup timeouts out of the generic internal-error bucket.
+// TestSanitizePublicErrorReturnsTimeoutWarmupMessage keeps LSP startup timeouts out of the generic
+// internal-error bucket.
 func TestSanitizePublicErrorReturnsTimeoutWarmupMessage(t *testing.T) {
 	t.Parallel()
 
@@ -840,7 +845,8 @@ func TestSanitizePublicErrorReturnsTimeoutWarmupMessage(t *testing.T) {
 	require.EqualError(t, err, "request timed out, the LSP server may still be warming up")
 }
 
-// TestSanitizePublicErrorKeepsExplicitSafeMessages avoids replacing deliberate public messages with one generic timeout hint.
+// TestSanitizePublicErrorKeepsExplicitSafeMessages avoids replacing deliberate public messages
+// with one generic timeout hint.
 func TestSanitizePublicErrorKeepsExplicitSafeMessages(t *testing.T) {
 	t.Parallel()
 

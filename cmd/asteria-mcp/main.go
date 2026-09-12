@@ -53,7 +53,7 @@ func main() {
 	info := getBuildInfo()
 
 	if *showVersion {
-		//nolint:exhaustruct // stdlib struct with optional fields
+		//nolint:exhaustruct_v5 // stdlib struct with optional fields
 		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
 		}))

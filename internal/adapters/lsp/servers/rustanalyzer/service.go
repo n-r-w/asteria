@@ -192,6 +192,11 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 		return err
 	}
 
+	const (
+		enableOption    = "enable"
+		workspaceOption = "workspace"
+	)
+
 	params.InitializationOptions = map[string]any{
 		"cargo": map[string]any{
 			"autoreload": true,
@@ -199,30 +204,30 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 				"CARGO_TARGET_DIR": cargoTargetDir,
 			},
 			"buildScripts": map[string]any{
-				"enable":             true,
-				"invocationLocation": "workspace",
+				enableOption:         true,
+				"invocationLocation": workspaceOption,
 				"invocationStrategy": "per_workspace",
 			},
 		},
 		"procMacro": map[string]any{
-			"enable": true,
+			enableOption: true,
 			"attributes": map[string]any{
-				"enable": true,
+				enableOption: true,
 			},
 		},
 		"checkOnSave":    false,
 		"linkedProjects": []any{},
-		"workspace": map[string]any{
+		workspaceOption: map[string]any{
 			"symbol": map[string]any{
 				"search": map[string]any{
 					"kind":  "only_types",
 					"limit": s.workspaceSymbolSearchLimit,
-					"scope": "workspace",
+					"scope": workspaceOption,
 				},
 			},
 		},
 		"diagnostics": map[string]any{
-			"enable": true,
+			enableOption: true,
 		},
 	}
 

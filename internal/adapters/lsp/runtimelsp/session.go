@@ -213,7 +213,7 @@ func (s *session) startLocked(ctx context.Context) error {
 // initializeParams keeps the default LSP handshake in one place so tests can verify the runtime contract directly.
 func (s *session) initializeParams(processID int32) (*protocol.InitializeParams, error) {
 	// WorkspaceFolders is the supported replacement for the deprecated root fields.
-	//nolint:exhaustruct // The literal intentionally omits deprecated RootPath and RootURI.
+	//nolint:exhaustruct_v5 // The literal intentionally omits deprecated RootPath and RootURI.
 	params := &protocol.InitializeParams{
 		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
 		ProcessID:              processID,

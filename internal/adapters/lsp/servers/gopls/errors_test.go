@@ -24,7 +24,8 @@ func TestSanitizeGoplsPublicErrorReturnsBuildConfigMessage(t *testing.T) {
 	require.EqualError(
 		t,
 		err,
-		`file_path "tagged_only_featurex.go" is excluded from the active Go build configuration; include its build tags in the active build flags`,
+		`file_path "tagged_only_featurex.go" is excluded from the active Go build configuration; `+
+			`include its build tags in the active build flags`,
 	)
 	require.ErrorIs(t, err, rootCause)
 

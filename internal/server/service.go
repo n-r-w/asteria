@@ -25,12 +25,12 @@ type Service struct {
 // New constructs MCP server.
 func New(serverVersion string, search ILSP, cfg *config.Config) *Service {
 	mcpServer := mcp.NewServer(
-		&mcp.Implementation{ //nolint:exhaustruct // optional fields use defaults
+		&mcp.Implementation{ //nolint:exhaustruct_v5 // optional fields use defaults
 			Name:    domain.ServerName,
 			Version: serverVersion,
 			Title:   domain.ServerName,
 		},
-		//nolint:exhaustruct // optional fields use defaults
+		//nolint:exhaustruct_v5 // optional fields use defaults
 		&mcp.ServerOptions{
 			Instructions: cfg.SystemPrompt,
 		},
@@ -66,12 +66,12 @@ func (s *Service) Run(ctx context.Context) error {
 // Parameters:
 //   - server: MCP server runtime being configured.
 func (s *Service) register() {
-	mcp.AddTool(s.mcpServer, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(s.mcpServer, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        domain.ToolNameGetSymbolsOverview,
 		Description: s.cfg.GetSymbolsOverviewDesc,
 	}, s.getSymbolsOverviewTool)
 
-	mcp.AddTool(s.mcpServer, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(s.mcpServer, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        domain.ToolNameFindSymbol,
 		Description: s.cfg.FindSymbolDesc,
 	}, func(
@@ -82,7 +82,7 @@ func (s *Service) register() {
 		return s.findSymbolTool(ctx, request, &input)
 	})
 
-	mcp.AddTool(s.mcpServer, &mcp.Tool{ //nolint:exhaustruct // external SDK
+	mcp.AddTool(s.mcpServer, &mcp.Tool{ //nolint:exhaustruct_v5 // external SDK
 		Name:        domain.ToolNameFindReferencingSymbols,
 		Description: s.cfg.FindReferencesDesc,
 	}, func(

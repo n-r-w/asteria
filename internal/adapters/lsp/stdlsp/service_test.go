@@ -159,8 +159,10 @@ func TestNewRejectsDocumentSymbolLifecycleWithoutHook(t *testing.T) {
 	t.Parallel()
 
 	service, err := New(&Config{
-		Extensions:                   []string{".ts"},
-		EnsureConn:                   func(context.Context, string) (jsonrpc2.Conn, error) { return nil, errors.New("unused") },
+		Extensions: []string{".ts"},
+		EnsureConn: func(context.Context, string) (jsonrpc2.Conn, error) {
+			return nil, errors.New("unused")
+		},
 		WithRequestDocument:          nil,
 		OpenFileForDocumentSymbol:    true,
 		OpenFileForReferenceWorkflow: false,
@@ -202,13 +204,16 @@ func TestNewRejectsReferenceWorkflowLifecycleWithoutHook(t *testing.T) {
 	)
 }
 
-// TestNewRejectsPartialSymbolTreeCacheConfig proves that stdlsp refuses cache wiring that cannot decide both storage and metadata.
+// TestNewRejectsPartialSymbolTreeCacheConfig proves that stdlsp refuses cache wiring that cannot decide
+// both storage and metadata.
 func TestNewRejectsPartialSymbolTreeCacheConfig(t *testing.T) {
 	t.Parallel()
 
 	service, err := New(&Config{
-		Extensions:                   []string{".ts"},
-		EnsureConn:                   func(context.Context, string) (jsonrpc2.Conn, error) { return nil, errors.New("unused") },
+		Extensions: []string{".ts"},
+		EnsureConn: func(context.Context, string) (jsonrpc2.Conn, error) {
+			return nil, errors.New("unused")
+		},
 		WithRequestDocument:          nil,
 		OpenFileForDocumentSymbol:    false,
 		OpenFileForReferenceWorkflow: false,
@@ -230,7 +235,8 @@ func TestNewRejectsPartialSymbolTreeCacheConfig(t *testing.T) {
 	)
 }
 
-// TestGetSymbolsOverviewReusesCachedTreeAcrossRequests proves that overview requests now reuse the shared symbol-tree cache path.
+// TestGetSymbolsOverviewReusesCachedTreeAcrossRequests proves that overview requests now reuse
+// the shared symbol-tree cache path.
 func TestGetSymbolsOverviewReusesCachedTreeAcrossRequests(t *testing.T) {
 	t.Parallel()
 
@@ -514,7 +520,8 @@ func TestBuildFoundSymbolSkipsOptionalBodyFailure(t *testing.T) {
 	}, foundSymbol)
 }
 
-// TestBuildFoundSymbolUsesRequestWorkspaceRoot proves that stdlsp reads optional body content from the request root, not service config.
+// TestBuildFoundSymbolUsesRequestWorkspaceRoot proves that stdlsp reads optional body content
+// from the request root, not service config.
 func TestBuildFoundSymbolUsesRequestWorkspaceRoot(t *testing.T) {
 	t.Parallel()
 
@@ -573,7 +580,8 @@ func TestBuildFoundSymbolUsesRequestWorkspaceRoot(t *testing.T) {
 	assert.Equal(t, workspaceRoot, request.WorkspaceRoot)
 }
 
-// testDocumentSymbolConn builds an in-memory JSON-RPC peer that answers one documentSymbol request with a stable payload.
+// testDocumentSymbolConn builds an in-memory JSON-RPC peer that answers one documentSymbol request
+// with a stable payload.
 func testDocumentSymbolConn(t *testing.T, expectedURI uri.URI) (jsonrpc2.Conn, *atomic.Int32) {
 	t.Helper()
 
@@ -780,7 +788,8 @@ func testReferenceFallbackConn(t *testing.T, targetURI uri.URI, referenceURI uri
 	return clientConn
 }
 
-// workflowMethodRecorder keeps request order assertions deterministic across the handler goroutine and the test goroutine.
+// workflowMethodRecorder keeps request order assertions deterministic across the handler goroutine
+// and the test goroutine.
 type workflowMethodRecorder struct {
 	mu      sync.Mutex
 	records []string
