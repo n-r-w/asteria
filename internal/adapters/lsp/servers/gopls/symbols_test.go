@@ -34,10 +34,26 @@ func TestNormalizeGoQueryPath(t *testing.T) {
 		{name: "lowercase dot package qualifier", input: "basic.makeBucketPrivate", expected: "makeBucketPrivate"},
 		{name: "slash package type method", input: "basic/FixtureBucket/Describe", expected: "FixtureBucket/Describe"},
 		{name: "dot package type method", input: "basic.FixtureBucket/Describe", expected: "FixtureBucket/Describe"},
-		{name: "lowercase slash package type method", input: "basic/fixtureBucket/describe", expected: "fixtureBucket/describe"},
-		{name: "lowercase dot package type method", input: "basic.fixtureBucket/describe", expected: "fixtureBucket/describe"},
-		{name: "absolute slash package qualifier stays unsupported", input: "/basic/MakeBucket", expected: "/basic/MakeBucket"},
-		{name: "absolute dot package type method stays unsupported", input: "/basic.FixtureBucket/Describe", expected: "/basic.FixtureBucket/Describe"},
+		{
+			name:     "lowercase slash package type method",
+			input:    "basic/fixtureBucket/describe",
+			expected: "fixtureBucket/describe",
+		},
+		{
+			name:     "lowercase dot package type method",
+			input:    "basic.fixtureBucket/describe",
+			expected: "fixtureBucket/describe",
+		},
+		{
+			name:     "absolute slash package qualifier stays unsupported",
+			input:    "/basic/MakeBucket",
+			expected: "/basic/MakeBucket",
+		},
+		{
+			name:     "absolute dot package type method stays unsupported",
+			input:    "/basic.FixtureBucket/Describe",
+			expected: "/basic.FixtureBucket/Describe",
+		},
 	}
 
 	for _, testCase := range testCases {

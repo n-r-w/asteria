@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 )
 
 // newTestService creates a minimal Service instance for unit tests of specific methods
@@ -55,7 +56,11 @@ func TestBuildClientCapabilities(t *testing.T) {
 	require.NotNil(t, capabilities.TextDocument.References)
 	assert.True(t, capabilities.TextDocument.References.DynamicRegistration)
 	require.NotNil(t, capabilities.TextDocument.Hover)
-	assert.Equal(t, []protocol.MarkupKind{protocol.Markdown, protocol.PlainText}, capabilities.TextDocument.Hover.ContentFormat)
+	assert.Equal(
+		t,
+		[]protocol.MarkupKind{protocol.Markdown, protocol.PlainText},
+		capabilities.TextDocument.Hover.ContentFormat,
+	)
 	require.NotNil(t, capabilities.TextDocument.PublishDiagnostics)
 	assert.True(t, capabilities.TextDocument.PublishDiagnostics.RelatedInformation)
 	require.NotNil(t, capabilities.Window)
@@ -78,7 +83,9 @@ func TestPatchInitializeParams(t *testing.T) {
 		StartupReadyTimeout:        30 * time.Second,
 	})
 
-	workspaceFolders := []protocol.WorkspaceFolder{{URI: string(protocol.DocumentURI(filepath.ToSlash("file://" + workspaceRoot))), Name: "workspace"}}
+	workspaceFolders := []protocol.WorkspaceFolder{
+		{URI: string(protocol.DocumentURI(filepath.ToSlash("file://" + workspaceRoot))), Name: "workspace"},
+	}
 	//nolint:exhaustruct // protocol.InitializeParams has many optional SDK fields that this unit test does not exercise.
 	params := &protocol.InitializeParams{WorkspaceFolders: workspaceFolders}
 
@@ -143,8 +150,16 @@ func TestWaitUntilReadyReturnsAfterQuiescentStatus(t *testing.T) {
 		waitErrCh <- service.waitUntilReady(ctx, nil, "/workspace")
 	}()
 
-	serviceReadyFalse := decodeNotification(t, `{"jsonrpc":"2.0","method":"experimental/serverStatus","params":{"health":"ok","quiescent":false}}`)
-	handled, err := service.handleServerCallback(t.Context(), func(context.Context, any, error) error { return nil }, serviceReadyFalse, "/workspace")
+	serviceReadyFalse := decodeNotification(
+		t,
+		`{"jsonrpc":"2.0","method":"experimental/serverStatus","params":{"health":"ok","quiescent":false}}`,
+	)
+	handled, err := service.handleServerCallback(
+		t.Context(),
+		func(context.Context, any, error) error { return nil },
+		serviceReadyFalse,
+		"/workspace",
+	)
 	require.True(t, handled)
 	require.NoError(t, err)
 
@@ -154,8 +169,16 @@ func TestWaitUntilReadyReturnsAfterQuiescentStatus(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	serviceReadyTrue := decodeNotification(t, `{"jsonrpc":"2.0","method":"experimental/serverStatus","params":{"health":"ok","quiescent":true}}`)
-	handled, err = service.handleServerCallback(t.Context(), func(context.Context, any, error) error { return nil }, serviceReadyTrue, "/workspace")
+	serviceReadyTrue := decodeNotification(
+		t,
+		`{"jsonrpc":"2.0","method":"experimental/serverStatus","params":{"health":"ok","quiescent":true}}`,
+	)
+	handled, err = service.handleServerCallback(
+		t.Context(),
+		func(context.Context, any, error) error { return nil },
+		serviceReadyTrue,
+		"/workspace",
+	)
 	require.True(t, handled)
 	require.NoError(t, err)
 	require.NoError(t, <-waitErrCh)

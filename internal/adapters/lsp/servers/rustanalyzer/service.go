@@ -8,14 +8,15 @@ import (
 	"sync"
 	"time"
 
+	"go.lsp.dev/jsonrpc2"
+	"go.lsp.dev/protocol"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 	"github.com/n-r-w/asteria/internal/server"
 	"github.com/n-r-w/asteria/internal/usecase/router"
-	"go.lsp.dev/jsonrpc2"
-	"go.lsp.dev/protocol"
 )
 
 // startupReadinessState tracks one in-flight rust-analyzer startup until the server reports that
@@ -67,20 +68,18 @@ func New(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig) (*Service, error)
 	withRequestDocument := helpers.WithRequestDocument(func(_ string) string { return rustLanguageID })
 
 	rt, err := runtimelsp.New(&runtimelsp.RuntimeConfig{
-		LSPConfig: runtimelsp.LSPConfig{
-			Command:                 rustAnalyzerServerName,
-			Args:                    nil,
-			ServerName:              rustAnalyzerServerName,
-			ShutdownTimeout:         0,
-			ReplyConfiguration:      nil,
-			BuildClientCapabilities: buildClientCapabilities,
-			FileWatch:               nil,
-			PatchInitializeParams:   service.patchInitializeParams,
-			HandleServerCallback:    service.handleServerCallback,
-			AfterInitialized:        nil,
-			WaitUntilReady:          service.waitUntilReady,
-		},
-		BuildWorkspaceFolders: nil,
+		Command:                 rustAnalyzerServerName,
+		Args:                    nil,
+		ServerName:              rustAnalyzerServerName,
+		ShutdownTimeout:         0,
+		ReplyConfiguration:      nil,
+		BuildClientCapabilities: buildClientCapabilities,
+		FileWatch:               nil,
+		PatchInitializeParams:   service.patchInitializeParams,
+		HandleServerCallback:    service.handleServerCallback,
+		AfterInitialized:        nil,
+		WaitUntilReady:          service.waitUntilReady,
+		BuildWorkspaceFolders:   nil,
 	})
 	if err != nil {
 		return nil, err

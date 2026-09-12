@@ -8,8 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/n-r-w/asteria/internal/config"
 	"gopkg.in/natefinch/lumberjack.v2"
+
+	"github.com/n-r-w/asteria/internal/config"
 )
 
 // logDirPermission keeps log files private to the current user because logs can contain workspace paths and errors.

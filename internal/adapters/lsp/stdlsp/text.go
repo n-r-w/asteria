@@ -7,8 +7,9 @@ import (
 	"strings"
 	"unicode/utf16"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 )
 
 // inclusiveLineBounds converts one LSP range into 0-based inclusive line bounds.
@@ -96,7 +97,11 @@ func sliceContentByRange(content string, targetRange protocol.Range) string {
 	}
 
 	if startLine == endLine {
-		return sliceLineByUTF16Columns(lines[startLine], int(targetRange.Start.Character), int(targetRange.End.Character))
+		return sliceLineByUTF16Columns(
+			lines[startLine],
+			int(targetRange.Start.Character),
+			int(targetRange.End.Character),
+		)
 	}
 
 	parts := make([]string, 0, endLine-startLine+1)

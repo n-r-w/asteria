@@ -9,11 +9,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestIntegrationServiceGetSymbolsOverviewReturnsFixtureSymbols proves that the live basedpyright-backed
@@ -215,14 +216,56 @@ func TestIntegrationServiceFindSymbolReturnsAdvancedPythonBodies(t *testing.T) {
 		file    string
 		snippet string
 	}{
-		{name: "property", path: "DecoratedBucket/label", scope: "advanced.py", file: "advanced.py", snippet: "@property"},
-		{name: "classmethod", path: "DecoratedBucket/from_parts", scope: "advanced.py", file: "advanced.py", snippet: "@classmethod"},
-		{name: "staticmethod", path: "DecoratedBucket/build_default", scope: "advanced.py", file: "advanced.py", snippet: "@staticmethod"},
-		{name: "derived render", path: "DerivedBucket/render", scope: "advanced.py", file: "advanced.py", snippet: "return self.label.upper()"},
-		{name: "nested closure", path: "build_labeler/apply", scope: "advanced.py", file: "advanced.py", snippet: "return f\"{prefix}:{value}\""},
+		{
+			name:    "property",
+			path:    "DecoratedBucket/label",
+			scope:   "advanced.py",
+			file:    "advanced.py",
+			snippet: "@property",
+		},
+		{
+			name:    "classmethod",
+			path:    "DecoratedBucket/from_parts",
+			scope:   "advanced.py",
+			file:    "advanced.py",
+			snippet: "@classmethod",
+		},
+		{
+			name:    "staticmethod",
+			path:    "DecoratedBucket/build_default",
+			scope:   "advanced.py",
+			file:    "advanced.py",
+			snippet: "@staticmethod",
+		},
+		{
+			name:    "derived render",
+			path:    "DerivedBucket/render",
+			scope:   "advanced.py",
+			file:    "advanced.py",
+			snippet: "return self.label.upper()",
+		},
+		{
+			name:    "nested closure",
+			path:    "build_labeler/apply",
+			scope:   "advanced.py",
+			file:    "advanced.py",
+			snippet: "return f\"{prefix}:{value}\"",
+		},
 		{name: "match case", path: "choose_bucket", scope: "advanced.py", file: "advanced.py", snippet: "match value:"},
-		{name: "comprehension", path: "collect_labels", scope: "advanced.py", file: "advanced.py", snippet: "return [labeler(value) for value in values]"},
-		{name: "async function", path: "drain_labels", scope: "advanced.py", file: "advanced.py", snippet: "async for value in iter_labels(values)"},
+		{
+			name:    "comprehension",
+			path:    "collect_labels",
+			scope:   "advanced.py",
+			file:    "advanced.py",
+			snippet: "return [labeler(value) for value in values]",
+		},
+		{
+			name:    "async function",
+			path:    "drain_labels",
+			scope:   "advanced.py",
+			file:    "advanced.py",
+			snippet: "async for value in iter_labels(values)",
+		},
 		{name: "generator", path: "sync_labels", scope: "advanced.py", file: "advanced.py", snippet: "yield value"},
 	}
 
@@ -474,7 +517,11 @@ func assertKindContainsExactPath(t *testing.T, symbols []domain.SymbolLocation, 
 }
 
 // assertOverviewContainsExactPathInFile keeps overview assertions focused on exact symbol paths regardless of file.
-func assertOverviewContainsExactPathInFile(t *testing.T, symbols []domain.SymbolLocation, filePath, path string) domain.SymbolLocation {
+func assertOverviewContainsExactPathInFile(
+	t *testing.T,
+	symbols []domain.SymbolLocation,
+	filePath, path string,
+) domain.SymbolLocation {
 	t.Helper()
 
 	location, ok := helpers.FindOverviewSymbol(symbols, path)
@@ -545,7 +592,11 @@ func findFoundSymbol(symbols []domain.FoundSymbol, namePath string) (domain.Foun
 }
 
 // requireFoundSymbolInFile keeps exact-path find_symbol assertions short when multiple fixture files exist.
-func requireFoundSymbolInFile(t *testing.T, symbols []domain.FoundSymbol, namePath, filePath string) domain.FoundSymbol {
+func requireFoundSymbolInFile(
+	t *testing.T,
+	symbols []domain.FoundSymbol,
+	namePath, filePath string,
+) domain.FoundSymbol {
 	t.Helper()
 
 	symbol, ok := findFoundSymbol(symbols, namePath)

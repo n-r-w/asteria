@@ -4,9 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestSanitizeGoplsPublicErrorReturnsBuildConfigMessage proves that tagged Go files outside the active build

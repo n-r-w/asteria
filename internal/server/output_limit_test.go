@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/asteria/internal/config"
-	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/n-r-w/asteria/internal/config"
+	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 )
 
 // TestLimitFindSymbolOutputAddsReturnedPercent proves that truncated symbol responses expose only the compact returned percentage.
@@ -42,8 +43,11 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 
 	payload, err := json.Marshal(limited)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"symbols":[{"kind":12,"path":"Alpha","file":"a.go","range":"0"},{"kind":12,"path":"Bravo","file":"b.go","range":"1"}],"returned_percent":50}`,
-		string(payload))
+	assert.JSONEq(
+		t,
+		`{"symbols":[{"kind":12,"path":"Alpha","file":"a.go","range":"0"},{"kind":12,"path":"Bravo","file":"b.go","range":"1"}],"returned_percent":50}`,
+		string(payload),
+	)
 }
 
 // TestLimitFindSymbolOutputReturnsPublicSizeError proves that oversized responses do not expose server configuration names.

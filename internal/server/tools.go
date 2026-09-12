@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
@@ -27,9 +28,7 @@ func (s *Service) getSymbolsOverviewTool(
 	input.FilePath = strings.TrimSpace(input.FilePath)
 
 	searchRequest := &domain.GetSymbolsOverviewRequest{
-		GetSymbolsOverviewFilter: domain.GetSymbolsOverviewFilter{
-			Depth: input.Depth,
-		},
+		Depth:         input.Depth,
 		WorkspaceRoot: input.WorkspaceRoot,
 		File:          input.FilePath,
 	}
@@ -81,17 +80,15 @@ func (s *Service) findSymbolTool(
 	input.ScopePath = strings.TrimSpace(input.ScopePath)
 
 	searchRequest := &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{
-			Path:              input.SymbolQuery,
-			Depth:             input.Depth,
-			IncludeBody:       input.IncludeBody,
-			IncludeInfo:       input.IncludeInfo,
-			IncludeKinds:      input.IncludeKinds,
-			ExcludeKinds:      input.ExcludeKinds,
-			SubstringMatching: input.SubstringMatching,
-		},
-		WorkspaceRoot: input.WorkspaceRoot,
-		Scope:         input.ScopePath,
+		Path:              input.SymbolQuery,
+		Depth:             input.Depth,
+		IncludeBody:       input.IncludeBody,
+		IncludeInfo:       input.IncludeInfo,
+		IncludeKinds:      input.IncludeKinds,
+		ExcludeKinds:      input.ExcludeKinds,
+		SubstringMatching: input.SubstringMatching,
+		WorkspaceRoot:     input.WorkspaceRoot,
+		Scope:             input.ScopePath,
 	}
 	logAttrs := []any{
 		"workspace_root", searchRequest.WorkspaceRoot,
@@ -147,11 +144,9 @@ func (s *Service) findReferencingSymbolsTool(
 	input.SymbolPath = strings.TrimSpace(input.SymbolPath)
 
 	searchRequest := &domain.FindReferencingSymbolsRequest{
-		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{
-			Path:         input.SymbolPath,
-			IncludeKinds: input.IncludeKinds,
-			ExcludeKinds: input.ExcludeKinds,
-		},
+		Path:          input.SymbolPath,
+		IncludeKinds:  input.IncludeKinds,
+		ExcludeKinds:  input.ExcludeKinds,
 		WorkspaceRoot: input.WorkspaceRoot,
 		File:          input.FilePath,
 	}

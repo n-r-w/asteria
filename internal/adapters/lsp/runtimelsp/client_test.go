@@ -61,7 +61,10 @@ func TestClientHandlerFallsBackToDefaultReplies(t *testing.T) {
 		},
 	)
 
-	request := decodeNotification(t, `{"jsonrpc":"2.0","method":"`+protocol.MethodWindowLogMessage+`","params":{"type":3,"message":"ready"}}`)
+	request := decodeNotification(
+		t,
+		`{"jsonrpc":"2.0","method":"`+protocol.MethodWindowLogMessage+`","params":{"type":3,"message":"ready"}}`,
+	)
 	replied := false
 	err := handler(
 		t.Context(),

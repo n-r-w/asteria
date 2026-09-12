@@ -6,8 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/n-r-w/asteria/internal/domain"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // decodedRawSymbol keeps both raw LSP payload shapes behind one adapter.

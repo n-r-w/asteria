@@ -5,13 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestBuildClientCapabilities proves that phpactor explicitly advertises the hover and references features

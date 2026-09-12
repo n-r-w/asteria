@@ -7,10 +7,11 @@ import (
 	"strings"
 
 	"github.com/cenkalti/backoff/v5"
+	"go.lsp.dev/jsonrpc2"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/domain"
-	"go.lsp.dev/jsonrpc2"
 )
 
 var errTSLSReferencesNotReady = errors.New("tsls references are not ready")

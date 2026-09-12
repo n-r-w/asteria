@@ -14,20 +14,18 @@ func TestCloseRejectsNewEnsureConnCalls(t *testing.T) {
 	t.Parallel()
 
 	runtime, err := New(&RuntimeConfig{
-		LSPConfig: LSPConfig{
-			Command:                 "gopls",
-			Args:                    nil,
-			ServerName:              "gopls",
-			ShutdownTimeout:         time.Second,
-			ReplyConfiguration:      nil,
-			BuildClientCapabilities: func() protocol.ClientCapabilities { return protocol.ClientCapabilities{} },
-			FileWatch:               nil,
-			PatchInitializeParams:   nil,
-			HandleServerCallback:    nil,
-			AfterInitialized:        nil,
-			WaitUntilReady:          nil,
-		},
-		BuildWorkspaceFolders: nil,
+		Command:                 "gopls",
+		Args:                    nil,
+		ServerName:              "gopls",
+		ShutdownTimeout:         time.Second,
+		ReplyConfiguration:      nil,
+		BuildClientCapabilities: func() protocol.ClientCapabilities { return protocol.ClientCapabilities{} },
+		FileWatch:               nil,
+		PatchInitializeParams:   nil,
+		HandleServerCallback:    nil,
+		AfterInitialized:        nil,
+		WaitUntilReady:          nil,
+		BuildWorkspaceFolders:   nil,
 	})
 	require.NoError(t, err)
 	require.NoError(t, runtime.beginEnsureConn())
@@ -62,20 +60,18 @@ func TestCloseUsesShutdownTimeoutWhileWaitingForEnsureConn(t *testing.T) {
 	t.Parallel()
 
 	runtime, err := New(&RuntimeConfig{
-		LSPConfig: LSPConfig{
-			Command:                 "gopls",
-			Args:                    nil,
-			ServerName:              "gopls",
-			ShutdownTimeout:         50 * time.Millisecond,
-			ReplyConfiguration:      nil,
-			BuildClientCapabilities: func() protocol.ClientCapabilities { return protocol.ClientCapabilities{} },
-			FileWatch:               nil,
-			PatchInitializeParams:   nil,
-			HandleServerCallback:    nil,
-			AfterInitialized:        nil,
-			WaitUntilReady:          nil,
-		},
-		BuildWorkspaceFolders: nil,
+		Command:                 "gopls",
+		Args:                    nil,
+		ServerName:              "gopls",
+		ShutdownTimeout:         50 * time.Millisecond,
+		ReplyConfiguration:      nil,
+		BuildClientCapabilities: func() protocol.ClientCapabilities { return protocol.ClientCapabilities{} },
+		FileWatch:               nil,
+		PatchInitializeParams:   nil,
+		HandleServerCallback:    nil,
+		AfterInitialized:        nil,
+		WaitUntilReady:          nil,
+		BuildWorkspaceFolders:   nil,
 	})
 	require.NoError(t, err)
 	require.NoError(t, runtime.beginEnsureConn())

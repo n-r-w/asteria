@@ -6,7 +6,7 @@ import (
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
-//go:generate mockgen -destination=interfaces_mock.go -package=server -source=interfaces.go
+//go:generate go tool mockgen -destination=interfaces_mock.go -package=server -source=interfaces.go
 
 // ILSP defines use-case contract consumed by MCP tool handlers.
 type ILSP interface {

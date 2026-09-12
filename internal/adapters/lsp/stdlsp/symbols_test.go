@@ -3,11 +3,12 @@ package stdlsp
 import (
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestNamePathMatcherMatchesPatterns proves that the matcher follows the supported simple, suffix,
@@ -354,20 +355,72 @@ func TestGroupReferenceMatchesKeepsOneRepresentativeReference(t *testing.T) {
 
 	matches := []referenceMatch{
 		{
-			Container: domain.SymbolLocation{Kind: int(protocol.SymbolKindFunction), Path: "UseMakeBucketTwice", File: "references.go", StartLine: 2, EndLine: 6},
-			Evidence:  referenceEvidenceCandidate{StartLine: 3, EndLine: 3, ContentStartLine: 3, ContentEndLine: 3, Column: 10, Content: "3: MakeBucket()"},
+			Container: domain.SymbolLocation{
+				Kind:      int(protocol.SymbolKindFunction),
+				Path:      "UseMakeBucketTwice",
+				File:      "references.go",
+				StartLine: 2,
+				EndLine:   6,
+			},
+			Evidence: referenceEvidenceCandidate{
+				StartLine:        3,
+				EndLine:          3,
+				ContentStartLine: 3,
+				ContentEndLine:   3,
+				Column:           10,
+				Content:          "3: MakeBucket()",
+			},
 		},
 		{
-			Container: domain.SymbolLocation{Kind: int(protocol.SymbolKindFunction), Path: "UseMakeBucketTwice", File: "references.go", StartLine: 2, EndLine: 6},
-			Evidence:  referenceEvidenceCandidate{StartLine: 3, EndLine: 3, ContentStartLine: 3, ContentEndLine: 3, Column: 10, Content: "3: MakeBucket()"},
+			Container: domain.SymbolLocation{
+				Kind:      int(protocol.SymbolKindFunction),
+				Path:      "UseMakeBucketTwice",
+				File:      "references.go",
+				StartLine: 2,
+				EndLine:   6,
+			},
+			Evidence: referenceEvidenceCandidate{
+				StartLine:        3,
+				EndLine:          3,
+				ContentStartLine: 3,
+				ContentEndLine:   3,
+				Column:           10,
+				Content:          "3: MakeBucket()",
+			},
 		},
 		{
-			Container: domain.SymbolLocation{Kind: int(protocol.SymbolKindFunction), Path: "UseMakeBucketTwice", File: "references.go", StartLine: 2, EndLine: 6},
-			Evidence:  referenceEvidenceCandidate{StartLine: 3, EndLine: 3, ContentStartLine: 3, ContentEndLine: 3, Column: 18, Content: "3: MakeBucket(MakeBucket())"},
+			Container: domain.SymbolLocation{
+				Kind:      int(protocol.SymbolKindFunction),
+				Path:      "UseMakeBucketTwice",
+				File:      "references.go",
+				StartLine: 2,
+				EndLine:   6,
+			},
+			Evidence: referenceEvidenceCandidate{
+				StartLine:        3,
+				EndLine:          3,
+				ContentStartLine: 3,
+				ContentEndLine:   3,
+				Column:           18,
+				Content:          "3: MakeBucket(MakeBucket())",
+			},
 		},
 		{
-			Container: domain.SymbolLocation{Kind: int(protocol.SymbolKindFunction), Path: "UseMakeBucketTwice", File: "references.go", StartLine: 2, EndLine: 6},
-			Evidence:  referenceEvidenceCandidate{StartLine: 5, EndLine: 5, ContentStartLine: 5, ContentEndLine: 5, Column: 4, Content: "5: MakeBucket()"},
+			Container: domain.SymbolLocation{
+				Kind:      int(protocol.SymbolKindFunction),
+				Path:      "UseMakeBucketTwice",
+				File:      "references.go",
+				StartLine: 2,
+				EndLine:   6,
+			},
+			Evidence: referenceEvidenceCandidate{
+				StartLine:        5,
+				EndLine:          5,
+				ContentStartLine: 5,
+				ContentEndLine:   5,
+				Column:           4,
+				Content:          "5: MakeBucket()",
+			},
 		},
 	}
 

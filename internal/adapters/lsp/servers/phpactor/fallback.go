@@ -14,9 +14,10 @@ import (
 	"strconv"
 	"strings"
 
+	"go.lsp.dev/protocol"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/domain"
-	"go.lsp.dev/protocol"
 )
 
 var phpTopLevelConstantPattern = regexp.MustCompile(`^\s*const\s+([A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)\b`)
@@ -286,17 +287,15 @@ func (s *Service) findFallbackPropertyTarget(
 	}
 
 	result, err := s.std.FindSymbol(ctx, &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{
-			Path:              "/" + strings.TrimLeft(trimmedPath, "/"),
-			IncludeKinds:      []int{int(protocol.SymbolKindProperty), int(protocol.SymbolKindField)},
-			ExcludeKinds:      nil,
-			Depth:             0,
-			IncludeBody:       false,
-			IncludeInfo:       false,
-			SubstringMatching: false,
-		},
-		WorkspaceRoot: request.WorkspaceRoot,
-		Scope:         request.File,
+		Path:              "/" + strings.TrimLeft(trimmedPath, "/"),
+		IncludeKinds:      []int{int(protocol.SymbolKindProperty), int(protocol.SymbolKindField)},
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       false,
+		IncludeInfo:       false,
+		SubstringMatching: false,
+		WorkspaceRoot:     request.WorkspaceRoot,
+		Scope:             request.File,
 	})
 	if err != nil {
 		return domain.FoundSymbol{}, false, err
@@ -320,9 +319,9 @@ func (s *Service) propertyReferenceContainer(
 	symbols, ok := overviewCache[referenceRow.File]
 	if !ok {
 		overviewResult, err := s.std.GetSymbolsOverview(ctx, &domain.GetSymbolsOverviewRequest{
-			GetSymbolsOverviewFilter: domain.GetSymbolsOverviewFilter{Depth: phpOverviewDepth},
-			WorkspaceRoot:            workspaceRoot,
-			File:                     referenceRow.File,
+			Depth:         phpOverviewDepth,
+			WorkspaceRoot: workspaceRoot,
+			File:          referenceRow.File,
 		})
 		if err != nil {
 			return domain.ReferencingSymbol{}, false, err
@@ -375,7 +374,8 @@ func smallestContainingSymbol(
 		}
 
 		width := symbol.EndLine - symbol.StartLine
-		if bestIndex == -1 || width < bestWidth || (width == bestWidth && symbol.StartLine < symbols[bestIndex].StartLine) {
+		if bestIndex == -1 || width < bestWidth ||
+			(width == bestWidth && symbol.StartLine < symbols[bestIndex].StartLine) {
 			bestIndex = index
 			bestWidth = width
 		}

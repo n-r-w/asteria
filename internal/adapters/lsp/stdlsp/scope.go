@@ -32,7 +32,8 @@ func resolveSearchScope(workspaceRootPath, relativePath string) (searchScope, er
 	if err != nil {
 		return searchScope{}, domain.NewInternalError(fmt.Errorf("resolve search scope %q: %w", relativePath, err))
 	}
-	if relativeToRoot == parentDirMarker || strings.HasPrefix(relativeToRoot, parentDirMarker+string(os.PathSeparator)) {
+	if relativeToRoot == parentDirMarker ||
+		strings.HasPrefix(relativeToRoot, parentDirMarker+string(os.PathSeparator)) {
 		return searchScope{}, domain.NewPathEscapesWorkspaceRootError("relative path", relativePath)
 	}
 

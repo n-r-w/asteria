@@ -6,6 +6,10 @@ version: "3"
 dotenv: [".env"]
 silent: true
 
+env:
+  GOTOOLCHAIN:
+    sh: awk '$1 == "go" { print "go" $2; exit }' go.mod
+
 tasks:
   default:
     desc: "List available tasks"
@@ -15,8 +19,8 @@ tasks:
   lint:
     desc: "Run code linters"
     cmds:
-      - golangci-lint-v2 run --config ./.golangci.yml
-      - ifaceguard --config ifaceguard.cfg
+      - go tool golangci-lint run -c .golangci.yml
+      - go tool ifaceguard --config ifaceguard.cfg
 
   test:
     desc: "Run unit tests"
@@ -38,6 +42,7 @@ tasks:
     desc: "Format the codebase"
     cmds:
       - go fmt ./...
+      - go tool golangci-lint fmt --config .golangci.yml ./...
 
   vet:
     desc: "Run go vet"

@@ -9,9 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.lsp.dev/protocol"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/domain"
-	"go.lsp.dev/protocol"
 )
 
 // compileCommandEntry keeps one compilation database row editable while managed copies are materialized.

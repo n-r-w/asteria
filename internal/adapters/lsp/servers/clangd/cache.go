@@ -10,8 +10,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"gopkg.in/yaml.v3"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 )
 
 const (

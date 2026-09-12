@@ -160,8 +160,18 @@ func TestWithRequestDocumentKeepsSameURISeparateAcrossConnections(t *testing.T) 
 		})
 	})
 	require.NoError(t, err)
-	waitForURIMethods(t, firstRecorder, uri.File(fixturePath), []string{"textDocument/didOpen", "textDocument/didClose"})
-	waitForURIMethods(t, secondRecorder, uri.File(fixturePath), []string{"textDocument/didOpen", "textDocument/didClose"})
+	waitForURIMethods(
+		t,
+		firstRecorder,
+		uri.File(fixturePath),
+		[]string{"textDocument/didOpen", "textDocument/didClose"},
+	)
+	waitForURIMethods(
+		t,
+		secondRecorder,
+		uri.File(fixturePath),
+		[]string{"textDocument/didOpen", "textDocument/didClose"},
+	)
 }
 
 // waitForURIMethods waits until the recorder sees the exact lifecycle sequence for one URI.

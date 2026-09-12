@@ -6,13 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"go.lsp.dev/jsonrpc2"
+	"go.lsp.dev/protocol"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/server"
 	"github.com/n-r-w/asteria/internal/usecase/router"
-	"go.lsp.dev/jsonrpc2"
-	"go.lsp.dev/protocol"
 )
 
 const phpactorShutdownTimeout = 15 * time.Second
@@ -47,22 +48,20 @@ func New(cacheRoot string) (*Service, error) {
 	}
 
 	rt, err := runtimelsp.New(&runtimelsp.RuntimeConfig{
-		LSPConfig: runtimelsp.LSPConfig{
-			Command:                 phpactorServerName,
-			Args:                    []string{"language-server"},
-			ServerName:              phpactorServerName,
-			ShutdownTimeout:         phpactorShutdownTimeout,
-			ReplyConfiguration:      nil,
-			BuildClientCapabilities: buildClientCapabilities,
-			FileWatch: &runtimelsp.FileWatchConfig{
-				RelevantFile: shouldWatchPHPFile,
-				IgnoreDir:    shouldIgnoreDir,
-			},
-			PatchInitializeParams: service.patchInitializeParams,
-			HandleServerCallback:  nil,
-			AfterInitialized:      service.ensureIndexerPathReady,
-			WaitUntilReady:        nil,
+		Command:                 phpactorServerName,
+		Args:                    []string{"language-server"},
+		ServerName:              phpactorServerName,
+		ShutdownTimeout:         phpactorShutdownTimeout,
+		ReplyConfiguration:      nil,
+		BuildClientCapabilities: buildClientCapabilities,
+		FileWatch: &runtimelsp.FileWatchConfig{
+			RelevantFile: shouldWatchPHPFile,
+			IgnoreDir:    shouldIgnoreDir,
 		},
+		PatchInitializeParams: service.patchInitializeParams,
+		HandleServerCallback:  nil,
+		AfterInitialized:      service.ensureIndexerPathReady,
+		WaitUntilReady:        nil,
 		BuildWorkspaceFolders: nil,
 	})
 	if err != nil {

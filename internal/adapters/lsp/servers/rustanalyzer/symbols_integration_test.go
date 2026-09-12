@@ -12,12 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/config/cfgadapters"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/config/cfgadapters"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 const rustFixtureDirPermissions = fs.FileMode(0o750)
@@ -129,18 +130,73 @@ func TestIntegrationServiceFindSymbolReturnsExpandedRustConstructs(t *testing.T)
 		expectedKind    protocol.SymbolKind
 		requiredContent string
 	}{
-		{name: "top-level function", path: "bucket_in_lib", expectedKind: protocol.SymbolKindFunction, requiredContent: "make_bucket(\"primary\")"},
-		{name: "nested struct", path: "nested/NestedBucket", expectedKind: protocol.SymbolKindStruct, requiredContent: "pub struct NestedBucket"},
-		{name: "trait method", path: "advanced/DisplayLabel/render", expectedKind: protocol.SymbolKindMethod, requiredContent: "fn render(&self) -> String;"},
-		{name: "trait impl method", path: "advanced/DisplayLabel for TupleBucket/render", expectedKind: protocol.SymbolKindMethod, requiredContent: "self.0.clone()"},
+		{
+			name:            "top-level function",
+			path:            "bucket_in_lib",
+			expectedKind:    protocol.SymbolKindFunction,
+			requiredContent: "make_bucket(\"primary\")",
+		},
+		{
+			name:            "nested struct",
+			path:            "nested/NestedBucket",
+			expectedKind:    protocol.SymbolKindStruct,
+			requiredContent: "pub struct NestedBucket",
+		},
+		{
+			name:            "trait method",
+			path:            "advanced/DisplayLabel/render",
+			expectedKind:    protocol.SymbolKindMethod,
+			requiredContent: "fn render(&self) -> String;",
+		},
+		{
+			name:            "trait impl method",
+			path:            "advanced/DisplayLabel for TupleBucket/render",
+			expectedKind:    protocol.SymbolKindMethod,
+			requiredContent: "self.0.clone()",
+		},
 		{name: "enum variant", path: "advanced/BucketState/Ready", expectedKind: protocol.SymbolKindEnumMember},
-		{name: "type alias", path: "advanced/BucketAlias", expectedKind: protocol.SymbolKindTypeParameter, requiredContent: "pub type BucketAlias = TupleBucket;"},
-		{name: "generic struct", path: "advanced/GenericBucket", expectedKind: protocol.SymbolKindStruct, requiredContent: "pub struct GenericBucket<'a, const N: usize, T>"},
-		{name: "async closure function", path: "advanced/load_label", expectedKind: protocol.SymbolKindFunction, requiredContent: "let prefix = || GLOBAL_LABEL.to_string();"},
-		{name: "pattern binding function", path: "advanced/pattern_label", expectedKind: protocol.SymbolKindFunction, requiredContent: "let (head, tail) = input;"},
-		{name: "crate-visible struct", path: "advanced/CrateVisibleBucket", expectedKind: protocol.SymbolKindStruct, requiredContent: "pub(crate) struct CrateVisibleBucket"},
-		{name: "top-level const", path: "FIXTURE_STAMP", expectedKind: protocol.SymbolKindConstant, requiredContent: "pub const FIXTURE_STAMP"},
-		{name: "top-level static", path: "FIXTURE_COUNTER", expectedKind: protocol.SymbolKindConstant, requiredContent: "pub static FIXTURE_COUNTER"},
+		{
+			name:            "type alias",
+			path:            "advanced/BucketAlias",
+			expectedKind:    protocol.SymbolKindTypeParameter,
+			requiredContent: "pub type BucketAlias = TupleBucket;",
+		},
+		{
+			name:            "generic struct",
+			path:            "advanced/GenericBucket",
+			expectedKind:    protocol.SymbolKindStruct,
+			requiredContent: "pub struct GenericBucket<'a, const N: usize, T>",
+		},
+		{
+			name:            "async closure function",
+			path:            "advanced/load_label",
+			expectedKind:    protocol.SymbolKindFunction,
+			requiredContent: "let prefix = || GLOBAL_LABEL.to_string();",
+		},
+		{
+			name:            "pattern binding function",
+			path:            "advanced/pattern_label",
+			expectedKind:    protocol.SymbolKindFunction,
+			requiredContent: "let (head, tail) = input;",
+		},
+		{
+			name:            "crate-visible struct",
+			path:            "advanced/CrateVisibleBucket",
+			expectedKind:    protocol.SymbolKindStruct,
+			requiredContent: "pub(crate) struct CrateVisibleBucket",
+		},
+		{
+			name:            "top-level const",
+			path:            "FIXTURE_STAMP",
+			expectedKind:    protocol.SymbolKindConstant,
+			requiredContent: "pub const FIXTURE_STAMP",
+		},
+		{
+			name:            "top-level static",
+			path:            "FIXTURE_COUNTER",
+			expectedKind:    protocol.SymbolKindConstant,
+			requiredContent: "pub static FIXTURE_COUNTER",
+		},
 	}
 
 	for _, testCase := range testCases {

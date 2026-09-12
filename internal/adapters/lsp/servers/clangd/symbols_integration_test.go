@@ -14,13 +14,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	lsphelpers "github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	lsphelpers "github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 const (

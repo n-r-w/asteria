@@ -6,9 +6,10 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/require"
+
 	"github.com/n-r-w/asteria/internal/config"
 	"github.com/n-r-w/asteria/internal/config/cfgadapters"
-	"github.com/stretchr/testify/require"
 )
 
 // TestRunReturnsNilOnContextCancellation verifies that Ctrl+C style shutdown is treated as a normal stop.
@@ -80,7 +81,11 @@ func TestNewRegistersSchemaPropertyNames(t *testing.T) {
 	}, schemaPropertyNames(t, findSymbolTool))
 
 	findReferencesTool := findToolByName(t, tools, "find_referencing_symbols")
-	require.ElementsMatch(t, []string{"exclude_kinds", "file_path", "include_kinds", "symbol_path", "workspace_root"}, schemaPropertyNames(t, findReferencesTool))
+	require.ElementsMatch(
+		t,
+		[]string{"exclude_kinds", "file_path", "include_kinds", "symbol_path", "workspace_root"},
+		schemaPropertyNames(t, findReferencesTool),
+	)
 }
 
 // TestGetSymbolsOverviewToolRejectsOmittedWorkspaceRoot proves that the public MCP boundary rejects calls
@@ -90,12 +95,15 @@ func TestGetSymbolsOverviewToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 
 	clientSession := newTestClientSession(t, newSchemaTestService())
 
-	_, err := clientSession.CallTool(t.Context(), &mcp.CallToolParams{ //nolint:exhaustruct // only tool name and arguments matter for the test
-		Name: "get_symbols_overview",
-		Arguments: map[string]any{
-			"file_path": "internal/server/service.go",
+	_, err := clientSession.CallTool(
+		t.Context(),
+		&mcp.CallToolParams{ //nolint:exhaustruct // only tool name and arguments matter for the test
+			Name: "get_symbols_overview",
+			Arguments: map[string]any{
+				"file_path": "internal/server/service.go",
+			},
 		},
-	})
+	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "workspace_root")
 }
@@ -107,12 +115,15 @@ func TestFindSymbolToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 
 	clientSession := newTestClientSession(t, newSchemaTestService())
 
-	_, err := clientSession.CallTool(t.Context(), &mcp.CallToolParams{ //nolint:exhaustruct // only tool name and arguments matter for the test
-		Name: "find_symbol",
-		Arguments: map[string]any{
-			"symbol_query": "New",
+	_, err := clientSession.CallTool(
+		t.Context(),
+		&mcp.CallToolParams{ //nolint:exhaustruct // only tool name and arguments matter for the test
+			Name: "find_symbol",
+			Arguments: map[string]any{
+				"symbol_query": "New",
+			},
 		},
-	})
+	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "workspace_root")
 }
@@ -124,13 +135,16 @@ func TestFindReferencingSymbolsToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 
 	clientSession := newTestClientSession(t, newSchemaTestService())
 
-	_, err := clientSession.CallTool(t.Context(), &mcp.CallToolParams{ //nolint:exhaustruct // only tool name and arguments matter for the test
-		Name: "find_referencing_symbols",
-		Arguments: map[string]any{
-			"file_path":   "internal/server/service.go",
-			"symbol_path": "New",
+	_, err := clientSession.CallTool(
+		t.Context(),
+		&mcp.CallToolParams{ //nolint:exhaustruct // only tool name and arguments matter for the test
+			Name: "find_referencing_symbols",
+			Arguments: map[string]any{
+				"file_path":   "internal/server/service.go",
+				"symbol_path": "New",
+			},
 		},
-	})
+	)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "workspace_root")
 }
@@ -154,10 +168,13 @@ func newSchemaTestService() *Service {
 func newTestClientSession(t *testing.T, svc *Service) *mcp.ClientSession {
 	t.Helper()
 
-	client := mcp.NewClient(&mcp.Implementation{ //nolint:exhaustruct // optional SDK fields are irrelevant for test transport setup
-		Name:    "test-client",
-		Version: "v0.0.0",
-	}, nil)
+	client := mcp.NewClient(
+		&mcp.Implementation{ //nolint:exhaustruct // optional SDK fields are irrelevant for test transport setup
+			Name:    "test-client",
+			Version: "v0.0.0",
+		},
+		nil,
+	)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 
 	serverSession, err := svc.mcpServer.Connect(t.Context(), serverTransport, nil)

@@ -4,13 +4,14 @@ package lsptsls
 import (
 	"context"
 
+	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/server"
 	"github.com/n-r-w/asteria/internal/usecase/router"
-	"go.lsp.dev/protocol"
-	"go.lsp.dev/uri"
 )
 
 // Service implements TypeScript-specific symbolic search logic.
@@ -29,20 +30,18 @@ var (
 func New() (*Service, error) {
 	rt, err := runtimelsp.New(
 		&runtimelsp.RuntimeConfig{
-			LSPConfig: runtimelsp.LSPConfig{
-				Command:                 tslsServerName,
-				Args:                    []string{"--stdio"},
-				ServerName:              tslsServerName,
-				ShutdownTimeout:         0,
-				ReplyConfiguration:      nil,
-				BuildClientCapabilities: nil,
-				FileWatch:               nil,
-				PatchInitializeParams:   patchInitializeParams,
-				HandleServerCallback:    nil,
-				AfterInitialized:        nil,
-				WaitUntilReady:          nil,
-			},
-			BuildWorkspaceFolders: nil,
+			Command:                 tslsServerName,
+			Args:                    []string{"--stdio"},
+			ServerName:              tslsServerName,
+			ShutdownTimeout:         0,
+			ReplyConfiguration:      nil,
+			BuildClientCapabilities: nil,
+			FileWatch:               nil,
+			PatchInitializeParams:   patchInitializeParams,
+			HandleServerCallback:    nil,
+			AfterInitialized:        nil,
+			WaitUntilReady:          nil,
+			BuildWorkspaceFolders:   nil,
 		})
 	if err != nil {
 		return nil, err

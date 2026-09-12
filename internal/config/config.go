@@ -11,8 +11,9 @@ import (
 	"time"
 
 	"github.com/caarlos0/env/v11"
-	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 	"github.com/samber/lo"
+
+	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 )
 
 // Config holds static application configuration loaded from environment variables.
@@ -49,13 +50,13 @@ type envConfig struct {
 	GetSymbolsOverviewDesc string        `env:"ASTERIAMCP_GET_SYMBOLS_OVERVIEW_DESC"`
 	FindSymbolDesc         string        `env:"ASTERIAMCP_FIND_SYMBOL_DESC"`
 	FindReferencesDesc     string        `env:"ASTERIAMCP_FIND_REFERENCES_DESC"`
-	ToolTimeout            time.Duration `env:"ASTERIAMCP_TOOL_TIMEOUT" envDefault:"360s"`
-	ToolOutputMaxBytes     int           `env:"ASTERIAMCP_TOOL_OUTPUT_MAX_BYTES" envDefault:"32768"` // ~ 8K tokens
+	ToolTimeout            time.Duration `env:"ASTERIAMCP_TOOL_TIMEOUT"              envDefault:"360s"`
+	ToolOutputMaxBytes     int           `env:"ASTERIAMCP_TOOL_OUTPUT_MAX_BYTES"     envDefault:"32768"` // ~ 8K tokens
 	LogFile                string        `env:"ASTERIAMCP_LOG_FILE"`
-	LogMaxSizeMB           int           `env:"ASTERIAMCP_LOG_MAX_SIZE_MB" envDefault:"20"`
-	LogMaxAgeDays          int           `env:"ASTERIAMCP_LOG_MAX_AGE_DAYS" envDefault:"14"`
-	LogMaxBackups          int           `env:"ASTERIAMCP_LOG_MAX_BACKUPS" envDefault:"20"`
-	LogCompress            bool          `env:"ASTERIAMCP_LOG_COMPRESS" envDefault:"true"`
+	LogMaxSizeMB           int           `env:"ASTERIAMCP_LOG_MAX_SIZE_MB"           envDefault:"20"`
+	LogMaxAgeDays          int           `env:"ASTERIAMCP_LOG_MAX_AGE_DAYS"          envDefault:"14"`
+	LogMaxBackups          int           `env:"ASTERIAMCP_LOG_MAX_BACKUPS"           envDefault:"20"`
+	LogCompress            bool          `env:"ASTERIAMCP_LOG_COMPRESS"              envDefault:"true"`
 	XDGStateHome           string        `env:"XDG_STATE_HOME"`
 	LocalAppData           string        `env:"LOCALAPPDATA"`
 	cfgadapters.EnvConfig

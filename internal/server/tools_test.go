@@ -11,12 +11,13 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/n-r-w/asteria/internal/config"
-	"github.com/n-r-w/asteria/internal/config/cfgadapters"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+
+	"github.com/n-r-w/asteria/internal/config"
+	"github.com/n-r-w/asteria/internal/config/cfgadapters"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // lockedLogBuffer protects test log capture from concurrent writes by parallel tests.
@@ -162,14 +163,20 @@ func TestFindSymbolOutputJSONKeepsKindRangeAndFile(t *testing.T) {
 		EndLine:   0,
 	}}), ReturnedPercent: 0})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"symbols":[{"kind":5,"path":"Service","file":"internal/server/service.go","range":"0"}]}`, string(payload))
+	assert.JSONEq(
+		t,
+		`{"symbols":[{"kind":5,"path":"Service","file":"internal/server/service.go","range":"0"}]}`,
+		string(payload),
+	)
 }
 
 // TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray keeps no-hit results explicit instead of collapsing the payload shape.
 func TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray(t *testing.T) {
 	t.Parallel()
 
-	payload, err := json.Marshal(findReferencingSymbolsOutput{Files: toReferencingFileDTOs(nil), Incomplete: false, ReturnedPercent: 0})
+	payload, err := json.Marshal(
+		findReferencingSymbolsOutput{Files: toReferencingFileDTOs(nil), Incomplete: false, ReturnedPercent: 0},
+	)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"files":[]}`, string(payload))
 }
@@ -188,14 +195,20 @@ func TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields(t *testing.T) 
 		}},
 	}}, Incomplete: false, ReturnedPercent: 0})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"files":[{"file":"references.go","symbols":[{"kind":12,"path":"UseMakeBucketOnce","range":"0-2","content":""}]}]}`, string(payload))
+	assert.JSONEq(
+		t,
+		`{"files":[{"file":"references.go","symbols":[{"kind":12,"path":"UseMakeBucketOnce","range":"0-2","content":""}]}]}`,
+		string(payload),
+	)
 }
 
 // TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet warns callers only when reference coverage is uncertain.
 func TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet(t *testing.T) {
 	t.Parallel()
 
-	payload, err := json.Marshal(findReferencingSymbolsOutput{Files: toReferencingFileDTOs(nil), Incomplete: true, ReturnedPercent: 0})
+	payload, err := json.Marshal(
+		findReferencingSymbolsOutput{Files: toReferencingFileDTOs(nil), Incomplete: true, ReturnedPercent: 0},
+	)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"files":[],"incomplete":true}`, string(payload))
 }
@@ -376,9 +389,9 @@ func TestGetSymbolsOverviewToolMapsWorkspaceRoot(t *testing.T) {
 		Depth:         1,
 	}
 	expectedRequest := &domain.GetSymbolsOverviewRequest{
-		GetSymbolsOverviewFilter: domain.GetSymbolsOverviewFilter{Depth: 1},
-		WorkspaceRoot:            "/tmp/workspace",
-		File:                     "fixture.go",
+		Depth:         1,
+		WorkspaceRoot: "/tmp/workspace",
+		File:          "fixture.go",
 	}
 	expectedResult := domain.GetSymbolsOverviewResult{Symbols: nil}
 
@@ -409,17 +422,15 @@ func TestFindSymbolToolMapsWorkspaceRoot(t *testing.T) {
 		SubstringMatching: true,
 	}
 	expectedRequest := &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{
-			Path:              "Service",
-			IncludeKinds:      []int{5},
-			ExcludeKinds:      []int{6},
-			Depth:             2,
-			IncludeBody:       true,
-			IncludeInfo:       false,
-			SubstringMatching: true,
-		},
-		WorkspaceRoot: "/tmp/workspace",
-		Scope:         "internal/service.go",
+		Path:              "Service",
+		IncludeKinds:      []int{5},
+		ExcludeKinds:      []int{6},
+		Depth:             2,
+		IncludeBody:       true,
+		IncludeInfo:       false,
+		SubstringMatching: true,
+		WorkspaceRoot:     "/tmp/workspace",
+		Scope:             "internal/service.go",
 	}
 	expectedResult := domain.FindSymbolResult{Symbols: nil}
 
@@ -446,11 +457,9 @@ func TestFindReferencingSymbolsToolMapsWorkspaceRoot(t *testing.T) {
 		ExcludeKinds:  []int{12},
 	}
 	expectedRequest := &domain.FindReferencingSymbolsRequest{
-		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{
-			Path:         "Service/Get",
-			IncludeKinds: []int{6},
-			ExcludeKinds: []int{12},
-		},
+		Path:          "Service/Get",
+		IncludeKinds:  []int{6},
+		ExcludeKinds:  []int{12},
 		WorkspaceRoot: "/tmp/workspace",
 		File:          "fixture.go",
 	}
@@ -482,11 +491,9 @@ func TestFindReferencingSymbolsToolReturnsPublicTimeoutError(t *testing.T) {
 			ExcludeKinds:  nil,
 		}
 		expectedRequest := &domain.FindReferencingSymbolsRequest{
-			FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{
-				Path:         "Service/Get",
-				IncludeKinds: nil,
-				ExcludeKinds: nil,
-			},
+			Path:          "Service/Get",
+			IncludeKinds:  nil,
+			ExcludeKinds:  nil,
 			WorkspaceRoot: "/tmp/workspace",
 			File:          "fixture.go",
 		}

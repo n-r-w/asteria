@@ -51,22 +51,20 @@ func New(cacheRoot string) (*Service, error) {
 	withRequestDocument := helpers.WithRequestDocument(languageIDForExtension)
 
 	rt, err := runtimelsp.New(&runtimelsp.RuntimeConfig{
-		LSPConfig: runtimelsp.LSPConfig{
-			Command:                 clangdServerName,
-			Args:                    []string{"--background-index"},
-			ServerName:              clangdServerName,
-			ShutdownTimeout:         clangdShutdownTimeout,
-			ReplyConfiguration:      nil,
-			BuildClientCapabilities: nil,
-			FileWatch: &runtimelsp.FileWatchConfig{
-				RelevantFile: shouldWatchClangdFile,
-				IgnoreDir:    shouldIgnoreDir,
-			},
-			PatchInitializeParams: service.patchInitializeParams,
-			HandleServerCallback:  service.indexProgress.handleCallback,
-			AfterInitialized:      nil,
-			WaitUntilReady:        nil,
+		Command:                 clangdServerName,
+		Args:                    []string{"--background-index"},
+		ServerName:              clangdServerName,
+		ShutdownTimeout:         clangdShutdownTimeout,
+		ReplyConfiguration:      nil,
+		BuildClientCapabilities: nil,
+		FileWatch: &runtimelsp.FileWatchConfig{
+			RelevantFile: shouldWatchClangdFile,
+			IgnoreDir:    shouldIgnoreDir,
 		},
+		PatchInitializeParams: service.patchInitializeParams,
+		HandleServerCallback:  service.indexProgress.handleCallback,
+		AfterInitialized:      nil,
+		WaitUntilReady:        nil,
 		BuildWorkspaceFolders: nil,
 	})
 	if err != nil {

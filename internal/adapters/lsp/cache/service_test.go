@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 )
 
 // TestCacheFilePathUsesVersionedSharedNamespace proves that the shared cache lives under shared/v1,

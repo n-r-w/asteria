@@ -11,11 +11,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/samber/lo"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 const syntheticOverviewDepth = 32
@@ -472,12 +473,10 @@ func (s *Service) requestDefinitionLocation(
 		s.withRequestDocument,
 		func(callCtx context.Context) error {
 			params := &protocol.DefinitionParams{
-				TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-					TextDocument: protocol.TextDocumentIdentifier{
-						URI: uri.File(absolutePath),
-					},
-					Position: position,
+				TextDocument: protocol.TextDocumentIdentifier{
+					URI: uri.File(absolutePath),
 				},
+				Position:               position,
 				WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
 				PartialResultParams:    protocol.PartialResultParams{},
 			}
@@ -515,9 +514,9 @@ func (s *Service) findDefinitionOverviewSymbol(
 	overview, err := s.Service.GetSymbolsOverview(
 		ctx,
 		&domain.GetSymbolsOverviewRequest{
-			GetSymbolsOverviewFilter: domain.GetSymbolsOverviewFilter{Depth: syntheticOverviewDepth},
-			WorkspaceRoot:            workspaceRoot,
-			File:                     relativePath,
+			Depth:         syntheticOverviewDepth,
+			WorkspaceRoot: workspaceRoot,
+			File:          relativePath,
 		},
 	)
 	if err != nil {
@@ -561,9 +560,9 @@ func (s *Service) findOverviewSymbolByPath(
 	overview, err := s.Service.GetSymbolsOverview(
 		ctx,
 		&domain.GetSymbolsOverviewRequest{
-			GetSymbolsOverviewFilter: domain.GetSymbolsOverviewFilter{Depth: syntheticOverviewDepth},
-			WorkspaceRoot:            workspaceRoot,
-			File:                     relativePath,
+			Depth:         syntheticOverviewDepth,
+			WorkspaceRoot: workspaceRoot,
+			File:          relativePath,
 		},
 	)
 	if err != nil {
@@ -600,12 +599,10 @@ func (s *Service) requestSyntheticHoverInfo(
 	}
 
 	params := &protocol.HoverParams{
-		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-			TextDocument: protocol.TextDocumentIdentifier{
-				URI: uri.File(absolutePath),
-			},
-			Position: position,
+		TextDocument: protocol.TextDocumentIdentifier{
+			URI: uri.File(absolutePath),
 		},
+		Position:               position,
 		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
 	}
 

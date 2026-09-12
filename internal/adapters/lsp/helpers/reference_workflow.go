@@ -5,8 +5,9 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/n-r-w/asteria/internal/domain"
 	"go.lsp.dev/jsonrpc2"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // CollectReferenceWorkflowFiles returns one target-directory file set for a cross-file references workflow:

@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/n-r-w/asteria/internal/domain"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // FindOverviewSymbol keeps overview lookups consistent across adapter tests.
@@ -97,7 +98,9 @@ func WithRequestDocument(languageID func(ext string) string) func(
 				closeErr = conn.Notify(
 					context.WithoutCancel(ctx),
 					protocol.MethodTextDocumentDidClose,
-					&protocol.DidCloseTextDocumentParams{TextDocument: protocol.TextDocumentIdentifier{URI: documentURI}},
+					&protocol.DidCloseTextDocumentParams{
+						TextDocument: protocol.TextDocumentIdentifier{URI: documentURI},
+					},
 				)
 			}
 			mu.Unlock()

@@ -8,10 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // GetSymbolsOverview delegates the standard document-symbol workflow to stdlsp.

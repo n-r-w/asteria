@@ -13,12 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestShouldIgnoreDir keeps TypeScript traversal away from generated, vendored, and hidden directories.
@@ -192,7 +193,12 @@ func TestRunWithReferenceWorkflowFilesClosesOpenedFilesAfterOpenFailure(t *testi
 	require.Error(t, err)
 	require.ErrorContains(t, err, fmt.Sprintf("read request document %q", filepath.Join(workspaceRoot, "missing.ts")))
 	require.ErrorIs(t, err, os.ErrNotExist)
-	waitForURIMethods(t, recorder, uri.File(firstPath), []string{protocol.MethodTextDocumentDidOpen, protocol.MethodTextDocumentDidClose})
+	waitForURIMethods(
+		t,
+		recorder,
+		uri.File(firstPath),
+		[]string{protocol.MethodTextDocumentDidOpen, protocol.MethodTextDocumentDidClose},
+	)
 }
 
 // TestShouldRetryReferenceResult proves that tsls retries cross-file reference lookups only while results are
@@ -264,7 +270,11 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 			require.Equal(
 				t,
 				testCase.expected,
-				shouldRetryReferenceResult(testCase.targetRelativePath, testCase.referenceWorkflowFiles, testCase.result),
+				shouldRetryReferenceResult(
+					testCase.targetRelativePath,
+					testCase.referenceWorkflowFiles,
+					testCase.result,
+				),
 			)
 		})
 	}

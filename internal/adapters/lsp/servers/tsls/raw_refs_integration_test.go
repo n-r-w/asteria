@@ -13,12 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 )
 
 var rawReferenceScenarioFiles = []string{"fixture.js", "fixture.ts", "references.ts"}
@@ -125,18 +126,25 @@ func TestIntegrationRawDocumentSymbolsForModuleReexports(t *testing.T) {
 	require.NoError(t, err)
 
 	targetAbsolutePath := filepath.Join(workspaceRoot, "module_reexports.ts")
-	err = helpers.WithRequestDocument(languageIDForExtension)(ctx, conn, targetAbsolutePath, func(callCtx context.Context) error {
-		rawSymbols := rawTSLSDocumentSymbolPayload(t, callCtx, conn, &protocol.DocumentSymbolParams{
-			WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
-			PartialResultParams:    protocol.PartialResultParams{},
-			TextDocument: protocol.TextDocumentIdentifier{
-				URI: uri.File(targetAbsolutePath),
-			},
-		})
-		assert.Empty(t, rawSymbols)
+	err = helpers.WithRequestDocument(
+		languageIDForExtension,
+	)(
+		ctx,
+		conn,
+		targetAbsolutePath,
+		func(callCtx context.Context) error {
+			rawSymbols := rawTSLSDocumentSymbolPayload(t, callCtx, conn, &protocol.DocumentSymbolParams{
+				WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
+				PartialResultParams:    protocol.PartialResultParams{},
+				TextDocument: protocol.TextDocumentIdentifier{
+					URI: uri.File(targetAbsolutePath),
+				},
+			})
+			assert.Empty(t, rawSymbols)
 
-		return nil
-	})
+			return nil
+		},
+	)
 	require.NoError(t, err)
 }
 
@@ -375,13 +383,19 @@ func runWithOpenFiles(
 ) error {
 	t.Helper()
 
-	return runWithOpenReferenceWorkflowFiles(ctx, conn, absolutePaths, newWithRequestDocument(), func(callCtx context.Context) error {
-		if err := warmRequestDocuments(callCtx, conn, absolutePaths); err != nil {
-			return err
-		}
+	return runWithOpenReferenceWorkflowFiles(
+		ctx,
+		conn,
+		absolutePaths,
+		newWithRequestDocument(),
+		func(callCtx context.Context) error {
+			if err := warmRequestDocuments(callCtx, conn, absolutePaths); err != nil {
+				return err
+			}
 
-		return run(callCtx)
-	})
+			return run(callCtx)
+		},
+	)
 }
 
 // rawSelectionStartForTopLevelSymbol reads live document symbols and returns the selection start for one target.

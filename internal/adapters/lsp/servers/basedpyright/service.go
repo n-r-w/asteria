@@ -4,13 +4,14 @@ package lspbasedpyright
 import (
 	"context"
 
+	"go.lsp.dev/jsonrpc2"
+	"go.lsp.dev/protocol"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/server"
 	"github.com/n-r-w/asteria/internal/usecase/router"
-	"go.lsp.dev/jsonrpc2"
-	"go.lsp.dev/protocol"
 )
 
 const experimentalServerStatusMethod = "experimental/serverStatus"
@@ -36,20 +37,18 @@ func New() (*Service, error) {
 	}
 
 	rt, err := runtimelsp.New(&runtimelsp.RuntimeConfig{
-		LSPConfig: runtimelsp.LSPConfig{
-			Command:                 basedpyrightServerName,
-			Args:                    []string{"--stdio"},
-			ServerName:              basedpyrightServerName,
-			ShutdownTimeout:         0,
-			ReplyConfiguration:      buildReplyConfiguration(),
-			BuildClientCapabilities: buildClientCapabilities,
-			FileWatch:               nil,
-			PatchInitializeParams:   service.patchInitializeParams,
-			HandleServerCallback:    service.handleServerCallback,
-			AfterInitialized:        service.afterInitialized,
-			WaitUntilReady:          nil,
-		},
-		BuildWorkspaceFolders: nil,
+		Command:                 basedpyrightServerName,
+		Args:                    []string{"--stdio"},
+		ServerName:              basedpyrightServerName,
+		ShutdownTimeout:         0,
+		ReplyConfiguration:      buildReplyConfiguration(),
+		BuildClientCapabilities: buildClientCapabilities,
+		FileWatch:               nil,
+		PatchInitializeParams:   service.patchInitializeParams,
+		HandleServerCallback:    service.handleServerCallback,
+		AfterInitialized:        service.afterInitialized,
+		WaitUntilReady:          nil,
+		BuildWorkspaceFolders:   nil,
 	})
 	if err != nil {
 		return nil, err

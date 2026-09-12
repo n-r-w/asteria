@@ -34,7 +34,11 @@ func TestNewWithRequestDocumentWarmsOpenedFileBeforeRun(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []string{protocol.MethodTextDocumentDidOpen, protocol.MethodTextDocumentDocumentSymbol}, methodsDuringRun)
+	assert.Equal(
+		t,
+		[]string{protocol.MethodTextDocumentDidOpen, protocol.MethodTextDocumentDocumentSymbol},
+		methodsDuringRun,
+	)
 	waitForWarmRequestDocumentEvents(t, recorder, fixtureURI, []string{
 		protocol.MethodTextDocumentDidOpen,
 		protocol.MethodTextDocumentDocumentSymbol,

@@ -8,7 +8,7 @@ type GoplsConfig struct {
 
 type envConfigGopls struct {
 	GoplsBuildFlags []string `env:"ASTERIAMCP_GOPLS_BUILD_FLAGS" envSeparator:";"`
-	GoplsEnv        []string `env:"ASTERIAMCP_GOPLS_ENV" envSeparator:";"`
+	GoplsEnv        []string `env:"ASTERIAMCP_GOPLS_ENV"         envSeparator:";"`
 }
 
 // build converts gopls-specific environment variables into runtime configuration.
