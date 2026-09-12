@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 )
 
 // newWithRequestDocument keeps the shared didOpen/didClose lifecycle but adds one tsls-specific

@@ -4,6 +4,9 @@ package lsptsls
 import (
 	"context"
 
+	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
@@ -27,20 +30,18 @@ var (
 func New() (*Service, error) {
 	rt, err := runtimelsp.New(
 		&runtimelsp.RuntimeConfig{
-			LSPConfig: runtimelsp.LSPConfig{
-				Command:                 tslsServerName,
-				Args:                    []string{"--stdio"},
-				ServerName:              tslsServerName,
-				ShutdownTimeout:         0,
-				ReplyConfiguration:      nil,
-				BuildClientCapabilities: nil,
-				FileWatch:               nil,
-				PatchInitializeParams:   nil,
-				HandleServerCallback:    nil,
-				AfterInitialized:        nil,
-				WaitUntilReady:          nil,
-			},
-			BuildWorkspaceFolders: nil,
+			Command:                 tslsServerName,
+			Args:                    []string{"--stdio"},
+			ServerName:              tslsServerName,
+			ShutdownTimeout:         0,
+			ReplyConfiguration:      nil,
+			BuildClientCapabilities: nil,
+			FileWatch:               nil,
+			PatchInitializeParams:   patchInitializeParams,
+			HandleServerCallback:    nil,
+			AfterInitialized:        nil,
+			WaitUntilReady:          nil,
+			BuildWorkspaceFolders:   nil,
 		})
 	if err != nil {
 		return nil, err
@@ -63,6 +64,13 @@ func New() (*Service, error) {
 	}
 
 	return &Service{Service: std, rt: rt, withRequestDocument: withRequestDocument}, nil
+}
+
+func patchInitializeParams(workspaceRoot string, params *protocol.InitializeParams) error {
+	//nolint:staticcheck // Supported typescript-language-server versions require RootURI to find workspace TypeScript.
+	params.RootURI = uri.File(workspaceRoot)
+
+	return nil
 }
 
 // Extensions returns the list of file extensions supported by this LSP implementation.

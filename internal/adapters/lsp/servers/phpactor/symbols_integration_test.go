@@ -12,12 +12,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
-	"github.com/n-r-w/asteria/internal/usecase/router"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
+	"github.com/n-r-w/asteria/internal/usecase/router"
 )
 
 const phpactorFixtureFilePermissions = fs.FileMode(0o600)
@@ -341,7 +342,11 @@ func TestIntegrationServiceFindSymbolUsesDirectoryFilter(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"fixture.php", filepath.ToSlash(filepath.Join("vendor", "vendor_helper.php"))}, collectFoundSymbolFiles(result.Symbols))
+	assert.Equal(
+		t,
+		[]string{"fixture.php", filepath.ToSlash(filepath.Join("vendor", "vendor_helper.php"))},
+		collectFoundSymbolFiles(result.Symbols),
+	)
 }
 
 // TestIntegrationServiceFindSymbolUsesDirectoryFilterWithPersistedIndex proves that workspace-wide PHP search
@@ -827,7 +832,14 @@ func writeIgnoredNodeModulesFixture(t *testing.T, workspaceRoot string) {
 
 	ignoredFile := filepath.Join(workspaceRoot, "node_modules", "ignored", "ignored.php")
 	require.NoError(t, os.MkdirAll(filepath.Dir(ignoredFile), phpactorStateDirPermissions))
-	require.NoError(t, os.WriteFile(ignoredFile, []byte("<?php\n\nfunction directory_filter_target(): string\n{\n    return 'node_modules';\n}\n"), phpactorFixtureFilePermissions))
+	require.NoError(
+		t,
+		os.WriteFile(
+			ignoredFile,
+			[]byte("<?php\n\nfunction directory_filter_target(): string\n{\n    return 'node_modules';\n}\n"),
+			phpactorFixtureFilePermissions,
+		),
+	)
 }
 
 // findFoundSymbol keeps integration assertions readable when find_symbol returns a flat slice of matches.

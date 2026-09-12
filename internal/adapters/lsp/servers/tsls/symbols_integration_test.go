@@ -12,11 +12,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestIntegrationServiceGetSymbolsOverviewReturnsFixtureSymbols proves that the live TSLS-backed overview
@@ -254,15 +255,51 @@ func TestIntegrationServiceGetSymbolsOverviewReturnsAdvancedTypeScriptSymbols(t 
 	require.NotEmpty(t, result.Symbols)
 
 	assertOverviewContainsExactPathInFile(t, result.Symbols, "ExtendedShape", "advanced.ts")
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindInterface), "LoaderOptions", "advanced.ts")
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindInterface),
+		"LoaderOptions",
+		"advanced.ts",
+	)
 	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindClass), "DerivedBucket", "advanced.ts")
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindMethod), "DerivedBucket/describe", "advanced.ts")
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindMethod),
+		"DerivedBucket/describe",
+		"advanced.ts",
+	)
 	assert.Len(t, collectTopLevelOverviewPathsWithPrefix(result.Symbols, "createAdvancedBucket@"), 3)
 	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindFunction), "loadBuckets", "advanced.ts")
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindModule), "AdvancedRegistry", "advanced.ts")
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindConstant), "AdvancedRegistry/current", "advanced.ts")
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindModule), "FixtureAmbient", "advanced.ts")
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindInterface), "FixtureAmbient/Config", "advanced.ts")
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindModule),
+		"AdvancedRegistry",
+		"advanced.ts",
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindConstant),
+		"AdvancedRegistry/current",
+		"advanced.ts",
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindModule),
+		"FixtureAmbient",
+		"advanced.ts",
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindInterface),
+		"FixtureAmbient/Config",
+		"advanced.ts",
+	)
 }
 
 // TestIntegrationServiceGetSymbolsOverviewReturnsModuleReexportSymbols proves that tsls-specific synthetic
@@ -279,10 +316,34 @@ func TestIntegrationServiceGetSymbolsOverviewReturnsModuleReexportSymbols(t *tes
 	require.NoError(t, err)
 	require.NotEmpty(t, result.Symbols)
 
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindClass), "defaultBucket", "module_reexports.ts")
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindFunction), "aliasBucket", "module_reexports.ts")
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindConstant), "defaultLabel", "module_reexports.ts")
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindInterface), "ReexportedShape", "module_reexports.ts")
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindClass),
+		"defaultBucket",
+		"module_reexports.ts",
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindFunction),
+		"aliasBucket",
+		"module_reexports.ts",
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindConstant),
+		"defaultLabel",
+		"module_reexports.ts",
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindInterface),
+		"ReexportedShape",
+		"module_reexports.ts",
+	)
 }
 
 // TestIntegrationServiceFindSymbolReturnsAdvancedTypeScriptBodies proves that the richer fixture keeps
@@ -301,7 +362,11 @@ func TestIntegrationServiceFindSymbolReturnsAdvancedTypeScriptBodies(t *testing.
 	extendedShapeSymbol, ok := findFoundSymbol(extendedShapeResult.Symbols, "ExtendedShape")
 	require.True(t, ok, "expected type alias match, got %#v", extendedShapeResult.Symbols)
 	assert.Equal(t, "advanced.ts", extendedShapeSymbol.File)
-	assert.Contains(t, extendedShapeSymbol.Body, "type ExtendedShape<TLabel extends string> = ReexportedShape<TLabel> & {")
+	assert.Contains(
+		t,
+		extendedShapeSymbol.Body,
+		"type ExtendedShape<TLabel extends string> = ReexportedShape<TLabel> & {",
+	)
 	assert.Contains(t, extendedShapeSymbol.Body, "readonly note?: string;")
 
 	loaderOptionsResult, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
@@ -338,10 +403,20 @@ func TestIntegrationServiceFindSymbolReturnsAdvancedTypeScriptBodies(t *testing.
 	require.NoError(t, err)
 
 	createAdvancedBucketBodies := collectFoundSymbolBodiesWithPrefix(overloadResult.Symbols, "createAdvancedBucket@")
-	require.Len(t, createAdvancedBucketBodies, 3, "expected three exact-path overload bodies, got %#v", overloadResult.Symbols)
+	require.Len(
+		t,
+		createAdvancedBucketBodies,
+		3,
+		"expected three exact-path overload bodies, got %#v",
+		overloadResult.Symbols,
+	)
 	assert.Contains(t, createAdvancedBucketBodies[0], "createAdvancedBucket(label: string)")
 	assert.Contains(t, createAdvancedBucketBodies[1], "createAdvancedBucket(shape: ExtendedShape<string>)")
-	assert.Contains(t, createAdvancedBucketBodies[2], `const { label } = typeof input === "string" ? { label: input } : input`)
+	assert.Contains(
+		t,
+		createAdvancedBucketBodies[2],
+		`const { label } = typeof input === "string" ? { label: input } : input`,
+	)
 
 	asyncResult, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
 		FindSymbolFilter: domain.FindSymbolFilter{Path: "loadBuckets", IncludeBody: true},
@@ -424,7 +499,12 @@ func TestIntegrationServiceFindReferencingSymbolsIgnoresUnrelatedUnresolvedReexp
 	require.NoError(t, err)
 
 	symbol, ok := findReferencingSymbol(result.Symbols, "readLocalReexportTarget")
-	require.True(t, ok, "expected local symbol reference despite unrelated unresolved re-export, got %#v", result.Symbols)
+	require.True(
+		t,
+		ok,
+		"expected local symbol reference despite unrelated unresolved re-export, got %#v",
+		result.Symbols,
+	)
 	assert.Equal(t, "unresolved_reexports_usage.ts", symbol.File)
 	assert.Contains(t, symbol.Content, "return localReexportTarget")
 }
@@ -668,7 +748,13 @@ func TestIntegrationServiceFindReferencingSymbolsResolvesDuplicateLocalPaths(t *
 	require.NoError(t, err)
 
 	duplicatePaths := collectOverviewPathsWithPrefix(overview.Symbols, "execute/notification@")
-	require.Len(t, duplicatePaths, 2, "expected two uniquely addressable local notifications, got %#v", overview.Symbols)
+	require.Len(
+		t,
+		duplicatePaths,
+		2,
+		"expected two uniquely addressable local notifications, got %#v",
+		overview.Symbols,
+	)
 	require.NotEqual(t, duplicatePaths[0], duplicatePaths[1])
 
 	result, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
@@ -698,7 +784,13 @@ func TestIntegrationServiceFindSymbolResolvesDuplicateLocalPaths(t *testing.T) {
 	require.NoError(t, err)
 
 	duplicatePaths := collectOverviewPathsWithPrefix(overview.Symbols, "execute/notification@")
-	require.Len(t, duplicatePaths, 2, "expected two uniquely addressable local notifications, got %#v", overview.Symbols)
+	require.Len(
+		t,
+		duplicatePaths,
+		2,
+		"expected two uniquely addressable local notifications, got %#v",
+		overview.Symbols,
+	)
 
 	result, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
 		FindSymbolFilter: domain.FindSymbolFilter{Path: "/" + duplicatePaths[0]},

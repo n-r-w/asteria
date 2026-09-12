@@ -8,12 +8,11 @@ Symbolic(LSP) Search MCP Server. Designed for AI agents, not for humans.
 2. CRITICAL: No unnecessary "noise" in responses to the client. Only information that helps the LLM agent understand where the needed symbol is located, what it represents, and how to reach it.
 
 ## Tech stack
-1. go 1.26
-2. `github.com/modelcontextprotocol/go-sdk` for MCP server implementation
-3. `github.com/stretchr/testify` for tests
-4. `go.uber.org/mock` (no custom mocks, `//go:generate` directives in interface files)
-5. `github.com/caarlos0/env/v11` for loading configuration from environment variables
-6. `log/slog` for logging (must use structured logging with context). Use global logger with context, instead of passing logger instances around. E.g. `slog.DebugContext`.
+1. `github.com/modelcontextprotocol/go-sdk` for MCP server implementation
+2. `github.com/stretchr/testify` for tests
+3. `go.uber.org/mock` (no custom mocks, `//go:generate` directives in interface files)
+4. `github.com/caarlos0/env/v11` for loading configuration from environment variables
+5. `log/slog` for logging (must use structured logging with context). Use global logger with context, instead of passing logger instances around. E.g. `slog.DebugContext`.
 
 ## Documentation
 
@@ -64,7 +63,7 @@ while still providing enough information for the LLM to understand what each too
 4. Use `task lint`, `task test` and `task itest` to check code before completing changes.
 5. Run `task fix` after making batch changes to improve code quality.
 6. MUST avoid "test spam" - creating tests that are not meaningful and do not add value to the project.
-7. MUST NOT use deprecated params `protocol.InitializeParams.RootPath/RootURI`, use `protocol.InitializeParams.WorkspaceFolders` instead. Some legacy LSP implementations may have exceptions.
+7. Prefer not use deprecated params `protocol.InitializeParams.RootPath/RootURI`, use `protocol.InitializeParams.WorkspaceFolders` instead. Some legacy LSP implementations may have exceptions.
 8. When implementing LSP servers, check the work primarily with integration tests, as units can lie.
 9. ALL code MUST be cross-platform compatible (Windows, Linux, MacOS).
 

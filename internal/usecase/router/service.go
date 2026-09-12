@@ -46,7 +46,12 @@ func New(lsps []ILSP) (*Service, error) {
 					continue
 				}
 
-				return nil, fmt.Errorf("multiple lsp implementations support extension %q: %T and %T", ext, existingLSP, lsp)
+				return nil, fmt.Errorf(
+					"multiple lsp implementations support extension %q: %T and %T",
+					ext,
+					existingLSP,
+					lsp,
+				)
 			}
 
 			lspByExtension[normalizedExt] = lsp

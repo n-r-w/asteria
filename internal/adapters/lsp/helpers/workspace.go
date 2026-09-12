@@ -65,7 +65,8 @@ func ResolveDocumentPath(workspaceRootPath, relativePath string) (cleanRelativeP
 	if err != nil {
 		return "", "", domain.NewInternalError(fmt.Errorf("resolve relative path %q: %w", relativePath, err))
 	}
-	if relativeToRoot == parentDirMarker || strings.HasPrefix(relativeToRoot, parentDirMarker+string(os.PathSeparator)) {
+	if relativeToRoot == parentDirMarker ||
+		strings.HasPrefix(relativeToRoot, parentDirMarker+string(os.PathSeparator)) {
 		return "", "", domain.NewPathEscapesWorkspaceRootError("relative path", relativePath)
 	}
 

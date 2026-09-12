@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 )
 
 // TestCacheFilePathUsesVersionedSharedNamespace proves that the shared cache lives under shared/v1,
@@ -69,7 +70,8 @@ func TestServiceReadWriteSymbolTreeRoundTrip(t *testing.T) {
 	assert.Equal(t, request.Payload, payload)
 }
 
-// TestServiceReadSymbolTreeInvalidatesChangedDependency proves that dependency content participates in cache validation.
+// TestServiceReadSymbolTreeInvalidatesChangedDependency proves that dependency content participates
+// in cache validation.
 func TestServiceReadSymbolTreeInvalidatesChangedDependency(t *testing.T) {
 	t.Parallel()
 
@@ -105,7 +107,8 @@ func TestServiceReadSymbolTreeInvalidatesChangedDependency(t *testing.T) {
 	assert.Nil(t, payload)
 }
 
-// TestServiceReadSymbolTreeInvalidatesDifferentFingerprint proves that adapter fingerprint changes invalidate old entries.
+// TestServiceReadSymbolTreeInvalidatesDifferentFingerprint proves that adapter fingerprint changes
+// invalidate old entries.
 func TestServiceReadSymbolTreeInvalidatesDifferentFingerprint(t *testing.T) {
 	t.Parallel()
 

@@ -3,9 +3,10 @@ package stdlsp
 import (
 	"context"
 
-	"github.com/n-r-w/asteria/internal/domain"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // NamePathBuilder constructs the normalized name path used across shared search helpers.

@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestParsePHPActorReferenceRows proves that the phpactor table parser keeps only real reference rows and
@@ -71,17 +72,15 @@ func TestAugmentFindSymbolWithPHPConstants(t *testing.T) {
 	require.NoError(t, os.WriteFile(filePath, []byte("<?php\n\nconst FIXTURE_STAMP = 'stamp';\n"), 0o600))
 
 	result, err := augmentFindSymbolWithPHPConstants(workspaceRoot, &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{
-			Path:              "/FIXTURE_STAMP",
-			IncludeKinds:      nil,
-			ExcludeKinds:      nil,
-			Depth:             0,
-			IncludeBody:       false,
-			IncludeInfo:       false,
-			SubstringMatching: false,
-		},
-		WorkspaceRoot: workspaceRoot,
-		Scope:         "fixture.php",
+		Path:              "/FIXTURE_STAMP",
+		IncludeKinds:      nil,
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       false,
+		IncludeInfo:       false,
+		SubstringMatching: false,
+		WorkspaceRoot:     workspaceRoot,
+		Scope:             "fixture.php",
 	}, domain.FindSymbolResult{Symbols: nil})
 	require.NoError(t, err)
 	require.Len(t, result.Symbols, 1)
@@ -102,11 +101,13 @@ func TestPHPActorPropertyReferenceTarget(t *testing.T) {
 	t.Parallel()
 
 	referenceTarget, propertyName, ok := phpactorPropertyReferenceTarget(&domain.FoundSymbol{
-		Kind:      7,
-		Body:      "",
-		Info:      "",
-		Path:      "PerHotelCommissionsService@18:0/commissionHotelsKafkaTopic@37:4",
-		File:      filepath.ToSlash(filepath.Join("core", "src", "Pricing", "Client", "PerHotelCommissionsService.php")),
+		Kind: 7,
+		Body: "",
+		Info: "",
+		Path: "PerHotelCommissionsService@18:0/commissionHotelsKafkaTopic@37:4",
+		File: filepath.ToSlash(
+			filepath.Join("core", "src", "Pricing", "Client", "PerHotelCommissionsService.php"),
+		),
 		StartLine: 37,
 		EndLine:   37,
 	})

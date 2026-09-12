@@ -14,13 +14,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestRunRequestWithDocumentContextFallsBackToDirectCall proves that stdlsp keeps the direct flow
@@ -106,7 +107,11 @@ func TestRequestRawDocumentSymbolsSkipsDocumentLifecycleWhenDisabled(t *testing.
 }
 
 // assertRequestRawDocumentSymbolsLifecycle keeps the lifecycle toggle tests focused on the flag and expected calls.
-func assertRequestRawDocumentSymbolsLifecycle(t *testing.T, openFileForDocumentSymbol bool, expectedLifecycleCalls int32) {
+func assertRequestRawDocumentSymbolsLifecycle(
+	t *testing.T,
+	openFileForDocumentSymbol bool,
+	expectedLifecycleCalls int32,
+) {
 	t.Helper()
 
 	workspaceRoot := t.TempDir()
@@ -154,8 +159,10 @@ func TestNewRejectsDocumentSymbolLifecycleWithoutHook(t *testing.T) {
 	t.Parallel()
 
 	service, err := New(&Config{
-		Extensions:                   []string{".ts"},
-		EnsureConn:                   func(context.Context, string) (jsonrpc2.Conn, error) { return nil, errors.New("unused") },
+		Extensions: []string{".ts"},
+		EnsureConn: func(context.Context, string) (jsonrpc2.Conn, error) {
+			return nil, errors.New("unused")
+		},
 		WithRequestDocument:          nil,
 		OpenFileForDocumentSymbol:    true,
 		OpenFileForReferenceWorkflow: false,
@@ -165,7 +172,11 @@ func TestNewRejectsDocumentSymbolLifecycleWithoutHook(t *testing.T) {
 		BuildSymbolTreeCacheMetadata: nil,
 	})
 	require.Nil(t, service)
-	require.EqualError(t, err, "invalid stdlsp config: with request document callback is required when open_file_for_document_symbol is enabled")
+	require.EqualError(
+		t,
+		err,
+		"invalid stdlsp config: with request document callback is required when open_file_for_document_symbol is enabled",
+	)
 }
 
 // TestNewRejectsReferenceWorkflowLifecycleWithoutHook proves that stdlsp refuses to enable
@@ -186,16 +197,23 @@ func TestNewRejectsReferenceWorkflowLifecycleWithoutHook(t *testing.T) {
 		BuildSymbolTreeCacheMetadata: nil,
 	})
 	require.Nil(t, service)
-	require.EqualError(t, err, "invalid stdlsp config: with request document callback is required when open_file_for_reference_workflow is enabled")
+	require.EqualError(
+		t,
+		err,
+		"invalid stdlsp config: with request document callback is required when open_file_for_reference_workflow is enabled",
+	)
 }
 
-// TestNewRejectsPartialSymbolTreeCacheConfig proves that stdlsp refuses cache wiring that cannot decide both storage and metadata.
+// TestNewRejectsPartialSymbolTreeCacheConfig proves that stdlsp refuses cache wiring that cannot decide
+// both storage and metadata.
 func TestNewRejectsPartialSymbolTreeCacheConfig(t *testing.T) {
 	t.Parallel()
 
 	service, err := New(&Config{
-		Extensions:                   []string{".ts"},
-		EnsureConn:                   func(context.Context, string) (jsonrpc2.Conn, error) { return nil, errors.New("unused") },
+		Extensions: []string{".ts"},
+		EnsureConn: func(context.Context, string) (jsonrpc2.Conn, error) {
+			return nil, errors.New("unused")
+		},
 		WithRequestDocument:          nil,
 		OpenFileForDocumentSymbol:    false,
 		OpenFileForReferenceWorkflow: false,
@@ -210,10 +228,15 @@ func TestNewRejectsPartialSymbolTreeCacheConfig(t *testing.T) {
 		BuildSymbolTreeCacheMetadata: nil,
 	})
 	require.Nil(t, service)
-	require.EqualError(t, err, "invalid stdlsp config: symbol tree cache and cache metadata builder must be configured together")
+	require.EqualError(
+		t,
+		err,
+		"invalid stdlsp config: symbol tree cache and cache metadata builder must be configured together",
+	)
 }
 
-// TestGetSymbolsOverviewReusesCachedTreeAcrossRequests proves that overview requests now reuse the shared symbol-tree cache path.
+// TestGetSymbolsOverviewReusesCachedTreeAcrossRequests proves that overview requests now reuse
+// the shared symbol-tree cache path.
 func TestGetSymbolsOverviewReusesCachedTreeAcrossRequests(t *testing.T) {
 	t.Parallel()
 
@@ -240,15 +263,15 @@ func TestGetSymbolsOverviewReusesCachedTreeAcrossRequests(t *testing.T) {
 	}, cacheDisableWarnings: sync.Map{}}
 
 	firstResult, err := service.GetSymbolsOverview(t.Context(), &domain.GetSymbolsOverviewRequest{
-		GetSymbolsOverviewFilter: domain.GetSymbolsOverviewFilter{Depth: 1},
-		WorkspaceRoot:            workspaceRoot,
-		File:                     "fixture.ts",
+		Depth:         1,
+		WorkspaceRoot: workspaceRoot,
+		File:          "fixture.ts",
 	})
 	require.NoError(t, err)
 	secondResult, err := service.GetSymbolsOverview(t.Context(), &domain.GetSymbolsOverviewRequest{
-		GetSymbolsOverviewFilter: domain.GetSymbolsOverviewFilter{Depth: 1},
-		WorkspaceRoot:            workspaceRoot,
-		File:                     "fixture.ts",
+		Depth:         1,
+		WorkspaceRoot: workspaceRoot,
+		File:          "fixture.ts",
 	})
 	require.NoError(t, err)
 
@@ -286,11 +309,9 @@ func TestFindReferencingSymbolsKeepsTargetOpenForWholeWorkflow(t *testing.T) {
 	}, cacheDisableWarnings: sync.Map{}}
 
 	result, err := service.FindReferencingSymbols(t.Context(), &domain.FindReferencingSymbolsRequest{
-		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{
-			Path:         "makeBucket",
-			IncludeKinds: nil,
-			ExcludeKinds: nil,
-		},
+		Path:          "makeBucket",
+		IncludeKinds:  nil,
+		ExcludeKinds:  nil,
 		WorkspaceRoot: workspaceRoot,
 		File:          "fixture.ts",
 	})
@@ -329,7 +350,14 @@ func TestFindReferencingSymbolsFallsBackToFileContainer(t *testing.T) {
 	targetAbsolutePath := filepath.Join(workspaceRoot, "fixture.ts")
 	referenceAbsolutePath := filepath.Join(workspaceRoot, "imports.ts")
 	require.NoError(t, os.WriteFile(targetAbsolutePath, []byte("export function makeBucket() {}\n"), 0o600))
-	require.NoError(t, os.WriteFile(referenceAbsolutePath, []byte("import { makeBucket } from \"./fixture\"\nconst value = makeBucket\n"), 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(
+			referenceAbsolutePath,
+			[]byte("import { makeBucket } from \"./fixture\"\nconst value = makeBucket\n"),
+			0o600,
+		),
+	)
 
 	conn := testReferenceFallbackConn(t, uri.File(targetAbsolutePath), uri.File(referenceAbsolutePath))
 	service := &Service{config: &Config{
@@ -345,11 +373,9 @@ func TestFindReferencingSymbolsFallsBackToFileContainer(t *testing.T) {
 	}, cacheDisableWarnings: sync.Map{}}
 
 	result, err := service.FindReferencingSymbols(t.Context(), &domain.FindReferencingSymbolsRequest{
-		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{
-			Path:         "makeBucket",
-			IncludeKinds: nil,
-			ExcludeKinds: nil,
-		},
+		Path:          "makeBucket",
+		IncludeKinds:  nil,
+		ExcludeKinds:  nil,
 		WorkspaceRoot: workspaceRoot,
 		File:          "fixture.ts",
 	})
@@ -402,17 +428,15 @@ func TestBuildFoundSymbolSkipsOptionalHoverFailure(t *testing.T) {
 		Children: nil,
 	}
 	request := &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{
-			Path:              "MakeBucket",
-			IncludeKinds:      nil,
-			ExcludeKinds:      nil,
-			Depth:             0,
-			IncludeBody:       false,
-			IncludeInfo:       true,
-			SubstringMatching: false,
-		},
-		WorkspaceRoot: workspaceRoot,
-		Scope:         "fixture.go",
+		Path:              "MakeBucket",
+		IncludeKinds:      nil,
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       false,
+		IncludeInfo:       true,
+		SubstringMatching: false,
+		WorkspaceRoot:     workspaceRoot,
+		Scope:             "fixture.go",
 	}
 
 	foundSymbol := service.buildFoundSymbol(
@@ -466,17 +490,15 @@ func TestBuildFoundSymbolSkipsOptionalBodyFailure(t *testing.T) {
 		Children: nil,
 	}
 	request := &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{
-			Path:              "MakeBucket",
-			IncludeKinds:      nil,
-			ExcludeKinds:      nil,
-			Depth:             0,
-			IncludeBody:       true,
-			IncludeInfo:       false,
-			SubstringMatching: false,
-		},
-		WorkspaceRoot: workspaceRoot,
-		Scope:         "missing.go",
+		Path:              "MakeBucket",
+		IncludeKinds:      nil,
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       true,
+		IncludeInfo:       false,
+		SubstringMatching: false,
+		WorkspaceRoot:     workspaceRoot,
+		Scope:             "missing.go",
 	}
 
 	foundSymbol := service.buildFoundSymbol(
@@ -498,7 +520,8 @@ func TestBuildFoundSymbolSkipsOptionalBodyFailure(t *testing.T) {
 	}, foundSymbol)
 }
 
-// TestBuildFoundSymbolUsesRequestWorkspaceRoot proves that stdlsp reads optional body content from the request root, not service config.
+// TestBuildFoundSymbolUsesRequestWorkspaceRoot proves that stdlsp reads optional body content
+// from the request root, not service config.
 func TestBuildFoundSymbolUsesRequestWorkspaceRoot(t *testing.T) {
 	t.Parallel()
 
@@ -519,17 +542,15 @@ func TestBuildFoundSymbolUsesRequestWorkspaceRoot(t *testing.T) {
 		BuildSymbolTreeCacheMetadata: nil,
 	}, cacheDisableWarnings: sync.Map{}}
 	request := &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{
-			Path:              "MakeBucket",
-			IncludeKinds:      nil,
-			ExcludeKinds:      nil,
-			Depth:             0,
-			IncludeBody:       true,
-			IncludeInfo:       false,
-			SubstringMatching: false,
-		},
-		WorkspaceRoot: workspaceRoot,
-		Scope:         "fixture.go",
+		Path:              "MakeBucket",
+		IncludeKinds:      nil,
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       true,
+		IncludeInfo:       false,
+		SubstringMatching: false,
+		WorkspaceRoot:     workspaceRoot,
+		Scope:             "fixture.go",
 	}
 	node := &node{
 		Kind:         int(protocol.SymbolKindFunction),
@@ -559,7 +580,8 @@ func TestBuildFoundSymbolUsesRequestWorkspaceRoot(t *testing.T) {
 	assert.Equal(t, workspaceRoot, request.WorkspaceRoot)
 }
 
-// testDocumentSymbolConn builds an in-memory JSON-RPC peer that answers one documentSymbol request with a stable payload.
+// testDocumentSymbolConn builds an in-memory JSON-RPC peer that answers one documentSymbol request
+// with a stable payload.
 func testDocumentSymbolConn(t *testing.T, expectedURI uri.URI) (jsonrpc2.Conn, *atomic.Int32) {
 	t.Helper()
 
@@ -766,7 +788,8 @@ func testReferenceFallbackConn(t *testing.T, targetURI uri.URI, referenceURI uri
 	return clientConn
 }
 
-// workflowMethodRecorder keeps request order assertions deterministic across the handler goroutine and the test goroutine.
+// workflowMethodRecorder keeps request order assertions deterministic across the handler goroutine
+// and the test goroutine.
 type workflowMethodRecorder struct {
 	mu      sync.Mutex
 	records []string
@@ -842,7 +865,9 @@ func (c *memorySymbolTreeCache) WriteSymbolTree(
 	defer c.mu.Unlock()
 
 	c.writeCount++
-	c.entries[memoryCacheKey(request.WorkspaceRoot, request.RelativePath, request.Metadata)] = append([]byte(nil), request.Payload...)
+	c.entries[memoryCacheKey(request.WorkspaceRoot, request.RelativePath, request.Metadata)] = append(
+		[]byte(nil),
+		request.Payload...)
 
 	return nil
 }
@@ -860,5 +885,8 @@ func fixedCacheMetadata(_ context.Context, _, _ string) (*SymbolTreeCacheMetadat
 }
 
 func memoryCacheKey(workspaceRoot, relativePath string, metadata SymbolTreeCacheMetadata) string {
-	return strings.Join([]string{workspaceRoot, relativePath, metadata.AdapterID, metadata.ProfileID, metadata.AdapterFingerprint}, "|")
+	return strings.Join(
+		[]string{workspaceRoot, relativePath, metadata.AdapterID, metadata.ProfileID, metadata.AdapterFingerprint},
+		"|",
+	)
 }

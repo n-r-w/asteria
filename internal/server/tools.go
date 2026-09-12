@@ -9,7 +9,15 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/n-r-w/asteria/internal/domain"
+)
+
+const (
+	logErrorKey         = "error"
+	logFilePathKey      = "file_path"
+	logPublicErrorKey   = "public_error"
+	logWorkspaceRootKey = "workspace_root"
 )
 
 // getSymbolsOverviewTool handles get_symbols_overview requests.
@@ -27,15 +35,13 @@ func (s *Service) getSymbolsOverviewTool(
 	input.FilePath = strings.TrimSpace(input.FilePath)
 
 	searchRequest := &domain.GetSymbolsOverviewRequest{
-		GetSymbolsOverviewFilter: domain.GetSymbolsOverviewFilter{
-			Depth: input.Depth,
-		},
+		Depth:         input.Depth,
 		WorkspaceRoot: input.WorkspaceRoot,
 		File:          input.FilePath,
 	}
 	logAttrs := []any{
-		"workspace_root", searchRequest.WorkspaceRoot,
-		"file_path", searchRequest.File,
+		logWorkspaceRootKey, searchRequest.WorkspaceRoot,
+		logFilePathKey, searchRequest.File,
 	}
 	if err := searchRequest.Validate(); err != nil {
 		return nil, getSymbolsOverviewOutput{}, processError(
@@ -81,20 +87,18 @@ func (s *Service) findSymbolTool(
 	input.ScopePath = strings.TrimSpace(input.ScopePath)
 
 	searchRequest := &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{
-			Path:              input.SymbolQuery,
-			Depth:             input.Depth,
-			IncludeBody:       input.IncludeBody,
-			IncludeInfo:       input.IncludeInfo,
-			IncludeKinds:      input.IncludeKinds,
-			ExcludeKinds:      input.ExcludeKinds,
-			SubstringMatching: input.SubstringMatching,
-		},
-		WorkspaceRoot: input.WorkspaceRoot,
-		Scope:         input.ScopePath,
+		Path:              input.SymbolQuery,
+		Depth:             input.Depth,
+		IncludeBody:       input.IncludeBody,
+		IncludeInfo:       input.IncludeInfo,
+		IncludeKinds:      input.IncludeKinds,
+		ExcludeKinds:      input.ExcludeKinds,
+		SubstringMatching: input.SubstringMatching,
+		WorkspaceRoot:     input.WorkspaceRoot,
+		Scope:             input.ScopePath,
 	}
 	logAttrs := []any{
-		"workspace_root", searchRequest.WorkspaceRoot,
+		logWorkspaceRootKey, searchRequest.WorkspaceRoot,
 		"symbol_query", searchRequest.Path,
 		"scope_path", searchRequest.Scope,
 	}
@@ -147,17 +151,15 @@ func (s *Service) findReferencingSymbolsTool(
 	input.SymbolPath = strings.TrimSpace(input.SymbolPath)
 
 	searchRequest := &domain.FindReferencingSymbolsRequest{
-		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{
-			Path:         input.SymbolPath,
-			IncludeKinds: input.IncludeKinds,
-			ExcludeKinds: input.ExcludeKinds,
-		},
+		Path:          input.SymbolPath,
+		IncludeKinds:  input.IncludeKinds,
+		ExcludeKinds:  input.ExcludeKinds,
 		WorkspaceRoot: input.WorkspaceRoot,
 		File:          input.FilePath,
 	}
 	logAttrs := []any{
-		"workspace_root", searchRequest.WorkspaceRoot,
-		"file_path", searchRequest.File,
+		logWorkspaceRootKey, searchRequest.WorkspaceRoot,
+		logFilePathKey, searchRequest.File,
 		"symbol_path", searchRequest.Path,
 	}
 	if err := searchRequest.Validate(); err != nil {
@@ -309,10 +311,10 @@ func processError(ctx context.Context, toolName string, err error, logAttrs ...a
 		logLevel := safeErrorLogLevel(safeErr)
 		cause := safeErr.Cause()
 		if cause != nil {
-			attrs := append([]any{"error", cause, "public_error", publicErr.Error()}, logAttrs...)
+			attrs := append([]any{logErrorKey, cause, logPublicErrorKey, publicErr.Error()}, logAttrs...)
 			slog.Log(ctx, logLevel, toolName, attrs...)
 		} else {
-			attrs := append([]any{"error", safeErr.Error(), "public_error", publicErr.Error()}, logAttrs...)
+			attrs := append([]any{logErrorKey, safeErr.Error(), logPublicErrorKey, publicErr.Error()}, logAttrs...)
 			slog.Log(ctx, logLevel, toolName, attrs...)
 		}
 
@@ -320,7 +322,7 @@ func processError(ctx context.Context, toolName string, err error, logAttrs ...a
 	}
 
 	publicErr := fmt.Errorf("%s: internal error", toolName)
-	attrs := append([]any{"error", err, "public_error", publicErr.Error()}, logAttrs...)
+	attrs := append([]any{logErrorKey, err, logPublicErrorKey, publicErr.Error()}, logAttrs...)
 	slog.ErrorContext(ctx, toolName, attrs...)
 
 	return publicErr

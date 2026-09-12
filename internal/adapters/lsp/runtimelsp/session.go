@@ -8,9 +8,10 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/n-r-w/asteria/internal/domain"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // session stores the live language server process and the JSON-RPC connection bound to it.
@@ -153,7 +154,10 @@ func (s *session) startLocked(ctx context.Context) error {
 	initializeParams, err := s.initializeParams(processID)
 	if err != nil {
 		shutdownErr := s.closeLocked(startupCtx)
-		return errors.Join(wrapSessionError("prepare "+s.config.ServerName+" initialize params", err, &stderr), shutdownErr)
+		return errors.Join(
+			wrapSessionError("prepare "+s.config.ServerName+" initialize params", err, &stderr),
+			shutdownErr,
+		)
 	}
 
 	var initializeResult *protocol.InitializeResult
@@ -209,7 +213,7 @@ func (s *session) startLocked(ctx context.Context) error {
 // initializeParams keeps the default LSP handshake in one place so tests can verify the runtime contract directly.
 func (s *session) initializeParams(processID int32) (*protocol.InitializeParams, error) {
 	// WorkspaceFolders is the supported replacement for the deprecated root fields.
-	//nolint:exhaustruct // The literal intentionally omits deprecated RootPath and RootURI.
+	//nolint:exhaustruct_v5 // The literal intentionally omits deprecated RootPath and RootURI.
 	params := &protocol.InitializeParams{
 		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
 		ProcessID:              processID,
@@ -293,7 +297,10 @@ func (s *session) closeLocked(ctx context.Context) error {
 	case <-done:
 		closeErr = errors.Join(
 			closeErr,
-			wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorOnShutdown(readWaitResult(waitResult))),
+			wrapShutdownError(
+				"wait for "+s.config.ServerName,
+				normalizeWaitErrorOnShutdown(readWaitResult(waitResult)),
+			),
 		)
 	case <-closeCtx.Done():
 		forcedStop = true
@@ -307,7 +314,10 @@ func (s *session) closeLocked(ctx context.Context) error {
 		case <-done:
 			closeErr = errors.Join(
 				closeErr,
-				wrapShutdownError("wait for "+s.config.ServerName, normalizeWaitErrorOnShutdown(readWaitResult(waitResult))),
+				wrapShutdownError(
+					"wait for "+s.config.ServerName,
+					normalizeWaitErrorOnShutdown(readWaitResult(waitResult)),
+				),
 			)
 		case <-postKillCtx.Done():
 			closeErr = errors.Join(closeErr, wrapShutdownError("wait for "+s.config.ServerName, postKillCtx.Err()))

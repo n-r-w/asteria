@@ -72,7 +72,11 @@ func (s *Service) limitFindReferencingSymbolsOutput(
 		s.cfg.ToolOutputMaxBytes,
 		totalItems,
 		output,
-		findReferencingSymbolsOutput{Files: make([]referencingFileDTO, 0), Incomplete: output.Incomplete, ReturnedPercent: 0},
+		findReferencingSymbolsOutput{
+			Files:           make([]referencingFileDTO, 0),
+			Incomplete:      output.Incomplete,
+			ReturnedPercent: 0,
+		},
 		func(count int) findReferencingSymbolsOutput {
 			return findReferencingSymbolsOutput{
 				Files:           trimReferencingEntries(output.Files, count),
@@ -138,7 +142,11 @@ func limitOutputByBytes[T any](
 	if bestCount <= 0 {
 		return zeroValue[T](), domain.NewSafeError(
 			outputTooLargePublicMessage,
-			fmt.Errorf("no logical result objects fit within %d bytes; increase %s", maxBytes, toolOutputMaxBytesEnvName),
+			fmt.Errorf(
+				"no logical result objects fit within %d bytes; increase %s",
+				maxBytes,
+				toolOutputMaxBytesEnvName,
+			),
 		)
 	}
 

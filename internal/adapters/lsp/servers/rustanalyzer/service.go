@@ -8,14 +8,15 @@ import (
 	"sync"
 	"time"
 
+	"go.lsp.dev/jsonrpc2"
+	"go.lsp.dev/protocol"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 	"github.com/n-r-w/asteria/internal/server"
 	"github.com/n-r-w/asteria/internal/usecase/router"
-	"go.lsp.dev/jsonrpc2"
-	"go.lsp.dev/protocol"
 )
 
 // startupReadinessState tracks one in-flight rust-analyzer startup until the server reports that
@@ -67,20 +68,18 @@ func New(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig) (*Service, error)
 	withRequestDocument := helpers.WithRequestDocument(func(_ string) string { return rustLanguageID })
 
 	rt, err := runtimelsp.New(&runtimelsp.RuntimeConfig{
-		LSPConfig: runtimelsp.LSPConfig{
-			Command:                 rustAnalyzerServerName,
-			Args:                    nil,
-			ServerName:              rustAnalyzerServerName,
-			ShutdownTimeout:         0,
-			ReplyConfiguration:      nil,
-			BuildClientCapabilities: buildClientCapabilities,
-			FileWatch:               nil,
-			PatchInitializeParams:   service.patchInitializeParams,
-			HandleServerCallback:    service.handleServerCallback,
-			AfterInitialized:        nil,
-			WaitUntilReady:          service.waitUntilReady,
-		},
-		BuildWorkspaceFolders: nil,
+		Command:                 rustAnalyzerServerName,
+		Args:                    nil,
+		ServerName:              rustAnalyzerServerName,
+		ShutdownTimeout:         0,
+		ReplyConfiguration:      nil,
+		BuildClientCapabilities: buildClientCapabilities,
+		FileWatch:               nil,
+		PatchInitializeParams:   service.patchInitializeParams,
+		HandleServerCallback:    service.handleServerCallback,
+		AfterInitialized:        nil,
+		WaitUntilReady:          service.waitUntilReady,
+		BuildWorkspaceFolders:   nil,
 	})
 	if err != nil {
 		return nil, err
@@ -193,6 +192,11 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 		return err
 	}
 
+	const (
+		enableOption    = "enable"
+		workspaceOption = "workspace"
+	)
+
 	params.InitializationOptions = map[string]any{
 		"cargo": map[string]any{
 			"autoreload": true,
@@ -200,30 +204,30 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 				"CARGO_TARGET_DIR": cargoTargetDir,
 			},
 			"buildScripts": map[string]any{
-				"enable":             true,
-				"invocationLocation": "workspace",
+				enableOption:         true,
+				"invocationLocation": workspaceOption,
 				"invocationStrategy": "per_workspace",
 			},
 		},
 		"procMacro": map[string]any{
-			"enable": true,
+			enableOption: true,
 			"attributes": map[string]any{
-				"enable": true,
+				enableOption: true,
 			},
 		},
 		"checkOnSave":    false,
 		"linkedProjects": []any{},
-		"workspace": map[string]any{
+		workspaceOption: map[string]any{
 			"symbol": map[string]any{
 				"search": map[string]any{
 					"kind":  "only_types",
 					"limit": s.workspaceSymbolSearchLimit,
-					"scope": "workspace",
+					"scope": workspaceOption,
 				},
 			},
 		},
 		"diagnostics": map[string]any{
-			"enable": true,
+			enableOption: true,
 		},
 	}
 

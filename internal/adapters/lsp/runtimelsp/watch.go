@@ -123,7 +123,15 @@ func (w *workspaceFileWatcher) run() {
 func (w *workspaceFileWatcher) handleEvent(event fsnotify.Event) {
 	effect, err := translateWatchEvent(w.workspaceRoot, w.relevantFile, w.ignoreDir, event)
 	if err != nil {
-		slog.Warn("skip workspace file watcher event", "workspace_root", w.workspaceRoot, "path", event.Name, "error", err)
+		slog.Warn(
+			"skip workspace file watcher event",
+			"workspace_root",
+			w.workspaceRoot,
+			"path",
+			event.Name,
+			"error",
+			err,
+		)
 		return
 	}
 

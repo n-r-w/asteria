@@ -5,7 +5,7 @@ package lspclangd
 //
 //nolint:gochecknoglobals // ok for adapter-level constants
 var extensions = []string{
-	".c",
+	cExtension,
 	".C",
 	".cc",
 	".CC",
@@ -28,6 +28,7 @@ var extensions = []string{
 }
 
 const (
+	cExtension                       = ".c"
 	clangdServerName                 = "clangd"
 	clangdLanguageIDC                = "c"
 	clangdLanguageIDCPP              = "cpp"
@@ -44,7 +45,7 @@ const (
 // languageIDForExtension maps one file extension to the clangd language ID used when files are opened through LSP.
 func languageIDForExtension(ext string) string {
 	switch ext {
-	case ".c":
+	case cExtension:
 		return clangdLanguageIDC
 	default:
 		return clangdLanguageIDCPP

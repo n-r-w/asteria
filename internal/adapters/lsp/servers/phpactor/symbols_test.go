@@ -5,13 +5,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestBuildClientCapabilities proves that phpactor explicitly advertises the hover and references features
@@ -78,7 +79,9 @@ func TestPatchInitializeParams(t *testing.T) {
 	workspaceRoot := t.TempDir()
 
 	workspaceFolders := []protocol.WorkspaceFolder{{URI: string(uri.File(workspaceRoot)), Name: "workspace"}}
-	//nolint:exhaustruct // protocol.InitializeParams has many optional SDK fields that this unit test does not exercise.
+	// protocol.InitializeParams has many optional SDK fields that this unit test does not
+	// exercise.
+	//nolint:exhaustruct_v5 // See the preceding comment.
 	params := &protocol.InitializeParams{WorkspaceFolders: workspaceFolders}
 
 	service := &Service{

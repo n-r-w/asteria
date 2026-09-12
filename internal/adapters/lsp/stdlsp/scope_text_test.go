@@ -18,7 +18,14 @@ func TestCollectScopeFilesAppliesAdapterIgnoreRules(t *testing.T) {
 	workspaceRoot := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(workspaceRoot, ".hidden", "nested"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(workspaceRoot, "pkg"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, ".hidden", "nested", "ignored.go"), []byte("package hidden\n"), 0o600))
+	require.NoError(
+		t,
+		os.WriteFile(
+			filepath.Join(workspaceRoot, ".hidden", "nested", "ignored.go"),
+			[]byte("package hidden\n"),
+			0o600,
+		),
+	)
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, "pkg", "kept.go"), []byte("package pkg\n"), 0o600))
 
 	scope := searchScope{RelativePath: "", AbsolutePath: workspaceRoot, IsDir: true}

@@ -7,13 +7,14 @@ import (
 	"slices"
 	"time"
 
+	"go.lsp.dev/protocol"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 	"github.com/n-r-w/asteria/internal/server"
 	"github.com/n-r-w/asteria/internal/usecase/router"
-	"go.lsp.dev/protocol"
 )
 
 // Service implements gopls-specific symbolic search logic.
@@ -37,22 +38,20 @@ var (
 func New(config cfgadapters.GoplsConfig) (*Service, error) {
 	rt, err := runtimelsp.New(
 		&runtimelsp.RuntimeConfig{
-			LSPConfig: runtimelsp.LSPConfig{
-				Command:                 "gopls",
-				Args:                    nil,
-				ServerName:              "gopls",
-				ShutdownTimeout:         goplsShutdownTimeout,
-				ReplyConfiguration:      buildReplyConfiguration(config),
-				BuildClientCapabilities: nil,
-				FileWatch: &runtimelsp.FileWatchConfig{
-					RelevantFile: shouldWatchGoFile,
-					IgnoreDir:    shouldIgnoreDir,
-				},
-				PatchInitializeParams: nil,
-				HandleServerCallback:  nil,
-				AfterInitialized:      nil,
-				WaitUntilReady:        nil,
+			Command:                 goplsConfigSection,
+			Args:                    nil,
+			ServerName:              goplsConfigSection,
+			ShutdownTimeout:         goplsShutdownTimeout,
+			ReplyConfiguration:      buildReplyConfiguration(config),
+			BuildClientCapabilities: nil,
+			FileWatch: &runtimelsp.FileWatchConfig{
+				RelevantFile: shouldWatchGoFile,
+				IgnoreDir:    shouldIgnoreDir,
 			},
+			PatchInitializeParams: nil,
+			HandleServerCallback:  nil,
+			AfterInitialized:      nil,
+			WaitUntilReady:        nil,
 			BuildWorkspaceFolders: nil,
 		})
 	if err != nil {

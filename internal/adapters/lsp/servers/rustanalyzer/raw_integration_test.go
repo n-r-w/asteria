@@ -11,12 +11,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 )
 
 // TestIntegrationRawDocumentSymbolsForReexportsAndMacro proves that rust-analyzer exposes the exported macro

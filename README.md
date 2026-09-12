@@ -39,7 +39,7 @@ No special prompts are required. In most cases, LLM will prefer symbolic searche
 Adding a new LSP server: see [Adding a new LSP server](README.md#adding-a-new-lsp-server).
 
 ## LSP runtime requirements.
- 
+
 - Install the language servers you need.
 - See [Language server installation](README.md#language-server-installation) for installation commands.
 - Make sure they are available in `PATH` for the MCP client process.
@@ -67,7 +67,7 @@ brew install --cask n-r-w/homebrew-tap/asteria-mcp
 
 Requirements:
 
-- Go `1.26`
+- Go `1.27.1`
 
 ```bash
 go build -o asteria-mcp ./cmd/asteria-mcp
@@ -102,8 +102,17 @@ Source: <https://go.dev/gopls/>
 - macOS / Linux:
 
 ```bash
-npm install -g typescript-language-server typescript
+npm install -g typescript-language-server@6.0.0 typescript@6.0.3
 ```
+
+Asteria tests these version pairs:
+
+| `typescript-language-server` | TypeScript | Node.js |
+| --- | --- | --- |
+| `6.0.0` | `6.0.3` | `>=22.22.2` |
+| `5.1.3` | `5.9.3` | `>=20` |
+
+`typescript-language-server@6.0.0` cannot use TypeScript 7 because TypeScript 7 does not provide `lib/tsserver.js`.
 
 Source: <https://github.com/typescript-language-server/typescript-language-server>
 

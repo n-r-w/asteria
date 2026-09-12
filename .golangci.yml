@@ -15,6 +15,7 @@ output:
 linters:
   default: none
   enable:
+    - modernize
     - godot
     - copyloopvar
     - gocyclo
@@ -25,23 +26,24 @@ linters:
     - asciicheck
     - bidichk
     - bodyclose
+    # - cyclop
     - dupl
     - durationcheck
     - errcheck
     - errname
     - errorlint
     - exhaustive
-    - exhaustruct
+    - exhaustruct_v5
     - forbidigo
     - gocheckcompilerdirectives
     - gochecknoglobals
     - gochecknoinits
     - gochecksumtype
     - gocognit
-    # - goconst
+    - goconst
     - gocritic
     - gomoddirectives
-    - gomodguard
+    - gomodguard_v2
     - goprintffuncname
     - gosec
     - govet
@@ -81,16 +83,17 @@ linters:
 
   settings:
     govet:
+      enable:
+        - shadow
       disable:
         - fieldalignment
-      enable-all: true
       settings:
         shadow:
           strict: true
     gocyclo:
       min-complexity: 15
     dupl:
-      threshold: 100
+      threshold: 115
     goconst:
       min-len: 2
       min-occurrences: 2
@@ -101,40 +104,37 @@ linters:
     nolintlint:
       require-explanation: true
       require-specific: true
-      allow-no-explanation:
-        - funlen
-        - gocognit
-        - lll
     gocritic:
       enabled-tags:
         - diagnostic
-        - experimental
         - opinionated
         - performance
         - style
       disabled-checks:
         - dupImport
         - octalLiteral
-    exhaustruct:
-      include: []
-      exclude: []
+        - hugeParam
+    exhaustruct_v5:
+      optional-patterns:
+        # GenerateSummary is deprecated, so requiring it conflicts with staticcheck.
+        - '^github\.com/openai/openai-go/v3/shared\.ReasoningParam#GenerateSummary$'
       allow-empty: true
       allow-empty-returns: true
       allow-empty-declarations: true
 
   exclusions:
     generated: lax
+    paths:
+      - ^experiments/
     rules:
       - linters:
           - perfsprint
-          - dupl
           - gochecknoglobals
-          - gocognit
           - goconst
+          - gocognit
           - gocritic
           - gosec
           - govet
-          - lll
           - revive
           - staticcheck
           - unparam
@@ -153,6 +153,16 @@ severity:
   default: error
 
 formatters:
+  enable:
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/n-r-w/asteria
+    golines:
+      max-len: 120
   exclusions:
     generated: lax
     paths:

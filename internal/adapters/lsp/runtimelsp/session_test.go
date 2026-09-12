@@ -188,21 +188,19 @@ func TestSessionCloseTimesOutWhenWaitNeverFinishes(t *testing.T) {
 	shutdownTimeout := 50 * time.Millisecond
 	workspaceRoot := t.TempDir()
 	session := newSession(&sessionConfig{
-		LSPConfig: LSPConfig{
-			Command:                 "gopls",
-			Args:                    nil,
-			ServerName:              "gopls",
-			ShutdownTimeout:         shutdownTimeout,
-			ReplyConfiguration:      nil,
-			BuildClientCapabilities: runtimeClientCapabilities,
-			FileWatch:               nil,
-			PatchInitializeParams:   nil,
-			HandleServerCallback:    nil,
-			AfterInitialized:        nil,
-			WaitUntilReady:          nil,
-		},
-		WorkspaceRoot:    workspaceRoot,
-		WorkspaceFolders: defaultWorkspaceFolders(workspaceRoot),
+		Command:                 "gopls",
+		Args:                    nil,
+		ServerName:              "gopls",
+		ShutdownTimeout:         shutdownTimeout,
+		ReplyConfiguration:      nil,
+		BuildClientCapabilities: runtimeClientCapabilities,
+		FileWatch:               nil,
+		PatchInitializeParams:   nil,
+		HandleServerCallback:    nil,
+		AfterInitialized:        nil,
+		WaitUntilReady:          nil,
+		WorkspaceRoot:           workspaceRoot,
+		WorkspaceFolders:        defaultWorkspaceFolders(workspaceRoot),
 	})
 	session.cmd = &exec.Cmd{}
 	session.done = make(chan struct{})

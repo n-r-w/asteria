@@ -17,7 +17,8 @@ func TestResolveCacheRootRejectsRelativePath(t *testing.T) {
 	assert.ErrorContains(t, err, "must be absolute")
 }
 
-// TestResolveCacheRootCleansAbsolutePath proves that managed cache placement stays deterministic for one configured root.
+// TestResolveCacheRootCleansAbsolutePath proves that managed cache placement stays deterministic
+// for one configured root.
 func TestResolveCacheRootCleansAbsolutePath(t *testing.T) {
 	t.Parallel()
 
@@ -39,7 +40,8 @@ func TestWorkspaceHashIsStable(t *testing.T) {
 	assert.NotEqual(t, firstHash, otherHash)
 }
 
-// TestAdapterCacheDirBuildsManagedPath proves that adapter cache directories stay isolated by workspace hash and adapter name.
+// TestAdapterCacheDirBuildsManagedPath proves that adapter cache directories stay isolated
+// by workspace hash and adapter name.
 func TestAdapterCacheDirBuildsManagedPath(t *testing.T) {
 	t.Parallel()
 

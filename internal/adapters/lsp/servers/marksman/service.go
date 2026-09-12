@@ -28,22 +28,20 @@ var (
 func New() (*Service, error) {
 	rt, err := runtimelsp.New(
 		&runtimelsp.RuntimeConfig{
-			LSPConfig: runtimelsp.LSPConfig{
-				Command:                 marksmanServerName,
-				Args:                    []string{"server"},
-				ServerName:              marksmanServerName,
-				ShutdownTimeout:         0,
-				ReplyConfiguration:      nil,
-				BuildClientCapabilities: nil,
-				FileWatch: &runtimelsp.FileWatchConfig{
-					RelevantFile: shouldWatchMarksmanFile,
-					IgnoreDir:    nil,
-				},
-				PatchInitializeParams: nil,
-				HandleServerCallback:  nil,
-				AfterInitialized:      nil,
-				WaitUntilReady:        nil,
+			Command:                 marksmanServerName,
+			Args:                    []string{"server"},
+			ServerName:              marksmanServerName,
+			ShutdownTimeout:         0,
+			ReplyConfiguration:      nil,
+			BuildClientCapabilities: nil,
+			FileWatch: &runtimelsp.FileWatchConfig{
+				RelevantFile: shouldWatchMarksmanFile,
+				IgnoreDir:    nil,
 			},
+			PatchInitializeParams: nil,
+			HandleServerCallback:  nil,
+			AfterInitialized:      nil,
+			WaitUntilReady:        nil,
 			BuildWorkspaceFolders: nil,
 		})
 	if err != nil {

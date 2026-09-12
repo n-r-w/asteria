@@ -4,9 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // TestSanitizeGoplsPublicErrorReturnsBuildConfigMessage proves that tagged Go files outside the active build
@@ -23,7 +24,8 @@ func TestSanitizeGoplsPublicErrorReturnsBuildConfigMessage(t *testing.T) {
 	require.EqualError(
 		t,
 		err,
-		`file_path "tagged_only_featurex.go" is excluded from the active Go build configuration; include its build tags in the active build flags`,
+		`file_path "tagged_only_featurex.go" is excluded from the active Go build configuration; `+
+			`include its build tags in the active build flags`,
 	)
 	require.ErrorIs(t, err, rootCause)
 

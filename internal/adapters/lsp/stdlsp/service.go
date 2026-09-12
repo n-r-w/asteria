@@ -11,12 +11,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/domain"
-	"github.com/n-r-w/asteria/internal/server"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/domain"
+	"github.com/n-r-w/asteria/internal/server"
 )
 
 // Service coordinates symbol overview, symbol search, and reference search over one standard LSP connection.
@@ -447,9 +448,9 @@ func (s *Service) symbolTreeForReferencePath(
 func (s *Service) requestRawDocumentSymbols(
 	ctx context.Context,
 	workspaceRoot string,
-	relativePath string,
-) (string, []json.RawMessage, error) {
-	cleanRelativePath, absolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, relativePath)
+	requestedRelativePath string,
+) (relativePath string, symbols []json.RawMessage, err error) {
+	cleanRelativePath, absolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, requestedRelativePath)
 	if err != nil {
 		return "", nil, err
 	}
@@ -467,14 +468,13 @@ func (s *Service) requestRawDocumentSymbols(
 		},
 	}
 
-	var rawSymbols []json.RawMessage
 	requestDocumentSymbols := func(callCtx context.Context) error {
 		return protocol.Call(
 			callCtx,
 			conn,
 			protocol.MethodTextDocumentDocumentSymbol,
 			params,
-			&rawSymbols,
+			&symbols,
 		)
 	}
 
@@ -488,7 +488,7 @@ func (s *Service) requestRawDocumentSymbols(
 		return "", nil, fmt.Errorf("request document symbols: %w", callErr)
 	}
 
-	return cleanRelativePath, rawSymbols, nil
+	return cleanRelativePath, symbols, nil
 }
 
 // requestReferenceLocations asks the standard LSP server for all non-declaration
@@ -511,10 +511,8 @@ func (s *Service) requestReferenceLocations(
 
 	documentURI := uri.File(absolutePath)
 	params := &protocol.ReferenceParams{
-		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-			TextDocument: protocol.TextDocumentIdentifier{URI: documentURI},
-			Position:     position,
-		},
+		TextDocument:           protocol.TextDocumentIdentifier{URI: documentURI},
+		Position:               position,
 		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
 		PartialResultParams:    protocol.PartialResultParams{},
 		Context:                protocol.ReferenceContext{IncludeDeclaration: false},
@@ -564,10 +562,8 @@ func (s *Service) requestHoverInfo(
 	}
 
 	params := &protocol.HoverParams{
-		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-			TextDocument: protocol.TextDocumentIdentifier{URI: uri.File(absolutePath)},
-			Position:     position,
-		},
+		TextDocument:           protocol.TextDocumentIdentifier{URI: uri.File(absolutePath)},
+		Position:               position,
 		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
 	}
 

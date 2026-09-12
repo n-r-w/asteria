@@ -12,15 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
-	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
-	"github.com/n-r-w/asteria/internal/config/cfgadapters"
-	"github.com/n-r-w/asteria/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
+	"github.com/n-r-w/asteria/internal/config/cfgadapters"
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 const (
@@ -298,7 +299,13 @@ func TestIntegrationServiceFindSymbolSupportsPackageQualifiedLowercaseGoPath(t *
 		require.NoError(t, findErr)
 
 		symbol, ok := findFoundSymbol(result.Symbols, "makeBucketPrivate")
-		require.Truef(t, ok, "expected normalized lowercase package-qualified match for %q, got %#v", path, result.Symbols)
+		require.Truef(
+			t,
+			ok,
+			"expected normalized lowercase package-qualified match for %q, got %#v",
+			path,
+			result.Symbols,
+		)
 		assert.Equal(t, "fixture.go", symbol.File)
 	}
 }
@@ -341,7 +348,13 @@ func TestIntegrationServiceFindReferencingSymbolsSupportsPackageQualifiedLowerca
 		require.NoError(t, findErr)
 
 		twice, ok := findReferencingSymbol(result.Symbols, "UseMakeBucketPrivateTwice")
-		require.Truef(t, ok, "expected normalized lowercase package-qualified references for %q, got %#v", path, result.Symbols)
+		require.Truef(
+			t,
+			ok,
+			"expected normalized lowercase package-qualified references for %q, got %#v",
+			path,
+			result.Symbols,
+		)
 		assert.Equal(t, 16, twice.ContentStartLine)
 		assert.Equal(t, 18, twice.ContentEndLine)
 		assert.Contains(t, twice.Content, "makeBucketPrivate")
@@ -364,7 +377,13 @@ func TestIntegrationServiceFindReferencingSymbolsSupportsPackageQualifiedGoMetho
 		require.NoError(t, findErr)
 
 		twice, ok := findReferencingSymbol(result.Symbols, "UseMakeBucketTwice")
-		require.Truef(t, ok, "expected normalized package-qualified method references for %q, got %#v", path, result.Symbols)
+		require.Truef(
+			t,
+			ok,
+			"expected normalized package-qualified method references for %q, got %#v",
+			path,
+			result.Symbols,
+		)
 		assert.Equal(t, 4, twice.ContentStartLine)
 		assert.Equal(t, 6, twice.ContentEndLine)
 		assert.Contains(t, twice.Content, "Describe")
@@ -429,7 +448,13 @@ func TestIntegrationServiceFindReferencingSymbolsDoesNotSupportExactPackageQuali
 		})
 		require.Error(t, findErr)
 		assert.ErrorContains(t, findErr, "no symbol matches")
-		assert.Emptyf(t, result.Symbols, "expected no references for unsupported exact path %q, got %#v", path, result.Symbols)
+		assert.Emptyf(
+			t,
+			result.Symbols,
+			"expected no references for unsupported exact path %q, got %#v",
+			path,
+			result.Symbols,
+		)
 	}
 }
 
@@ -463,7 +488,13 @@ func TestIntegrationServiceFindSymbolDoesNotSupportExactPackageQualifiedGoPath(t
 			Scope:            "fixture.go",
 		})
 		require.NoError(t, findErr)
-		assert.Emptyf(t, result.Symbols, "expected no exact match for package-qualified path %q, got %#v", path, result.Symbols)
+		assert.Emptyf(
+			t,
+			result.Symbols,
+			"expected no exact match for package-qualified path %q, got %#v",
+			path,
+			result.Symbols,
+		)
 	}
 }
 
@@ -637,12 +668,22 @@ func TestIntegrationServiceFindReferencingSymbolsSupportsNestedModulePathsFromPa
 	require.NoError(t, err)
 
 	twice, ok := findReferencingSymbol(result.Symbols, "UseMakeBucketTwice")
-	require.True(t, ok, "expected grouped references for UseMakeBucketTwice from parent workspace root, got %#v", result.Symbols)
+	require.True(
+		t,
+		ok,
+		"expected grouped references for UseMakeBucketTwice from parent workspace root, got %#v",
+		result.Symbols,
+	)
 	assert.Equal(t, 3, twice.ContentStartLine)
 	assert.Equal(t, parentWorkspaceFixtureRelativePath("references.go"), twice.File)
 
 	once, ok := findReferencingSymbol(result.Symbols, "UseMakeBucketOnce")
-	require.True(t, ok, "expected grouped references for UseMakeBucketOnce from parent workspace root, got %#v", result.Symbols)
+	require.True(
+		t,
+		ok,
+		"expected grouped references for UseMakeBucketOnce from parent workspace root, got %#v",
+		result.Symbols,
+	)
 	assert.Equal(t, 11, once.ContentStartLine)
 	assert.Equal(t, parentWorkspaceFixtureRelativePath("references.go"), once.File)
 }
@@ -674,7 +715,9 @@ func TestIntegrationServiceFindReferencingSymbolsSupportsTaggedOnlyBuildFlags(t 
 // TestIntegrationServiceFindReferencingSymbolsReturnsBuildConfigMessageForTaggedOnlyFileWithoutBuildFlags proves
 // that tagged-only files outside the active Go build graph return one safe public message instead of raw gopls
 // metadata errors.
-func TestIntegrationServiceFindReferencingSymbolsReturnsBuildConfigMessageForTaggedOnlyFileWithoutBuildFlags(t *testing.T) {
+func TestIntegrationServiceFindReferencingSymbolsReturnsBuildConfigMessageForTaggedOnlyFileWithoutBuildFlags(
+	t *testing.T,
+) {
 	workspaceRoot := goplsBuildTagsFixtureRoot(t)
 	service, ctx := newIntegrationService(t)
 
@@ -779,13 +822,55 @@ func TestIntegrationServiceGetSymbolsOverviewReturnsCrossPackageSharedSymbols(t 
 	require.NotEmpty(t, result.Symbols)
 
 	sharedFixtureFile := filepath.ToSlash(filepath.Join("crosspkg", "shared", "fixture.go"))
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindStruct), "ImportedBucket", sharedFixtureFile)
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindMethod), "ImportedBucket/Describe", sharedFixtureFile)
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindStruct), "EmbeddedBase", sharedFixtureFile)
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindMethod), "EmbeddedBase/DescribeEmbedded", sharedFixtureFile)
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindInterface), "Contract", sharedFixtureFile)
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindFunction), "MakeImportedBucket", sharedFixtureFile)
-	assertKindContainsExactPathInFile(t, result.Symbols, int(protocol.SymbolKindClass), "AliasBucket", sharedFixtureFile)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindStruct),
+		"ImportedBucket",
+		sharedFixtureFile,
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindMethod),
+		"ImportedBucket/Describe",
+		sharedFixtureFile,
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindStruct),
+		"EmbeddedBase",
+		sharedFixtureFile,
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindMethod),
+		"EmbeddedBase/DescribeEmbedded",
+		sharedFixtureFile,
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindInterface),
+		"Contract",
+		sharedFixtureFile,
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindFunction),
+		"MakeImportedBucket",
+		sharedFixtureFile,
+	)
+	assertKindContainsExactPathInFile(
+		t,
+		result.Symbols,
+		int(protocol.SymbolKindClass),
+		"AliasBucket",
+		sharedFixtureFile,
+	)
 }
 
 // TestIntegrationServiceFindSymbolSupportsTypeAliasesAcrossPackages proves that
@@ -962,10 +1047,17 @@ func TestIntegrationWithRequestDocumentRecoversRawReferencesFromParentWorkspaceR
 	}
 
 	var locations []protocol.Location
-	err = helpers.WithRequestDocument(func(_ string) string { return goplsLanguageID })(ctx, conn, absolutePath, func(callCtx context.Context) error {
-		locations = rawGoplsReferences(t, callCtx, conn, params)
-		return nil
-	})
+	err = helpers.WithRequestDocument(
+		func(_ string) string { return goplsLanguageID },
+	)(
+		ctx,
+		conn,
+		absolutePath,
+		func(callCtx context.Context) error {
+			locations = rawGoplsReferences(t, callCtx, conn, params)
+			return nil
+		},
+	)
 	require.NoError(t, err)
 	require.Len(t, locations, 3)
 }
@@ -1008,7 +1100,12 @@ func TestIntegrationServiceFindSymbolUpdatesRenamedGoFileWithoutRestart(t *testi
 	})
 	require.NoError(t, err)
 
-	writeGoplsWorkspaceFile(t, workspaceRoot, "watcher_probe.go", "package basic\n\nfunc watcher_added_go_symbol() string {\n\treturn \"added\"\n}\n")
+	writeGoplsWorkspaceFile(
+		t,
+		workspaceRoot,
+		"watcher_probe.go",
+		"package basic\n\nfunc watcher_added_go_symbol() string {\n\treturn \"added\"\n}\n",
+	)
 
 	require.Eventually(t, func() bool {
 		result, findErr := service.FindSymbol(ctx, &domain.FindSymbolRequest{
@@ -1028,7 +1125,12 @@ func TestIntegrationServiceFindSymbolUpdatesRenamedGoFileWithoutRestart(t *testi
 		return ok && strings.Contains(symbol.Body, `func watcher_added_go_symbol() string`)
 	}, goplsLiveWaitTimeout, goplsLiveWaitTick)
 
-	writeGoplsWorkspaceFile(t, workspaceRoot, "watcher_probe.go", "package basic\n\nfunc watcher_renamed_go_symbol() string {\n\treturn \"renamed\"\n}\n")
+	writeGoplsWorkspaceFile(
+		t,
+		workspaceRoot,
+		"watcher_probe.go",
+		"package basic\n\nfunc watcher_renamed_go_symbol() string {\n\treturn \"renamed\"\n}\n",
+	)
 
 	require.Eventually(t, func() bool {
 		oldResult, oldErr := service.FindSymbol(ctx, &domain.FindSymbolRequest{
@@ -1075,7 +1177,12 @@ func TestIntegrationServiceGetSymbolsOverviewUpdatesRenamedGoFileWithoutRestart(
 	})
 	require.NoError(t, err)
 
-	writeGoplsWorkspaceFile(t, workspaceRoot, "watcher_probe.go", "package basic\n\nfunc watcher_added_go_symbol() string {\n\treturn \"added\"\n}\n")
+	writeGoplsWorkspaceFile(
+		t,
+		workspaceRoot,
+		"watcher_probe.go",
+		"package basic\n\nfunc watcher_added_go_symbol() string {\n\treturn \"added\"\n}\n",
+	)
 
 	require.Eventually(t, func() bool {
 		result, overviewErr := service.GetSymbolsOverview(ctx, &domain.GetSymbolsOverviewRequest{
@@ -1092,7 +1199,12 @@ func TestIntegrationServiceGetSymbolsOverviewUpdatesRenamedGoFileWithoutRestart(
 		return ok && location.Kind == int(protocol.SymbolKindFunction)
 	}, goplsLiveWaitTimeout, goplsLiveWaitTick)
 
-	writeGoplsWorkspaceFile(t, workspaceRoot, "watcher_probe.go", "package basic\n\nfunc watcher_renamed_go_symbol() string {\n\treturn \"renamed\"\n}\n")
+	writeGoplsWorkspaceFile(
+		t,
+		workspaceRoot,
+		"watcher_probe.go",
+		"package basic\n\nfunc watcher_renamed_go_symbol() string {\n\treturn \"renamed\"\n}\n",
+	)
 
 	require.Eventually(t, func() bool {
 		result, overviewErr := service.GetSymbolsOverview(ctx, &domain.GetSymbolsOverviewRequest{

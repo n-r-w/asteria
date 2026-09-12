@@ -6,9 +6,10 @@ import "io/fs"
 // extensions lists the file extensions supported by phpactor for symbolic search.
 //
 //nolint:gochecknoglobals // ok for adapter-level constants
-var extensions = []string{".php"}
+var extensions = []string{phpExtension}
 
 const (
+	phpExtension                 = ".php"
 	phpactorServerName           = "phpactor"
 	phpLanguageID                = "php"
 	phpactorIndexerDirName       = "index"

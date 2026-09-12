@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 )
 
 // TestClangdWorkspaceDependenciesAddsBenignClangdConfig proves that a local .clangd file
@@ -81,7 +82,11 @@ func TestClangdWorkspaceDependenciesScopesCompilationDatabaseByPathMatch(t *test
 
 	specialDependencies, specialReason := clangdWorkspaceDependencies(workspaceRoot, "src/special_case.cpp")
 	assert.Empty(t, specialReason)
-	assert.Equal(t, []string{".clangd", filepath.ToSlash(filepath.Join("build", compileCommandsFileName))}, specialDependencies)
+	assert.Equal(
+		t,
+		[]string{".clangd", filepath.ToSlash(filepath.Join("build", compileCommandsFileName))},
+		specialDependencies,
+	)
 }
 
 // TestLanguageIDForExtension keeps the didOpen language mapping explicit for C and C++ file families.

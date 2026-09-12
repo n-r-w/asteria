@@ -6,8 +6,9 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/n-r-w/asteria/internal/domain"
 	"go.lsp.dev/protocol"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // cachedNode stores one JSON-friendly snapshot of the internal symbol-tree node.
