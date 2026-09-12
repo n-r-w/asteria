@@ -73,8 +73,8 @@ func TestIntegrationRawReferencesOpenFileSetsForMakeBucket(t *testing.T) {
 	}
 }
 
-// TestIntegrationRawReferencesOpenFileSetsForFixtureBucket documents how each open-file set affects raw
-// class references for FixtureBucket in the live TypeScript server.
+// TestIntegrationRawReferencesOpenFileSetsForFixtureBucket documents the stable eventual raw-reference behavior
+// for FixtureBucket after the live TypeScript server finishes project indexing.
 func TestIntegrationRawReferencesOpenFileSetsForFixtureBucket(t *testing.T) {
 	workspaceRoot := copyTSLSFixtureRoot(t, "basic")
 
@@ -85,6 +85,8 @@ func TestIntegrationRawReferencesOpenFileSetsForFixtureBucket(t *testing.T) {
 			Expected: []rawReferenceOccurrence{
 				{File: "fixture.ts", Line: 29, Character: 43},
 				{File: "fixture.ts", Line: 30, Character: 15},
+				{File: "references.ts", Line: 0, Character: 24},
+				{File: "references.ts", Line: 3, Character: 21},
 			},
 		},
 		{
