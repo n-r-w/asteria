@@ -8,12 +8,11 @@ Symbolic(LSP) Search MCP Server. Designed for AI agents, not for humans.
 2. CRITICAL: No unnecessary "noise" in responses to the client. Only information that helps the LLM agent understand where the needed symbol is located, what it represents, and how to reach it.
 
 ## Tech stack
-1. go 1.26
-2. `github.com/modelcontextprotocol/go-sdk` for MCP server implementation
-3. `github.com/stretchr/testify` for tests
-4. `go.uber.org/mock` (no custom mocks, `//go:generate` directives in interface files)
-5. `github.com/caarlos0/env/v11` for loading configuration from environment variables
-6. `log/slog` for logging (must use structured logging with context). Use global logger with context, instead of passing logger instances around. E.g. `slog.DebugContext`.
+1. `github.com/modelcontextprotocol/go-sdk` for MCP server implementation
+2. `github.com/stretchr/testify` for tests
+3. `go.uber.org/mock` (no custom mocks, `//go:generate` directives in interface files)
+4. `github.com/caarlos0/env/v11` for loading configuration from environment variables
+5. `log/slog` for logging (must use structured logging with context). Use global logger with context, instead of passing logger instances around. E.g. `slog.DebugContext`.
 
 ## Documentation
 

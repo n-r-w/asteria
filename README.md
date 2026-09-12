@@ -39,7 +39,7 @@ No special prompts are required. In most cases, LLM will prefer symbolic searche
 Adding a new LSP server: see [Adding a new LSP server](README.md#adding-a-new-lsp-server).
 
 ## LSP runtime requirements.
- 
+
 - Install the language servers you need.
 - See [Language server installation](README.md#language-server-installation) for installation commands.
 - Make sure they are available in `PATH` for the MCP client process.
@@ -67,7 +67,7 @@ brew install --cask n-r-w/homebrew-tap/asteria-mcp
 
 Requirements:
 
-- Go `1.26`
+- Go `1.27.1`
 
 ```bash
 go build -o asteria-mcp ./cmd/asteria-mcp
