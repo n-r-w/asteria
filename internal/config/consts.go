@@ -28,84 +28,16 @@ const (
 	🚨 MUST be preferred over ANY other search methods for locating code references. 🚨`
 
 	systemPrompt = `🚨 CORE PRINCIPLES:
-		1. MUST use symbolic tools for all code analysis
-		2. MUST read only the minimum code necessary to complete each task
-		3. SHOULD NOT read the same content multiple times with different tools
-		4. MUST avoid reading entire files when specific symbols will suffice
-		5. SHOULD use symbolic tools to get overviews before reading detailed code
-		6. MUST prefer symbol-based tools over file-based when it is possible
-		7. All returned range values are 0-based and inclusive, formatted as 'start-end' or 'start'.
-		8. If the response is truncated, it also returns integer 'returned_percent' with approximate percentage of logical result objects returned.		
+1. MUST use symbolic tools for code analysis. Use file-based search only when they return nothing
+2. Read only the minimum code needed: 'get_symbols_overview' first, then 'find_symbol'. Avoid reading whole files or the same content twice
+3. MUST use 'find_referencing_symbols' before modifying a symbol
+4. Ranges are 0-based and inclusive: 'start-end' or 'start'. Truncated responses include 'returned_percent' (approximate share of returned results)
 
-    🚨 CODE ANALYSIS WORKFLOW:
-		1. MUST first use 'get_symbols_overview' to understand file structure
-		2. SHOULD use 'find_symbol' for targeted code exploration
-		3. Generic one-segment queries such as 'New', 'Run', 'Handle', 'Serve', 'Test', etc. can return many matches. Narrow them with 'scope_path' and kind filters before using 'find_symbol'
-		4. When the parent symbol is known, prefer exact lookup with a leading '/'
-		5. When the file or package is still unknown, use 'get_symbols_overview' first and only then call 'find_symbol'
-		6. MUST use 'find_referencing_symbols' to understand symbol usage before modifications
-		7. If symbol search tools return no results, then use file-based search tools as a last resort
+🚨 ARGUMENT RULES:
+1. Symbol values ('symbol_query', 'symbol_path') and filesystem paths ('workspace_root', 'file_path', 'scope_path') are never interchangeable
+2. Narrow generic names ('New', 'Run', 'Handle', ...) with 'scope_path' and kind filters. When the parent is known, use exact lookup like '/Service/New'
+3. Take 'file_path' and 'symbol_path' from the same declaration. Reuse returned paths, including '@line:character', verbatim
 
-	🚨 ARGUMENT GLOSSARY:
-		1. 'workspace_root' = required absolute workspace root directory. Keep 'file_path' and 'scope_path' relative to it.
-		1. 'file_path' = workspace-relative filesystem path to one file. Never a directory. Example: 'pkg/users/service.go'
-		2. 'scope_path' = optional workspace-relative filesystem path to one file or directory that limits search. Examples: 'pkg/users', 'pkg/users/service.go'
-		3. 'symbol_query' = symbol search query, not a filesystem path. Examples: 'GetUser', 'UserService/GetUser', '/UserService/GetUser'. Duplicate same-name siblings add '@line:character' to the last segment.
-		4. 'symbol_path' = symbol path inside 'file_path', not a filesystem path. With file_path='pkg/users/service.go': 'GetUser', 'UserService/GetUser', '/UserService/GetUser'. Duplicate same-name siblings add '@line:character' to the last segment.
-
-	🚨 ARGUMENT RULES:
-		1. A leading '/' in 'symbol_query' or 'symbol_path' means exact symbol lookup, not an absolute filesystem path
-		2. Never pass a filesystem path into 'symbol_query' or 'symbol_path'
-		3. Never pass a symbol value into 'file_path' or 'scope_path'
-		4. The caller must always provide 'workspace_root'
-		5. For 'find_referencing_symbols', 'file_path' must be the file where the target symbol is declared, not a file where it is only referenced
-		6. Keep 'file_path' and 'symbol_path' from the same declaration. Don't mix 'file_path' from one match/example with 'symbol_path' from another
-		7. When overview or symbol search returns a duplicate same-name sibling path with '@line:character', reuse that exact suffix for exact lookup
-		8. Use 'A/B' only when symbol 'B' is actually nested under 'A' in the symbol tree
-		9. 'depth' expands descendants of matched symbols. It does not change how 'symbol_query' is matched
-
-	🚨 TOOL SELECTION EXAMPLES:
-		1. "List all functions in 'auth.go'" -> 'get_symbols_overview'
-		2. "Find all usage of 'AuthenticateUser' function" -> 'find_referencing_symbols'
-		3. "Find the implementation of 'AuthenticateUser' function" -> 'find_symbol'
-		4. "I need to read 'repo.go' file" -> 'get_symbols_overview' -> read relevant parts of the file
-		5. "Find constructor 'New' in the server package" -> 'find_symbol' with 'scope_path' narrowed to that package
-		6. "Find method 'New' when the owner type is already known" -> 'find_symbol' with exact query like '/Service/New'
-
-	🚨 Supported Languages:
-		1. Golang
-		2. TypeScript/JavaScript
-		3. Python
-		4. Rust
-		5. C/C++
-		6. PHP
-		7. Markdown
-	
-	🚨 LSP Symbol Kinds:
-		File = 1;
-		Module = 2;
-		Namespace = 3;
-		Package = 4;
-		Class = 5;
-		Method = 6;
-		Property = 7;
-		Field = 8;
-		Constructor = 9;
-		Enum = 10;
-		Interface = 11;
-		Function = 12;
-		Variable = 13;
-		Constant = 14;
-		String = 15;
-		Number = 16;
-		Boolean = 17;
-		Array = 18;
-		Object = 19;
-		Key = 20;
-		Null = 21;
-		EnumMember = 22;
-		Struct = 23;
-		Event = 24;
-		Operator = 25;
-		TypeParameter = 26;`
+Languages: Go, TypeScript/JavaScript, Python, Rust, C/C++, PHP, Markdown
+Symbol kinds: 1 File, 2 Module, 3 Namespace, 4 Package, 5 Class, 6 Method, 7 Property, 8 Field, 9 Constructor, 10 Enum, 11 Interface, 12 Function, 13 Variable, 14 Constant, 15 String, 16 Number, 17 Boolean, 18 Array, 19 Object, 20 Key, 21 Null, 22 EnumMember, 23 Struct, 24 Event, 25 Operator, 26 TypeParameter`
 )
