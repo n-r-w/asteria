@@ -150,6 +150,42 @@ func TestIntegrationRuntimeEnsureConnIsolatedByRoot(t *testing.T) {
 	require.Empty(t, runtime.sessions)
 }
 
+// TestIntegrationRuntimeCloseSessionIsolatedByRoot proves that closing one workspace session does not interrupt
+// another workspace and that the closed workspace starts a fresh process on its next access.
+func TestIntegrationRuntimeCloseSessionIsolatedByRoot(t *testing.T) {
+	runtime := newIntegrationRuntime(t)
+	firstRoot := runtimeFixtureRoot(t)
+	secondRoot := runtimeMultilineFixtureRoot(t)
+
+	ctx := t.Context()
+	t.Cleanup(func() {
+		require.NoError(t, runtime.Close(ctx))
+	})
+
+	firstConn, firstErr := runtime.EnsureConn(ctx, firstRoot)
+	require.NoError(t, firstErr)
+	firstSession, firstSessionErr := runtime.getOrCreateSession(firstRoot)
+	require.NoError(t, firstSessionErr)
+
+	secondConn, secondErr := runtime.EnsureConn(ctx, secondRoot)
+	require.NoError(t, secondErr)
+
+	require.NoError(t, runtime.CloseSession(ctx, firstRoot))
+	assert.False(t, sessionAlive(firstSession))
+	assert.Nil(t, firstSession.connection())
+	assert.NoError(t, secondConn.Err())
+
+	restartedConn, restartErr := runtime.EnsureConn(ctx, firstRoot)
+	require.NoError(t, restartErr)
+	assert.NotSame(t, firstConn, restartedConn)
+
+	reusedSecondConn, reuseErr := runtime.EnsureConn(ctx, secondRoot)
+	require.NoError(t, reuseErr)
+	assert.Same(t, secondConn, reusedSecondConn)
+
+	require.NoError(t, runtime.CloseSession(ctx, t.TempDir()))
+}
+
 // TestIntegrationRuntimeEnsureConnConcurrentSameRootReusesSingleSession proves that concurrent callers share one session for one root.
 func TestIntegrationRuntimeEnsureConnConcurrentSameRootReusesSingleSession(t *testing.T) {
 	runtime := newIntegrationRuntime(t)

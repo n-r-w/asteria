@@ -2,6 +2,7 @@ package lspphpactor
 
 import (
 	"context"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -127,6 +128,23 @@ func (s *Service) ensureIndexerPathReady(_ context.Context, _ jsonrpc2.Conn, wor
 // Extensions returns the list of file extensions supported by this LSP implementation.
 func (*Service) Extensions() []string {
 	return extensions
+}
+
+// closeSessionAfterCanceledRequest stops phpactor work that can no longer produce a tool response.
+func (s *Service) closeSessionAfterCanceledRequest(ctx context.Context, workspaceRoot string) {
+	if ctx.Err() == nil {
+		return
+	}
+
+	cleanupCtx := context.WithoutCancel(ctx)
+	if err := s.rt.CloseSession(cleanupCtx, workspaceRoot); err != nil {
+		slog.WarnContext(
+			cleanupCtx,
+			"close phpactor session after canceled request",
+			"err", err,
+			"workspace_root", workspaceRoot,
+		)
+	}
 }
 
 // Close shuts down the live phpactor session so process-level cleanup stays explicit.

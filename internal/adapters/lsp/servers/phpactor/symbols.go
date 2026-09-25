@@ -20,6 +20,10 @@ func (s *Service) GetSymbolsOverview(
 	ctx context.Context,
 	request *domain.GetSymbolsOverviewRequest,
 ) (domain.GetSymbolsOverviewResult, error) {
+	if request != nil {
+		defer s.closeSessionAfterCanceledRequest(ctx, request.WorkspaceRoot)
+	}
+
 	result, err := s.std.GetSymbolsOverview(ctx, request)
 	if err != nil || request == nil {
 		return result, err
@@ -45,6 +49,10 @@ func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
 ) (domain.FindSymbolResult, error) {
+	if request != nil {
+		defer s.closeSessionAfterCanceledRequest(ctx, request.WorkspaceRoot)
+	}
+
 	result, err := s.std.FindSymbol(ctx, request)
 	if err != nil || request == nil {
 		return result, err
@@ -112,6 +120,7 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
+	defer s.closeSessionAfterCanceledRequest(ctx, workspaceRoot)
 
 	referenceWorkflowFiles, err := helpers.CollectReferenceWorkflowFiles(
 		workspaceRoot,
@@ -179,6 +188,7 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 	params.RootURI = uri.File(workspaceRoot)
 	params.InitializationOptions = map[string]any{
 		phpactorIndexerPathKey:       indexPath,
+		phpactorEnabledWatchersKey:   []string{phpactorLSPWatcher},
 		phpactorPHPStanEnabledKey:    false,
 		phpactorPsalmEnabledKey:      false,
 		phpactorPHPCSFixerEnabledKey: false,

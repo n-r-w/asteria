@@ -171,6 +171,32 @@ func (r *Runtime) newSessionConfig(workspaceRoot string) (*sessionConfig, error)
 	}, nil
 }
 
+// CloseSession shuts down the session for one workspace root without affecting other live sessions.
+func (r *Runtime) CloseSession(ctx context.Context, workspaceRoot string) error {
+	normalizedWorkspaceRoot, err := normalizeWorkspaceRoot(workspaceRoot)
+	if err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	if r.closing {
+		r.mu.Unlock()
+
+		return nil
+	}
+	sessionToClose, ok := r.sessions[normalizedWorkspaceRoot]
+	if ok {
+		delete(r.sessions, normalizedWorkspaceRoot)
+	}
+	r.mu.Unlock()
+
+	if !ok {
+		return nil
+	}
+
+	return sessionToClose.close(ctx)
+}
+
 // Close shuts down all live sessions so process-level cleanup stays explicit to the caller.
 func (r *Runtime) Close(ctx context.Context) error {
 	r.mu.Lock()
