@@ -15,7 +15,7 @@ func NormalizePublicPath(path string) string {
 	return trimmedPath
 }
 
-// NewInternalError hides unexpected implementation details behind one stable public message.
+// NewInternalError adds stable internal-error context while preserving the diagnostic cause.
 func NewInternalError(cause error) *SafeError {
 	return NewSafeError("internal error", cause)
 }

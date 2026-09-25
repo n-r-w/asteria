@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -218,8 +219,9 @@ func TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet(t *testing.T)
 	assert.JSONEq(t, `{"files":[],"incomplete":true}`, string(payload))
 }
 
-// TestProcessErrorKeepsSafeMessages proves that MCP tool responses keep only the public-safe message.
-func TestProcessErrorKeepsSafeMessages(t *testing.T) {
+// TestProcessErrorKeepsSafeMessageAndCause proves that MCP tool responses include both the public context and the
+// underlying diagnostic cause.
+func TestProcessErrorKeepsSafeMessageAndCause(t *testing.T) {
 	t.Parallel()
 
 	err := processError(
@@ -227,7 +229,7 @@ func TestProcessErrorKeepsSafeMessages(t *testing.T) {
 		domain.ToolNameFindReferencingSymbols,
 		domain.NewSafeError("use a more specific symbol_path", errors.New("internal detail")),
 	)
-	require.EqualError(t, err, "find_referencing_symbols: use a more specific symbol_path")
+	require.EqualError(t, err, "find_referencing_symbols: use a more specific symbol_path: internal detail")
 }
 
 // TestProcessErrorLogsReturnedMessageAsPublicError proves that logs expose the exact MCP client error text.
@@ -238,13 +240,13 @@ func TestProcessErrorLogsReturnedMessageAsPublicError(t *testing.T) {
 		t,
 		domain.ToolNameFindReferencingSymbols,
 		domain.NewSafeError("use a more specific symbol_path", errors.New("internal detail")),
-		"find_referencing_symbols: use a more specific symbol_path",
+		"find_referencing_symbols: use a more specific symbol_path: internal detail",
 	)
 	assertProcessErrorPublicLog(
 		t,
 		domain.ToolNameFindSymbol,
 		errors.New("boom *lspgopls.Service"),
-		"find_symbol: internal error",
+		"find_symbol: boom *lspgopls.Service",
 	)
 }
 
@@ -277,6 +279,7 @@ func assertProcessErrorPublicLog(t *testing.T, toolName string, inputErr error, 
 
 	require.NotNil(t, matchedRecord)
 	assert.Equal(t, expected, matchedRecord["public_error"])
+	assert.Equal(t, strings.TrimPrefix(expected, toolName+": "), matchedRecord["error"])
 }
 
 // TestSafeErrorLogLevelKeepsExpectedPublicFailuresOutOfErrorNoise proves that user-facing validation and
@@ -287,8 +290,8 @@ func TestSafeErrorLogLevelKeepsExpectedPublicFailuresOutOfErrorNoise(t *testing.
 	assert.Equal(t, slog.LevelInfo, safeErrorLogLevel(domain.NewUnsupportedExtensionError(".md")))
 }
 
-// TestSafeErrorLogLevelKeepsInternalCauseAtErrorLevel proves that wrapped internal failures still surface as
-// real errors even when the public message is sanitized.
+// TestSafeErrorLogLevelKeepsInternalCauseAtErrorLevel proves that wrapped internal failures remain error-level
+// records when they include a diagnostic cause.
 func TestSafeErrorLogLevelKeepsInternalCauseAtErrorLevel(t *testing.T) {
 	t.Parallel()
 
@@ -299,12 +302,12 @@ func TestSafeErrorLogLevelKeepsInternalCauseAtErrorLevel(t *testing.T) {
 	)
 }
 
-// TestProcessErrorHidesUnexpectedInternalDetails proves that raw internal errors do not leak into MCP responses.
-func TestProcessErrorHidesUnexpectedInternalDetails(t *testing.T) {
+// TestProcessErrorReturnsUnexpectedInternalDetails proves that MCP clients receive actionable adapter failures.
+func TestProcessErrorReturnsUnexpectedInternalDetails(t *testing.T) {
 	t.Parallel()
 
 	err := processError(t.Context(), domain.ToolNameFindSymbol, errors.New("boom *lspgopls.Service"))
-	require.EqualError(t, err, "find_symbol: internal error")
+	require.EqualError(t, err, "find_symbol: boom *lspgopls.Service")
 }
 
 // TestSanitizeValidationErrorUsesPublicArgumentNames keeps MCP validation feedback aligned
@@ -527,7 +530,11 @@ func TestFindReferencingSymbolsToolReturnsPublicTimeoutError(t *testing.T) {
 		}()
 
 		result := <-resultCh
-		require.EqualError(t, result.err, "find_referencing_symbols: tool execution timed out after 10s")
+		require.EqualError(
+			t,
+			result.err,
+			"find_referencing_symbols: tool execution timed out after 10s: context deadline exceeded",
+		)
 		assert.Empty(t, result.output.Files)
 	})
 }

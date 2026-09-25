@@ -44,6 +44,39 @@ func TestIntegrationServiceGetSymbolsOverviewReturnsFixtureSymbols(t *testing.T)
 	assertKindContainsExactPath(t, result.Symbols, int(protocol.SymbolKindFunction), "make_bucket")
 }
 
+// TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession proves that a canceled PHP reference tool
+// request does not leave its language-server process available for reuse after the request returns.
+func TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession(t *testing.T) {
+	workspaceRoot := phpactorFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	firstConn, err := service.rt.EnsureConn(ctx, workspaceRoot)
+	require.NoError(t, err)
+
+	requestCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	_, err = service.FindReferencingSymbols(requestCtx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "make_bucket"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "fixture.php",
+	})
+	require.ErrorIs(t, err, context.Canceled)
+
+	restartedConn, err := service.rt.EnsureConn(ctx, workspaceRoot)
+	require.NoError(t, err)
+	assert.NotSame(t, firstConn, restartedConn)
+}
+
+// TestIntegrationBuildPHPActorIndexHonorsContextCancellation proves that the CLI fallback cannot outlive a canceled
+// MCP tool request.
+func TestIntegrationBuildPHPActorIndexHonorsContextCancellation(t *testing.T) {
+	requestCtx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := buildPHPActorIndex(requestCtx, phpactorFixtureRoot(t))
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 // TestIntegrationServiceGetSymbolsOverviewReturnsNamespacedDeclarations proves that the live phpactor-backed
 // overview exposes namespaced PHP declarations, traits, enums, inherited members, and static members from
 // the existing fixture root without needing a separate workspace layout.

@@ -1,6 +1,7 @@
 package lsptsls
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,9 +10,9 @@ import (
 	"go.lsp.dev/uri"
 )
 
-// TestPatchInitializeParamsSetsRootURI proves that the TypeScript adapter preserves the shared workspace-folder
-// payload while adding the legacy root URI required by supported typescript-language-server versions.
-func TestPatchInitializeParamsSetsRootURI(t *testing.T) {
+// TestPatchInitializeParamsSetsRootURIAndFallback proves that the TypeScript adapter preserves workspace folders,
+// adds the legacy root URI, and delegates fallback validation to typescript-language-server.
+func TestPatchInitializeParamsSetsRootURIAndFallback(t *testing.T) {
 	t.Parallel()
 
 	workspaceRoot := t.TempDir()
@@ -21,11 +22,17 @@ func TestPatchInitializeParamsSetsRootURI(t *testing.T) {
 	}}
 	//nolint:exhaustruct_v5 // The test exercises only workspace-root initialization fields.
 	params := &protocol.InitializeParams{WorkspaceFolders: workspaceFolders}
+	fallbackPath := filepath.Join(t.TempDir(), "missing", "typescript", "lib", "tsserver.js")
 
-	err := patchInitializeParams(workspaceRoot, params)
+	err := patchInitializeParams(workspaceRoot, fallbackPath, params)
 	require.NoError(t, err)
 
 	assert.Equal(t, uri.File(workspaceRoot), params.RootURI)
 	assert.Empty(t, params.RootPath)
 	assert.Equal(t, workspaceFolders, params.WorkspaceFolders)
+	assert.Equal(t, map[string]any{
+		"tsserver": map[string]any{
+			"fallbackPath": fallbackPath,
+		},
+	}, params.InitializationOptions)
 }

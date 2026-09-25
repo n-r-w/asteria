@@ -492,7 +492,8 @@ func TestServiceFindSymbol(t *testing.T) {
 
 		_, findErr := svc.FindSymbol(t.Context(), request)
 		require.Error(t, findErr)
-		require.EqualError(t, findErr, "internal error")
+		require.ErrorContains(t, findErr, "failed to find symbol: boom")
+		assert.NotEqual(t, "internal error", findErr.Error())
 	})
 
 	t.Run("missing scope path is sanitized", func(t *testing.T) {
@@ -830,6 +831,16 @@ func TestServiceFindReferencingSymbolsRejectsUnsupportedExtensionWithoutLSPLeak(
 	})
 	require.Error(t, findErr)
 	assert.EqualError(t, findErr, `files with extension ".md" are not supported`)
+}
+
+// TestSanitizePublicErrorKeepsUnexpectedCause returns actionable adapter details instead of replacing them with a
+// generic internal error.
+func TestSanitizePublicErrorKeepsUnexpectedCause(t *testing.T) {
+	t.Parallel()
+
+	err := sanitizePublicError(errors.New("boom"), "find symbol in workspace")
+
+	require.EqualError(t, err, "find symbol in workspace: boom")
 }
 
 // TestSanitizePublicErrorReturnsTimeoutWarmupMessage keeps LSP startup timeouts out of the generic

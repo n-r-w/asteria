@@ -15,6 +15,8 @@ const (
 	phpactorIndexerDirName       = "index"
 	phpactorStateDirPermissions  = fs.FileMode(0o750)
 	phpactorIndexerPathKey       = "indexer.index_path"
+	phpactorEnabledWatchersKey   = "indexer.enabled_watchers"
+	phpactorLSPWatcher           = "lsp"
 	phpactorPHPStanEnabledKey    = "language_server_phpstan.enabled"
 	phpactorPsalmEnabledKey      = "language_server_psalm.enabled"
 	phpactorPHPCSFixerEnabledKey = "language_server_php_cs_fixer.enabled"

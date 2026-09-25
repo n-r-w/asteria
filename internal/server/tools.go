@@ -306,24 +306,18 @@ func processError(ctx context.Context, toolName string, err error, logAttrs ...a
 		return nil
 	}
 
+	clientErr := err
+	logLevel := slog.LevelError
 	if safeErr, ok := errors.AsType[*domain.SafeError](err); ok {
-		publicErr := fmt.Errorf("%s: %s", toolName, safeErr.Error())
-		logLevel := safeErrorLogLevel(safeErr)
-		cause := safeErr.Cause()
-		if cause != nil {
-			attrs := append([]any{logErrorKey, cause, logPublicErrorKey, publicErr.Error()}, logAttrs...)
-			slog.Log(ctx, logLevel, toolName, attrs...)
-		} else {
-			attrs := append([]any{logErrorKey, safeErr.Error(), logPublicErrorKey, publicErr.Error()}, logAttrs...)
-			slog.Log(ctx, logLevel, toolName, attrs...)
+		logLevel = safeErrorLogLevel(safeErr)
+		if cause := safeErr.Cause(); cause != nil {
+			clientErr = fmt.Errorf("%s: %w", safeErr.Error(), cause)
 		}
-
-		return publicErr
 	}
 
-	publicErr := fmt.Errorf("%s: internal error", toolName)
-	attrs := append([]any{logErrorKey, err, logPublicErrorKey, publicErr.Error()}, logAttrs...)
-	slog.ErrorContext(ctx, toolName, attrs...)
+	publicErr := fmt.Errorf("%s: %w", toolName, clientErr)
+	attrs := append([]any{logErrorKey, clientErr, logPublicErrorKey, publicErr.Error()}, logAttrs...)
+	slog.Log(ctx, logLevel, toolName, attrs...)
 
 	return publicErr
 }

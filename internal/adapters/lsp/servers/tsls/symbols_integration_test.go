@@ -17,6 +17,7 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
@@ -48,6 +49,34 @@ func TestIntegrationServiceGetSymbolsOverviewReturnsFixtureSymbols(t *testing.T)
 	assertKindContainsExactPath(t, result.Symbols, int(protocol.SymbolKindMethod), "FixtureBucket/describe")
 	assertKindContainsExactPath(t, result.Symbols, int(protocol.SymbolKindMethod), "FixtureBucket/bump")
 	assertKindContainsExactPath(t, result.Symbols, int(protocol.SymbolKindFunction), "makeBucket")
+}
+
+// TestIntegrationServiceUsesFallbackTypeScriptSDK proves that a workspace without installed dependencies remains
+// analyzable through the explicitly configured external tsserver.js.
+func TestIntegrationServiceUsesFallbackTypeScriptSDK(t *testing.T) {
+	fixtureRoot := tslsFixtureRoot(t)
+	fallbackPath := filepath.Join(fixtureRoot, "node_modules", "typescript", "lib", "tsserver.js")
+	workspaceRoot := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(workspaceRoot, "fixture.ts"),
+		[]byte("export function fallbackLabel(value: string): string { return value.trim(); }\n"),
+		0o600,
+	))
+
+	service, err := New(cfgadapters.TSLSConfig{TSServerFallbackPath: fallbackPath})
+	require.NoError(t, err)
+	ctx := t.Context()
+	t.Cleanup(func() {
+		require.NoError(t, service.Close(ctx))
+	})
+
+	result, err := service.GetSymbolsOverview(ctx, &domain.GetSymbolsOverviewRequest{
+		GetSymbolsOverviewFilter: domain.GetSymbolsOverviewFilter{Depth: 0},
+		WorkspaceRoot:            workspaceRoot,
+		File:                     "fixture.ts",
+	})
+	require.NoError(t, err)
+	assertKindContainsExactPath(t, result.Symbols, int(protocol.SymbolKindFunction), "fallbackLabel")
 }
 
 // TestIntegrationServiceFindSymbolReturnsMethodBody proves that canonical class-member paths resolve
@@ -978,7 +1007,7 @@ func assertOverviewContainsExactPathInFile(
 func newIntegrationService(t *testing.T) (*Service, context.Context) {
 	t.Helper()
 
-	service, err := New()
+	service, err := New(cfgadapters.TSLSConfig{})
 	require.NoError(t, err)
 
 	ctx := t.Context()

@@ -404,7 +404,7 @@ func runPHPActorPropertyReferences(
 
 	//nolint:gosec // Command and arguments are adapter-owned constants plus validated symbol names.
 	cmd := exec.CommandContext(
-		context.WithoutCancel(ctx),
+		ctx,
 		phpactorServerName,
 		"--no-interaction",
 		"--no-ansi",
@@ -418,6 +418,10 @@ func runPHPActorPropertyReferences(
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, fmt.Errorf("run phpactor property references: %w", ctxErr)
+		}
+
 		return nil, fmt.Errorf("run phpactor property references: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
@@ -429,7 +433,7 @@ func buildPHPActorIndex(ctx context.Context, workspaceRoot string) error {
 	stderr := bytes.Buffer{}
 
 	cmd := exec.CommandContext(
-		context.WithoutCancel(ctx),
+		ctx,
 		phpactorServerName,
 		"--no-interaction",
 		"--no-ansi",
@@ -439,6 +443,10 @@ func buildPHPActorIndex(ctx context.Context, workspaceRoot string) error {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("build phpactor index: %w", ctxErr)
+		}
+
 		return fmt.Errorf("build phpactor index: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 

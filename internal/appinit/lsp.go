@@ -28,7 +28,7 @@ func initLSP(cfg *config.Config) ([]router.ILSP, []CloseFunc, error) {
 	closeFuncs = append(closeFuncs, goplsImpl.Close)
 
 	// typescript-language-server
-	tslsImpl, err := lsptsls.New()
+	tslsImpl, err := lsptsls.New(cfg.Adapters.TSLS)
 	if err != nil {
 		return nil, nil, err
 	}
