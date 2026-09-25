@@ -114,6 +114,16 @@ Asteria tests these version pairs:
 
 `typescript-language-server@6.0.0` cannot use TypeScript 7 because TypeScript 7 does not provide `lib/tsserver.js`.
 
+For repositories without installed dependencies, configure a separate fallback TypeScript SDK:
+
+```bash
+npm install --prefix "$HOME/.local/share/asteria/typescript-5.9.3" --no-save --no-package-lock typescript@5.9.3
+export ASTERIAMCP_TSLS_TSSERVER_FALLBACK_PATH="$HOME/.local/share/asteria/typescript-5.9.3/node_modules/typescript/lib/tsserver.js"
+```
+
+A workspace-local TypeScript installation takes precedence over this fallback. When an MCP client starts Asteria,
+pass the variable through the MCP server environment. The repository `.env` file is only for development commands.
+
 Source: <https://github.com/typescript-language-server/typescript-language-server>
 
 ### Markdown
@@ -288,6 +298,10 @@ For the full implementation rules, package layout, multi-workspace behavior, cac
 - `ASTERIAMCP_GOPLS_ENV` (optional)
 	- `gopls` environment entries separated by `;`.
 	- Example: `GOFLAGS=-tags=featurex;GOOS=linux`
+
+- `ASTERIAMCP_TSLS_TSSERVER_FALLBACK_PATH` (optional)
+	- Absolute path to a compatible TypeScript SDK `lib/tsserver.js` file.
+	- Used only when the workspace does not provide a usable TypeScript installation.
 
 - `ASTERIAMCP_RUST_ANALYZER_WORKSPACE_SYMBOL_SEARCH_LIMIT` (optional, default: `128`)
 	- rust-analyzer workspace symbol search limit.

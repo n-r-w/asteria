@@ -378,7 +378,7 @@ func sanitizePublicError(err error, internalMessage string) error {
 		)
 	}
 
-	return domain.NewInternalError(fmt.Errorf("%s: %w", internalMessage, err))
+	return fmt.Errorf("%s: %w", internalMessage, err)
 }
 
 // sanitizePathAccessError maps filesystem errors to public-safe path validation messages.

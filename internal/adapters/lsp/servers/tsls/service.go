@@ -10,6 +10,7 @@ import (
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
+	"github.com/n-r-w/asteria/internal/config/cfgadapters"
 	"github.com/n-r-w/asteria/internal/server"
 	"github.com/n-r-w/asteria/internal/usecase/router"
 )
@@ -27,7 +28,7 @@ var (
 )
 
 // New creates a service that lazily starts the TypeScript language server on the first request.
-func New() (*Service, error) {
+func New(config cfgadapters.TSLSConfig) (*Service, error) {
 	rt, err := runtimelsp.New(
 		&runtimelsp.RuntimeConfig{
 			Command:                 tslsServerName,
@@ -37,11 +38,13 @@ func New() (*Service, error) {
 			ReplyConfiguration:      nil,
 			BuildClientCapabilities: nil,
 			FileWatch:               nil,
-			PatchInitializeParams:   patchInitializeParams,
-			HandleServerCallback:    nil,
-			AfterInitialized:        nil,
-			WaitUntilReady:          nil,
-			BuildWorkspaceFolders:   nil,
+			PatchInitializeParams: func(workspaceRoot string, params *protocol.InitializeParams) error {
+				return patchInitializeParams(workspaceRoot, config.TSServerFallbackPath, params)
+			},
+			HandleServerCallback:  nil,
+			AfterInitialized:      nil,
+			WaitUntilReady:        nil,
+			BuildWorkspaceFolders: nil,
 		})
 	if err != nil {
 		return nil, err
@@ -66,9 +69,18 @@ func New() (*Service, error) {
 	return &Service{Service: std, rt: rt, withRequestDocument: withRequestDocument}, nil
 }
 
-func patchInitializeParams(workspaceRoot string, params *protocol.InitializeParams) error {
+func patchInitializeParams(workspaceRoot, fallbackPath string, params *protocol.InitializeParams) error {
 	//nolint:staticcheck // Supported typescript-language-server versions require RootURI to find workspace TypeScript.
 	params.RootURI = uri.File(workspaceRoot)
+	if fallbackPath == "" {
+		return nil
+	}
+
+	params.InitializationOptions = map[string]any{
+		tsserverOptionsKey: map[string]any{
+			tsserverFallbackPathKey: fallbackPath,
+		},
+	}
 
 	return nil
 }

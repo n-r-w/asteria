@@ -26,6 +26,8 @@ const (
 	mjsExtension              = ".mjs"
 	cjsExtension              = ".cjs"
 	tslsServerName            = "typescript-language-server"
+	tsserverOptionsKey        = "tsserver"
+	tsserverFallbackPathKey   = "fallbackPath"
 	languageIDTypeScript      = "typescript"
 	languageIDTypeScriptReact = "typescriptreact"
 	languageIDJavaScript      = "javascript"
