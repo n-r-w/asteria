@@ -3,6 +3,7 @@ package lsptsls
 
 import (
 	"context"
+	"time"
 
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
@@ -28,7 +29,11 @@ var (
 )
 
 // New creates a service that lazily starts the TypeScript language server on the first request.
-func New(config cfgadapters.TSLSConfig) (*Service, error) {
+func New(config cfgadapters.TSLSConfig, sessionIdleTimeout time.Duration) (*Service, error) {
+	if config.MaxTSServerMemory == 0 {
+		config.MaxTSServerMemory = cfgadapters.DefaultMaxTSServerMemory
+	}
+
 	rt, err := runtimelsp.New(
 		&runtimelsp.RuntimeConfig{
 			Command:                 tslsServerName,
@@ -39,12 +44,13 @@ func New(config cfgadapters.TSLSConfig) (*Service, error) {
 			BuildClientCapabilities: nil,
 			FileWatch:               nil,
 			PatchInitializeParams: func(workspaceRoot string, params *protocol.InitializeParams) error {
-				return patchInitializeParams(workspaceRoot, config.TSServerFallbackPath, params)
+				return patchInitializeParams(workspaceRoot, config, params)
 			},
 			HandleServerCallback:  nil,
 			AfterInitialized:      nil,
 			WaitUntilReady:        nil,
 			BuildWorkspaceFolders: nil,
+			SessionIdleTimeout:    sessionIdleTimeout,
 		})
 	if err != nil {
 		return nil, err
@@ -69,17 +75,20 @@ func New(config cfgadapters.TSLSConfig) (*Service, error) {
 	return &Service{Service: std, rt: rt, withRequestDocument: withRequestDocument}, nil
 }
 
-func patchInitializeParams(workspaceRoot, fallbackPath string, params *protocol.InitializeParams) error {
+func patchInitializeParams(
+	workspaceRoot string,
+	config cfgadapters.TSLSConfig,
+	params *protocol.InitializeParams,
+) error {
 	//nolint:staticcheck // Supported typescript-language-server versions require RootURI to find workspace TypeScript.
 	params.RootURI = uri.File(workspaceRoot)
-	if fallbackPath == "" {
-		return nil
+	serverOptions := map[string]any{tsserverUseSyntaxServerKey: "never"}
+	if config.TSServerFallbackPath != "" {
+		serverOptions[tsserverFallbackPathKey] = config.TSServerFallbackPath
 	}
-
 	params.InitializationOptions = map[string]any{
-		tsserverOptionsKey: map[string]any{
-			tsserverFallbackPathKey: fallbackPath,
-		},
+		maxTsServerMemoryKey: config.MaxTSServerMemory,
+		tsserverOptionsKey:   serverOptions,
 	}
 
 	return nil

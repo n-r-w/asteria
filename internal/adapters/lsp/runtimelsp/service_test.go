@@ -26,9 +26,11 @@ func TestCloseRejectsNewEnsureConnCalls(t *testing.T) {
 		AfterInitialized:        nil,
 		WaitUntilReady:          nil,
 		BuildWorkspaceFolders:   nil,
+		SessionIdleTimeout:      0,
 	})
 	require.NoError(t, err)
-	require.NoError(t, runtime.beginEnsureConn())
+	release, acquireErr := runtime.AcquireSession(t.Context(), t.TempDir())
+	require.NoError(t, acquireErr)
 
 	closeDone := make(chan error, 1)
 	go func() {
@@ -42,7 +44,8 @@ func TestCloseRejectsNewEnsureConnCalls(t *testing.T) {
 		return runtime.closing
 	}, time.Second, 10*time.Millisecond)
 
-	require.ErrorIs(t, runtime.beginEnsureConn(), errRuntimeClosing)
+	_, acquireErr = runtime.AcquireSession(t.Context(), t.TempDir())
+	require.ErrorIs(t, acquireErr, errRuntimeClosing)
 
 	select {
 	case err := <-closeDone:
@@ -50,7 +53,7 @@ func TestCloseRejectsNewEnsureConnCalls(t *testing.T) {
 	default:
 	}
 
-	runtime.endEnsureConn()
+	release()
 	require.NoError(t, <-closeDone)
 }
 
@@ -72,9 +75,12 @@ func TestCloseUsesShutdownTimeoutWhileWaitingForEnsureConn(t *testing.T) {
 		AfterInitialized:        nil,
 		WaitUntilReady:          nil,
 		BuildWorkspaceFolders:   nil,
+		SessionIdleTimeout:      0,
 	})
 	require.NoError(t, err)
-	require.NoError(t, runtime.beginEnsureConn())
+	root := t.TempDir()
+	release, acquireErr := runtime.AcquireSession(t.Context(), root)
+	require.NoError(t, acquireErr)
 
 	closeCtx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -82,7 +88,9 @@ func TestCloseUsesShutdownTimeoutWhileWaitingForEnsureConn(t *testing.T) {
 	closeErr := runtime.Close(closeCtx)
 	require.ErrorIs(t, closeErr, context.DeadlineExceeded)
 
-	runtime.endEnsureConn()
-	require.NoError(t, runtime.beginEnsureConn())
-	runtime.endEnsureConn()
+	release()
+	release, acquireErr = runtime.AcquireSession(t.Context(), root)
+	require.NoError(t, acquireErr)
+	release()
+	require.NoError(t, runtime.Close(t.Context()))
 }

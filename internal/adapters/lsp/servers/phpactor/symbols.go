@@ -22,6 +22,11 @@ func (s *Service) GetSymbolsOverview(
 ) (domain.GetSymbolsOverviewResult, error) {
 	if request != nil {
 		defer s.closeSessionAfterCanceledRequest(ctx, request.WorkspaceRoot)
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.GetSymbolsOverviewResult{}, acquireErr
+		}
+		defer release()
 	}
 
 	result, err := s.std.GetSymbolsOverview(ctx, request)
@@ -51,6 +56,11 @@ func (s *Service) FindSymbol(
 ) (domain.FindSymbolResult, error) {
 	if request != nil {
 		defer s.closeSessionAfterCanceledRequest(ctx, request.WorkspaceRoot)
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.FindSymbolResult{}, acquireErr
+		}
+		defer release()
 	}
 
 	result, err := s.std.FindSymbol(ctx, request)
@@ -121,6 +131,11 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 	defer s.closeSessionAfterCanceledRequest(ctx, workspaceRoot)
+	release, acquireErr := s.rt.AcquireSession(ctx, workspaceRoot)
+	if acquireErr != nil {
+		return domain.FindReferencingSymbolsResult{}, acquireErr
+	}
+	defer release()
 
 	referenceWorkflowFiles, err := helpers.CollectReferenceWorkflowFiles(
 		workspaceRoot,
@@ -187,11 +202,14 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 	//nolint:staticcheck // Phpactor initialize does not answer in this environment unless RootURI is set.
 	params.RootURI = uri.File(workspaceRoot)
 	params.InitializationOptions = map[string]any{
-		phpactorIndexerPathKey:       indexPath,
-		phpactorEnabledWatchersKey:   []string{phpactorLSPWatcher},
-		phpactorPHPStanEnabledKey:    false,
-		phpactorPsalmEnabledKey:      false,
-		phpactorPHPCSFixerEnabledKey: false,
+		phpactorIndexerPathKey:         indexPath,
+		phpactorEnabledWatchersKey:     []string{phpactorLSPWatcher},
+		phpactorPHPStanEnabledKey:      false,
+		phpactorPsalmEnabledKey:        false,
+		phpactorPHPCSFixerEnabledKey:   false,
+		phpactorDiagnosticsOnOpenKey:   false,
+		phpactorDiagnosticsOnUpdateKey: false,
+		phpactorDiagnosticsOnSaveKey:   false,
 	}
 
 	return nil

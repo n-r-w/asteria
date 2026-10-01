@@ -216,6 +216,16 @@ Build the runtime with `runtimelsp.New(...)` and a `RuntimeConfig`.
 - optional client capabilities builder
 - optional `FileWatch` config for runtime-managed `workspace/didChangeWatchedFiles`
 
+`RuntimeConfig.SessionIdleTimeout` controls how long a session remains open after its last
+active request finishes. Pass the configured timeout from `internal/appinit/lsp.go` into the
+adapter constructor. The runtime default is ten minutes.
+
+For each adapter operation, call `Runtime.AcquireSession(ctx, workspaceRoot)` and defer the
+returned release function. Keep the session acquired for the entire workflow, including
+adapter-specific queries and `didClose` cleanup. Acquisition does not start the LSP process.
+A request arriving during idle shutdown waits for shutdown to finish before acquiring a new
+session. Its context can cancel that wait.
+
 The runtime starts lazily on first request.
 
 Do not keep one fixed workspace root in `RuntimeConfig`. The runtime receives the concrete root from each request and reuses or creates a session for that normalized root.

@@ -11,6 +11,14 @@ func (s *Service) GetSymbolsOverview(
 	ctx context.Context,
 	request *domain.GetSymbolsOverviewRequest,
 ) (domain.GetSymbolsOverviewResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.GetSymbolsOverviewResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	return s.std.GetSymbolsOverview(ctx, request)
 }
 
@@ -19,6 +27,14 @@ func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
 ) (domain.FindSymbolResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.FindSymbolResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	return s.std.FindSymbol(ctx, request)
 }
 
@@ -27,5 +43,13 @@ func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
 ) (domain.FindReferencingSymbolsResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.FindReferencingSymbolsResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	return s.std.FindReferencingSymbols(ctx, request)
 }

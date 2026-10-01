@@ -15,6 +15,14 @@ func (s *Service) GetSymbolsOverview(
 	ctx context.Context,
 	request *domain.GetSymbolsOverviewRequest,
 ) (domain.GetSymbolsOverviewResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.GetSymbolsOverviewResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	result, err := s.std.GetSymbolsOverview(ctx, request)
 	if err != nil {
 		return domain.GetSymbolsOverviewResult{}, err
@@ -31,6 +39,14 @@ func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
 ) (domain.FindSymbolResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.FindSymbolResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	result, err := s.std.FindSymbol(ctx, request)
 	if err != nil {
 		return domain.FindSymbolResult{}, err
@@ -56,6 +72,14 @@ func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
 ) (domain.FindReferencingSymbolsResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.FindReferencingSymbolsResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	if request == nil {
 		return domain.FindReferencingSymbolsResult{}, errors.New("request is required")
 	}

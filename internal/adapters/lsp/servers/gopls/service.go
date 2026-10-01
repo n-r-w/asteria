@@ -25,7 +25,7 @@ type Service struct {
 
 const (
 	goplsConfigSection    = "gopls"
-	goplsSettingsCapacity = 2
+	goplsSettingsCapacity = 4
 	goplsShutdownTimeout  = 15 * time.Second
 )
 
@@ -35,7 +35,7 @@ var (
 )
 
 // New creates a service that lazily starts gopls on the first request.
-func New(config cfgadapters.GoplsConfig) (*Service, error) {
+func New(config cfgadapters.GoplsConfig, sessionIdleTimeout time.Duration) (*Service, error) {
 	rt, err := runtimelsp.New(
 		&runtimelsp.RuntimeConfig{
 			Command:                 goplsConfigSection,
@@ -53,6 +53,7 @@ func New(config cfgadapters.GoplsConfig) (*Service, error) {
 			AfterInitialized:      nil,
 			WaitUntilReady:        nil,
 			BuildWorkspaceFolders: nil,
+			SessionIdleTimeout:    sessionIdleTimeout,
 		})
 	if err != nil {
 		return nil, err
@@ -81,11 +82,9 @@ func New(config cfgadapters.GoplsConfig) (*Service, error) {
 
 // buildReplyConfiguration converts adapter-level gopls settings into one workspace-aware callback.
 func buildReplyConfiguration(config cfgadapters.GoplsConfig) func(string, protocol.ConfigurationParams) ([]any, error) {
-	if len(config.BuildFlags) == 0 && len(config.Env) == 0 {
-		return nil
-	}
-
 	settings := make(map[string]any, goplsSettingsCapacity)
+	settings["diagnosticsTrigger"] = "Save"
+	settings["staticcheck"] = false
 	if len(config.BuildFlags) > 0 {
 		settings["buildFlags"] = slices.Clone(config.BuildFlags)
 	}

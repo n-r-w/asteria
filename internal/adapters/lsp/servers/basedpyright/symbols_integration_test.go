@@ -537,7 +537,7 @@ func assertOverviewContainsExactPathInFile(
 func newIntegrationService(t *testing.T) (*Service, context.Context) {
 	t.Helper()
 
-	service, err := New()
+	service, err := New(0)
 	require.NoError(t, err)
 
 	ctx := t.Context()

@@ -24,6 +24,7 @@ type Config struct {
 	FindSymbolDesc         string
 	FindReferencesDesc     string
 	ToolTimeout            time.Duration
+	LSPSessionIdleTimeout  time.Duration
 	ToolOutputMaxBytes     int
 	Log                    LogConfig
 	Adapters               cfgadapters.Config
@@ -50,6 +51,7 @@ type envConfig struct {
 	GetSymbolsOverviewDesc string        `env:"ASTERIAMCP_GET_SYMBOLS_OVERVIEW_DESC"`
 	FindSymbolDesc         string        `env:"ASTERIAMCP_FIND_SYMBOL_DESC"`
 	FindReferencesDesc     string        `env:"ASTERIAMCP_FIND_REFERENCES_DESC"`
+	LSPSessionIdleTimeout  time.Duration `env:"ASTERIAMCP_LSP_SESSION_IDLE_TIMEOUT"  envDefault:"10m"`
 	ToolTimeout            time.Duration `env:"ASTERIAMCP_TOOL_TIMEOUT"              envDefault:"360s"`
 	ToolOutputMaxBytes     int           `env:"ASTERIAMCP_TOOL_OUTPUT_MAX_BYTES"     envDefault:"32768"` // ~ 8K tokens
 	LogFile                string        `env:"ASTERIAMCP_LOG_FILE"`
@@ -97,6 +99,9 @@ func buildConfig(ec *envConfig) (*Config, error) {
 	if ec.ToolOutputMaxBytes <= 0 {
 		return nil, errors.New("ASTERIAMCP_TOOL_OUTPUT_MAX_BYTES must be positive")
 	}
+	if ec.LSPSessionIdleTimeout <= 0 {
+		return nil, errors.New("ASTERIAMCP_LSP_SESSION_IDLE_TIMEOUT must be positive")
+	}
 	if ec.ToolTimeout <= 0 {
 		return nil, errors.New("ASTERIAMCP_TOOL_TIMEOUT must be positive")
 	}
@@ -115,12 +120,13 @@ func buildConfig(ec *envConfig) (*Config, error) {
 		SystemPrompt: lo.Ternary(ec.SystemPrompt != "", ec.SystemPrompt, systemPrompt),
 		GetSymbolsOverviewDesc: lo.Ternary(ec.GetSymbolsOverviewDesc != "",
 			ec.GetSymbolsOverviewDesc, toolGetSymbolsOverviewDesc),
-		FindSymbolDesc:     lo.Ternary(ec.FindSymbolDesc != "", ec.FindSymbolDesc, toolFindSymbolDesc),
-		FindReferencesDesc: lo.Ternary(ec.FindReferencesDesc != "", ec.FindReferencesDesc, toolFindReferencesDesc),
-		ToolTimeout:        ec.ToolTimeout,
-		ToolOutputMaxBytes: ec.ToolOutputMaxBytes,
-		Log:                logConfig,
-		Adapters:           adapterConfig,
+		FindSymbolDesc:        lo.Ternary(ec.FindSymbolDesc != "", ec.FindSymbolDesc, toolFindSymbolDesc),
+		FindReferencesDesc:    lo.Ternary(ec.FindReferencesDesc != "", ec.FindReferencesDesc, toolFindReferencesDesc),
+		ToolTimeout:           ec.ToolTimeout,
+		LSPSessionIdleTimeout: ec.LSPSessionIdleTimeout,
+		ToolOutputMaxBytes:    ec.ToolOutputMaxBytes,
+		Log:                   logConfig,
+		Adapters:              adapterConfig,
 	}
 
 	return cfg, nil

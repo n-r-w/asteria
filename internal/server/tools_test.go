@@ -549,6 +549,7 @@ func newToolTestService(search ILSP) *Service {
 			FindSymbolDesc:         "",
 			FindReferencesDesc:     "",
 			ToolTimeout:            10 * time.Second,
+			LSPSessionIdleTimeout:  0,
 			ToolOutputMaxBytes:     0,
 			Log:                    config.LogConfig{},
 			Adapters:               cfgadapters.Config{},

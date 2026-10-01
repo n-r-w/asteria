@@ -34,6 +34,8 @@ type FileWatchConfig struct {
 type RuntimeConfig struct {
 	LSPConfig
 
+	SessionIdleTimeout time.Duration
+
 	BuildWorkspaceFolders func(workspaceRoot string) []protocol.WorkspaceFolder
 }
 
@@ -49,4 +51,14 @@ type sessionConfig struct {
 
 	WorkspaceRoot    string
 	WorkspaceFolders []protocol.WorkspaceFolder
+}
+
+// managedSession's fields are protected by Runtime.mu. Session transport state
+// remains protected by session.mu.
+type managedSession struct {
+	session      *session
+	requests     int
+	idleTimer    *time.Timer
+	idleDeadline time.Time
+	closing      chan struct{}
 }

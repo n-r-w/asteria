@@ -130,7 +130,7 @@ func TestPatchInitializeParams(t *testing.T) {
 			},
 		},
 		"diagnostics": map[string]any{
-			"enable": true,
+			"enable": false,
 		},
 	}, params.InitializationOptions)
 }

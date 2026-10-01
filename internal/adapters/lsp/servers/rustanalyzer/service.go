@@ -47,7 +47,7 @@ var (
 
 // New creates a service that lazily starts rust-analyzer on the first request while isolating Cargo build
 // artifacts inside the managed cache root.
-func New(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig) (*Service, error) {
+func New(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig, sessionIdleTimeout time.Duration) (*Service, error) {
 	normalizedCacheRoot, err := helpers.ResolveCacheRoot(cacheRoot)
 	if err != nil {
 		return nil, err
@@ -80,6 +80,7 @@ func New(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig) (*Service, error)
 		AfterInitialized:        nil,
 		WaitUntilReady:          service.waitUntilReady,
 		BuildWorkspaceFolders:   nil,
+		SessionIdleTimeout:      sessionIdleTimeout,
 	})
 	if err != nil {
 		return nil, err
@@ -227,7 +228,7 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 			},
 		},
 		"diagnostics": map[string]any{
-			enableOption: true,
+			enableOption: false,
 		},
 	}
 

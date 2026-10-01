@@ -21,3 +21,9 @@ const (
 	phpactorPsalmEnabledKey      = "language_server_psalm.enabled"
 	phpactorPHPCSFixerEnabledKey = "language_server_php_cs_fixer.enabled"
 )
+
+const (
+	phpactorDiagnosticsOnOpenKey   = "language_server.diagnostics_on_open"
+	phpactorDiagnosticsOnUpdateKey = "language_server.diagnostics_on_update"
+	phpactorDiagnosticsOnSaveKey   = "language_server.diagnostics_on_save"
+)

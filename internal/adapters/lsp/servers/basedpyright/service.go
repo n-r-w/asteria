@@ -3,6 +3,7 @@ package lspbasedpyright
 
 import (
 	"context"
+	"time"
 
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
@@ -29,7 +30,7 @@ var (
 )
 
 // New creates a service that lazily starts basedpyright on the first request.
-func New() (*Service, error) {
+func New(sessionIdleTimeout time.Duration) (*Service, error) {
 	service := &Service{
 		rt:                  nil,
 		std:                 nil,
@@ -49,6 +50,7 @@ func New() (*Service, error) {
 		AfterInitialized:        service.afterInitialized,
 		WaitUntilReady:          nil,
 		BuildWorkspaceFolders:   nil,
+		SessionIdleTimeout:      sessionIdleTimeout,
 	})
 	if err != nil {
 		return nil, err
@@ -78,11 +80,10 @@ func New() (*Service, error) {
 	return service, nil
 }
 
-// buildReplyConfiguration keeps basedpyright in workspace-analysis mode so cross-file symbol and reference
-// queries use the whole selected workspace rather than only transiently opened files.
+// buildReplyConfiguration limits background diagnostics to documents opened by symbolic-search workflows.
 func buildReplyConfiguration() func(string, protocol.ConfigurationParams) ([]any, error) {
 	settings := map[string]any{
-		"diagnosticMode": "workspace",
+		"diagnosticMode": "openFilesOnly",
 	}
 
 	return func(_ string, params protocol.ConfigurationParams) ([]any, error) {
