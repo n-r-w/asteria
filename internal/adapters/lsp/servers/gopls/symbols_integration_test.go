@@ -35,7 +35,7 @@ const (
 // uses only the stable fixture module under testdata.
 func TestIntegrationServiceGetSymbolsOverviewReturnsFixtureSymbols(t *testing.T) {
 	workspaceRoot := goplsFixtureRoot(t)
-	service, err := New(cfgadapters.GoplsConfig{})
+	service, err := New(cfgadapters.GoplsConfig{}, 0)
 	require.NoError(t, err)
 
 	ctx := t.Context()
@@ -153,7 +153,7 @@ func newIntegrationService(t *testing.T) (*Service, context.Context) {
 func newIntegrationServiceWithConfig(t *testing.T, config cfgadapters.GoplsConfig) (*Service, context.Context) {
 	t.Helper()
 
-	service, err := New(config)
+	service, err := New(config, 0)
 	require.NoError(t, err)
 
 	ctx := t.Context()

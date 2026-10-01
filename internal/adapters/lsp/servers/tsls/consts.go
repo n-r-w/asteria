@@ -51,3 +51,8 @@ func languageIDForExtension(ext string) string {
 		return languageIDTypeScript
 	}
 }
+
+const (
+	maxTsServerMemoryKey       = "maxTsServerMemory"
+	tsserverUseSyntaxServerKey = "useSyntaxServer"
+)

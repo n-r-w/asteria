@@ -9,21 +9,31 @@ import (
 // TSLSConfig holds typescript-language-server-specific settings loaded from environment variables.
 type TSLSConfig struct {
 	TSServerFallbackPath string
+	MaxTSServerMemory    int
 }
 
 type envConfigTSLS struct {
 	TSServerFallbackPath string `env:"ASTERIAMCP_TSLS_TSSERVER_FALLBACK_PATH"`
+	MaxTSServerMemory    *int   `env:"ASTERIAMCP_TSLS_MAX_TSSERVER_MEMORY"`
 }
 
 // build converts TypeScript language-server environment variables into runtime configuration.
 func (e envConfigTSLS) build() (TSLSConfig, error) {
-	fallbackPath := strings.TrimSpace(e.TSServerFallbackPath)
-	if fallbackPath == "" {
-		return TSLSConfig{}, nil
+	maxMemory := DefaultMaxTSServerMemory
+	if e.MaxTSServerMemory != nil {
+		maxMemory = *e.MaxTSServerMemory
 	}
-	if !filepath.IsAbs(fallbackPath) {
-		return TSLSConfig{}, errors.New("ASTERIAMCP_TSLS_TSSERVER_FALLBACK_PATH must be absolute")
+	if maxMemory <= 0 {
+		return TSLSConfig{}, errors.New("ASTERIAMCP_TSLS_MAX_TSSERVER_MEMORY must be positive")
 	}
 
-	return TSLSConfig{TSServerFallbackPath: filepath.Clean(fallbackPath)}, nil
+	fallbackPath := strings.TrimSpace(e.TSServerFallbackPath)
+	if fallbackPath != "" {
+		if !filepath.IsAbs(fallbackPath) {
+			return TSLSConfig{}, errors.New("ASTERIAMCP_TSLS_TSSERVER_FALLBACK_PATH must be absolute")
+		}
+		fallbackPath = filepath.Clean(fallbackPath)
+	}
+
+	return TSLSConfig{TSServerFallbackPath: fallbackPath, MaxTSServerMemory: maxMemory}, nil
 }

@@ -43,6 +43,7 @@ func newIntegrationRuntime(t *testing.T) *Runtime {
 			BuildClientCapabilities: nil,
 		},
 		BuildWorkspaceFolders: nil,
+		SessionIdleTimeout:    0,
 	})
 	require.NoError(t, err)
 

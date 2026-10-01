@@ -766,7 +766,7 @@ func newIntegrationService(t *testing.T) (*Service, context.Context, string) {
 
 	requireClangdInstalled(t)
 	cacheRoot := filepath.Join(t.TempDir(), "cache-root")
-	service, err := New(cacheRoot)
+	service, err := New(cacheRoot, 0)
 	require.NoError(t, err)
 
 	ctx := t.Context()

@@ -34,7 +34,7 @@ var (
 
 // New creates a service that lazily starts phpactor on the first request while keeping adapter state inside
 // the managed cache root instead of the analyzed workspace.
-func New(cacheRoot string) (*Service, error) {
+func New(cacheRoot string, sessionIdleTimeout time.Duration) (*Service, error) {
 	normalizedCacheRoot, err := helpers.ResolveCacheRoot(cacheRoot)
 	if err != nil {
 		return nil, err
@@ -64,6 +64,7 @@ func New(cacheRoot string) (*Service, error) {
 		AfterInitialized:      service.ensureIndexerPathReady,
 		WaitUntilReady:        nil,
 		BuildWorkspaceFolders: nil,
+		SessionIdleTimeout:    sessionIdleTimeout,
 	})
 	if err != nil {
 		return nil, err

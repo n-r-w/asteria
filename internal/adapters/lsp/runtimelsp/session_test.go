@@ -241,6 +241,7 @@ func newTestRuntime(t *testing.T, configure func(*LSPConfig)) *Runtime {
 	runtime, err := New(&RuntimeConfig{
 		LSPConfig:             config,
 		BuildWorkspaceFolders: nil,
+		SessionIdleTimeout:    0,
 	})
 	require.NoError(t, err)
 

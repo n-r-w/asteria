@@ -63,7 +63,7 @@ func TestIntegrationServiceUsesFallbackTypeScriptSDK(t *testing.T) {
 		0o600,
 	))
 
-	service, err := New(cfgadapters.TSLSConfig{TSServerFallbackPath: fallbackPath})
+	service, err := New(cfgadapters.TSLSConfig{TSServerFallbackPath: fallbackPath, MaxTSServerMemory: 0}, 0)
 	require.NoError(t, err)
 	ctx := t.Context()
 	t.Cleanup(func() {
@@ -1007,7 +1007,7 @@ func assertOverviewContainsExactPathInFile(
 func newIntegrationService(t *testing.T) (*Service, context.Context) {
 	t.Helper()
 
-	service, err := New(cfgadapters.TSLSConfig{})
+	service, err := New(cfgadapters.TSLSConfig{}, 0)
 	require.NoError(t, err)
 
 	ctx := t.Context()

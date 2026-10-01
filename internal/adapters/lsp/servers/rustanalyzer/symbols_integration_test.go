@@ -535,7 +535,7 @@ func newIntegrationService(t *testing.T) (*Service, context.Context) {
 	service, err := New(t.TempDir(), cfgadapters.RustAnalyzerConfig{
 		WorkspaceSymbolSearchLimit: 128,
 		StartupReadyTimeout:        30 * time.Second,
-	})
+	}, 0)
 	require.NoError(t, err)
 
 	ctx := t.Context()

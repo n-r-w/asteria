@@ -100,11 +100,14 @@ func TestPatchInitializeParams(t *testing.T) {
 	assert.Empty(t, params.RootPath)
 	assert.Equal(t, uri.File(workspaceRoot), params.RootURI)
 	assert.Equal(t, map[string]any{
-		phpactorIndexerPathKey:       filepath.Join(expectedCacheDir, phpactorIndexerDirName),
-		"indexer.enabled_watchers":   []string{"lsp"},
-		phpactorPHPStanEnabledKey:    false,
-		phpactorPsalmEnabledKey:      false,
-		phpactorPHPCSFixerEnabledKey: false,
+		phpactorIndexerPathKey:                  filepath.Join(expectedCacheDir, phpactorIndexerDirName),
+		"indexer.enabled_watchers":              []string{"lsp"},
+		phpactorPHPStanEnabledKey:               false,
+		phpactorPsalmEnabledKey:                 false,
+		phpactorPHPCSFixerEnabledKey:            false,
+		"language_server.diagnostics_on_open":   false,
+		"language_server.diagnostics_on_update": false,
+		"language_server.diagnostics_on_save":   false,
 	}, params.InitializationOptions)
 }
 

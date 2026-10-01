@@ -29,7 +29,7 @@ var (
 )
 
 // New creates a service that lazily starts clangd on the first request.
-func New(cacheRoot string) (*Service, error) {
+func New(cacheRoot string, sessionIdleTimeout time.Duration) (*Service, error) {
 	service := &Service{
 		rt:                  nil,
 		std:                 nil,
@@ -66,6 +66,7 @@ func New(cacheRoot string) (*Service, error) {
 		AfterInitialized:      nil,
 		WaitUntilReady:        nil,
 		BuildWorkspaceFolders: nil,
+		SessionIdleTimeout:    sessionIdleTimeout,
 	})
 	if err != nil {
 		return nil, err

@@ -19,7 +19,7 @@ const runtimeClosePollInterval = 10 * time.Millisecond
 // Runtime owns one reusable LSP session per normalized workspace root and exposes live JSON-RPC connections.
 type Runtime struct {
 	config   *RuntimeConfig
-	sessions map[string]*session
+	sessions map[string]*managedSession
 	mu       sync.Mutex
 	closing  bool
 	active   int
@@ -42,6 +42,12 @@ func New(config *RuntimeConfig) (*Runtime, error) {
 		return nil, fmt.Errorf("invalid runtime config: %w", err)
 	}
 
+	if config.SessionIdleTimeout < 0 {
+		return nil, errors.New("session idle timeout must not be negative")
+	}
+	if config.SessionIdleTimeout == 0 {
+		config.SessionIdleTimeout = defaultSessionIdleTimeout
+	}
 	if config.ShutdownTimeout <= 0 {
 		config.ShutdownTimeout = defaultShutdownTimeout
 	}
@@ -54,7 +60,7 @@ func New(config *RuntimeConfig) (*Runtime, error) {
 
 	runtime := &Runtime{
 		config:   config,
-		sessions: make(map[string]*session),
+		sessions: make(map[string]*managedSession),
 		mu:       sync.Mutex{},
 		closing:  false,
 		active:   0,
@@ -69,10 +75,11 @@ func (r *Runtime) EnsureConn(ctx context.Context, workspaceRoot string) (jsonrpc
 	if err != nil {
 		return nil, err
 	}
-	if beginErr := r.beginEnsureConn(); beginErr != nil {
-		return nil, beginErr
+	release, acquireErr := r.AcquireSession(ctx, normalizedWorkspaceRoot)
+	if acquireErr != nil {
+		return nil, acquireErr
 	}
-	defer r.endEnsureConn()
+	defer release()
 
 	session, sessionErr := r.getOrCreateSession(normalizedWorkspaceRoot)
 	if sessionErr != nil {
@@ -99,10 +106,11 @@ func (r *Runtime) SessionInfo(ctx context.Context, workspaceRoot string) (*Sessi
 	if err != nil {
 		return nil, err
 	}
-	if beginErr := r.beginEnsureConn(); beginErr != nil {
-		return nil, beginErr
+	release, acquireErr := r.AcquireSession(ctx, normalizedWorkspaceRoot)
+	if acquireErr != nil {
+		return nil, acquireErr
 	}
-	defer r.endEnsureConn()
+	defer release()
 
 	session, sessionErr := r.getOrCreateSession(normalizedWorkspaceRoot)
 	if sessionErr != nil {
@@ -139,7 +147,7 @@ func (r *Runtime) getOrCreateSession(workspaceRoot string) (*session, error) {
 // getOrCreateSessionLocked reuses or creates one session while the runtime mutex is held.
 func (r *Runtime) getOrCreateSessionLocked(normalizedWorkspaceRoot string) (*session, error) {
 	if existingSession, ok := r.sessions[normalizedWorkspaceRoot]; ok {
-		return existingSession, nil
+		return existingSession.session, nil
 	}
 
 	config, err := r.newSessionConfig(normalizedWorkspaceRoot)
@@ -148,7 +156,13 @@ func (r *Runtime) getOrCreateSessionLocked(normalizedWorkspaceRoot string) (*ses
 	}
 
 	createdSession := newSession(config)
-	r.sessions[normalizedWorkspaceRoot] = createdSession
+	r.sessions[normalizedWorkspaceRoot] = &managedSession{
+		session:      createdSession,
+		requests:     0,
+		idleTimer:    nil,
+		idleDeadline: time.Time{},
+		closing:      nil,
+	}
 
 	return createdSession, nil
 }
@@ -186,6 +200,7 @@ func (r *Runtime) CloseSession(ctx context.Context, workspaceRoot string) error 
 	}
 	sessionToClose, ok := r.sessions[normalizedWorkspaceRoot]
 	if ok {
+		sessionToClose.stopIdleTimer()
 		delete(r.sessions, normalizedWorkspaceRoot)
 	}
 	r.mu.Unlock()
@@ -194,7 +209,7 @@ func (r *Runtime) CloseSession(ctx context.Context, workspaceRoot string) error 
 		return nil
 	}
 
-	return sessionToClose.close(ctx)
+	return sessionToClose.session.close(ctx)
 }
 
 // Close shuts down all live sessions so process-level cleanup stays explicit to the caller.
@@ -210,7 +225,7 @@ func (r *Runtime) Close(ctx context.Context) error {
 	closeCtx, cancel := newShutdownContext(ctx, r.config.ShutdownTimeout)
 	defer cancel()
 
-	if waitErr := r.waitForActiveEnsureConn(closeCtx); waitErr != nil {
+	if waitErr := r.waitForActiveRequests(closeCtx); waitErr != nil {
 		r.mu.Lock()
 		r.closing = false
 		r.mu.Unlock()
@@ -221,9 +236,10 @@ func (r *Runtime) Close(ctx context.Context) error {
 	r.mu.Lock()
 	sessions := make([]*session, 0, len(r.sessions))
 	for _, session := range r.sessions {
-		sessions = append(sessions, session)
+		session.stopIdleTimer()
+		sessions = append(sessions, session.session)
 	}
-	r.sessions = make(map[string]*session)
+	r.sessions = make(map[string]*managedSession)
 	r.mu.Unlock()
 
 	var closeErr error
@@ -238,27 +254,6 @@ func (r *Runtime) Close(ctx context.Context) error {
 	return closeErr
 }
 
-// beginEnsureConn marks one in-flight EnsureConn call unless the runtime is already closing.
-func (r *Runtime) beginEnsureConn() error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.closing {
-		return errRuntimeClosing
-	}
-
-	r.active++
-
-	return nil
-}
-
-// endEnsureConn releases one in-flight EnsureConn call and wakes Close when the runtime becomes idle.
-func (r *Runtime) endEnsureConn() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.active--
-}
-
 // isClosing reports whether runtime shutdown has started.
 func (r *Runtime) isClosing() bool {
 	r.mu.Lock()
@@ -267,8 +262,8 @@ func (r *Runtime) isClosing() bool {
 	return r.closing
 }
 
-// waitForActiveEnsureConn waits until no EnsureConn calls remain active or the caller cancels shutdown.
-func (r *Runtime) waitForActiveEnsureConn(ctx context.Context) error {
+// waitForActiveRequests waits for acquired sessions and idle cleanup to finish.
+func (r *Runtime) waitForActiveRequests(ctx context.Context) error {
 	ticker := time.NewTicker(runtimeClosePollInterval)
 	defer ticker.Stop()
 

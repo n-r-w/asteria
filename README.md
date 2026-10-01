@@ -243,6 +243,17 @@ High-level flow:
 
 For the full implementation rules, package layout, multi-workspace behavior, cache requirements, and testing checklist, read [LSP Server Implementation Guide](docs/lsp-server-implementation-guide.md).
 
+## Language server resource usage
+
+Asteria starts LSP sessions on demand and closes them after the configured idle timeout.
+Active requests keep their session open through document cleanup.
+
+TypeScript uses one semantic-capable `tsserver` with a configurable heap limit.
+Rust and PHP adapters disable background diagnostics. The Python adapter limits diagnostics
+to open files. The Go adapter disables Staticcheck and triggers diagnostics on save;
+workspace loading and configuration changes can still trigger diagnostics.
+Clangd and Marksman retain the indexing needed for symbol and reference search.
+
 ## Environment variables
 
 - `ASTERIAMCP_CACHE_ROOT` (optional, default: `<os-user-cache-dir>/asteria/cache`)
@@ -263,6 +274,10 @@ For the full implementation rules, package layout, multi-workspace behavior, cac
 - `ASTERIAMCP_TOOL_TIMEOUT` (optional, default: `360s`)
 	- Global timeout for one MCP tool call.
 	- Must be greater than `0`.
+
+- `ASTERIAMCP_LSP_SESSION_IDLE_TIMEOUT` (optional, default: `10m`)
+	- Positive duration before closing an LSP session after its last active request finishes.
+	- Applies to all adapters. The next request restarts the server and may require reindexing.
 
 - `ASTERIAMCP_LOG_FILE` (optional)
 	- JSON log file path.
@@ -302,6 +317,9 @@ For the full implementation rules, package layout, multi-workspace behavior, cac
 - `ASTERIAMCP_TSLS_TSSERVER_FALLBACK_PATH` (optional)
 	- Absolute path to a compatible TypeScript SDK `lib/tsserver.js` file.
 	- Used only when the workspace does not provide a usable TypeScript installation.
+
+- `ASTERIAMCP_TSLS_MAX_TSSERVER_MEMORY` (optional, default: `2048`)
+	- Positive old-space heap limit in MiB for the single TypeScript server. This does not cap RSS.
 
 - `ASTERIAMCP_RUST_ANALYZER_WORKSPACE_SYMBOL_SEARCH_LIMIT` (optional, default: `128`)
 	- rust-analyzer workspace symbol search limit.

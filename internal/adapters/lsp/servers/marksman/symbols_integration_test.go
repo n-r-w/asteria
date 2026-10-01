@@ -219,7 +219,7 @@ func TestIntegrationServiceGetSymbolsOverviewUpdatesMarkdownFileWithoutRestart(t
 func newIntegrationService(t *testing.T) *Service {
 	t.Helper()
 
-	service, err := New()
+	service, err := New(0)
 	require.NoError(t, err)
 
 	ctx := t.Context()

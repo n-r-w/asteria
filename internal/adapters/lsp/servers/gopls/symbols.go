@@ -15,6 +15,14 @@ import (
 func (s *Service) GetSymbolsOverview(
 	ctx context.Context, request *domain.GetSymbolsOverviewRequest,
 ) (domain.GetSymbolsOverviewResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.GetSymbolsOverviewResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	result, err := s.std.GetSymbolsOverview(ctx, request)
 	if request == nil {
 		return result, sanitizeGoplsPublicError("file_path", "", err)
@@ -27,6 +35,14 @@ func (s *Service) GetSymbolsOverview(
 func (s *Service) FindSymbol(
 	ctx context.Context, request *domain.FindSymbolRequest,
 ) (domain.FindSymbolResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.FindSymbolResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	if request != nil {
 		request.Path = normalizeGoQueryPath(request.Path)
 	}
@@ -43,6 +59,14 @@ func (s *Service) FindSymbol(
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context, request *domain.FindReferencingSymbolsRequest,
 ) (domain.FindReferencingSymbolsResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.FindReferencingSymbolsResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	if request == nil {
 		result, err := s.std.FindReferencingSymbols(ctx, nil)
 

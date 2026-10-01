@@ -5,6 +5,7 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
@@ -25,7 +26,7 @@ var (
 )
 
 // New creates a service that will lazily start Marksman on the first request.
-func New() (*Service, error) {
+func New(sessionIdleTimeout time.Duration) (*Service, error) {
 	rt, err := runtimelsp.New(
 		&runtimelsp.RuntimeConfig{
 			Command:                 marksmanServerName,
@@ -43,6 +44,7 @@ func New() (*Service, error) {
 			AfterInitialized:      nil,
 			WaitUntilReady:        nil,
 			BuildWorkspaceFolders: nil,
+			SessionIdleTimeout:    sessionIdleTimeout,
 		})
 	if err != nil {
 		return nil, err

@@ -22,6 +22,14 @@ func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
 ) (domain.FindReferencingSymbolsResult, error) {
+	if request != nil {
+		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		if acquireErr != nil {
+			return domain.FindReferencingSymbolsResult{}, acquireErr
+		}
+		defer release()
+	}
+
 	if request == nil {
 		return domain.FindReferencingSymbolsResult{}, errors.New("request is required")
 	}

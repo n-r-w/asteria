@@ -20,7 +20,7 @@ func initLSP(cfg *config.Config) ([]router.ILSP, []CloseFunc, error) {
 	closeFuncs := make([]CloseFunc, 0, registeredLSPCapacity)
 
 	// gopls
-	goplsImpl, err := lspgopls.New(cfg.Adapters.Gopls)
+	goplsImpl, err := lspgopls.New(cfg.Adapters.Gopls, cfg.LSPSessionIdleTimeout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -28,7 +28,7 @@ func initLSP(cfg *config.Config) ([]router.ILSP, []CloseFunc, error) {
 	closeFuncs = append(closeFuncs, goplsImpl.Close)
 
 	// typescript-language-server
-	tslsImpl, err := lsptsls.New(cfg.Adapters.TSLS)
+	tslsImpl, err := lsptsls.New(cfg.Adapters.TSLS, cfg.LSPSessionIdleTimeout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -36,7 +36,7 @@ func initLSP(cfg *config.Config) ([]router.ILSP, []CloseFunc, error) {
 	closeFuncs = append(closeFuncs, tslsImpl.Close)
 
 	// marksman
-	marksmanImpl, err := lspmarksman.New()
+	marksmanImpl, err := lspmarksman.New(cfg.LSPSessionIdleTimeout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -44,7 +44,7 @@ func initLSP(cfg *config.Config) ([]router.ILSP, []CloseFunc, error) {
 	closeFuncs = append(closeFuncs, marksmanImpl.Close)
 
 	// basedpyright
-	basedpyrightImpl, err := lspbasedpyright.New()
+	basedpyrightImpl, err := lspbasedpyright.New(cfg.LSPSessionIdleTimeout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,7 +52,7 @@ func initLSP(cfg *config.Config) ([]router.ILSP, []CloseFunc, error) {
 	closeFuncs = append(closeFuncs, basedpyrightImpl.Close)
 
 	// clangd
-	clangdImpl, err := lspclangd.New(cfg.CacheRoot)
+	clangdImpl, err := lspclangd.New(cfg.CacheRoot, cfg.LSPSessionIdleTimeout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -60,7 +60,7 @@ func initLSP(cfg *config.Config) ([]router.ILSP, []CloseFunc, error) {
 	closeFuncs = append(closeFuncs, clangdImpl.Close)
 
 	// phpactor
-	phpactorImpl, err := lspphpactor.New(cfg.CacheRoot)
+	phpactorImpl, err := lspphpactor.New(cfg.CacheRoot, cfg.LSPSessionIdleTimeout)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -68,7 +68,7 @@ func initLSP(cfg *config.Config) ([]router.ILSP, []CloseFunc, error) {
 	closeFuncs = append(closeFuncs, phpactorImpl.Close)
 
 	// rust-analyzer
-	rustAnalyzerImpl, err := lsprustanalyzer.New(cfg.CacheRoot, cfg.Adapters.RustAnalyzer)
+	rustAnalyzerImpl, err := lsprustanalyzer.New(cfg.CacheRoot, cfg.Adapters.RustAnalyzer, cfg.LSPSessionIdleTimeout)
 	if err != nil {
 		return nil, nil, err
 	}
