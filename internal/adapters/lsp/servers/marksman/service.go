@@ -37,7 +37,7 @@ func New(sessionIdleTimeout time.Duration) (*Service, error) {
 			BuildClientCapabilities: nil,
 			FileWatch: &runtimelsp.FileWatchConfig{
 				RelevantFile: shouldWatchMarksmanFile,
-				IgnoreDir:    nil,
+				IgnoreDir:    shouldIgnoreDir,
 			},
 			PatchInitializeParams: nil,
 			HandleServerCallback:  nil,
@@ -59,7 +59,7 @@ func New(sessionIdleTimeout time.Duration) (*Service, error) {
 		OpenFileForDocumentSymbol:    true,
 		OpenFileForReferenceWorkflow: true,
 		BuildNamePath:                nil,
-		IgnoreDir:                    nil,
+		IgnoreDir:                    shouldIgnoreDir,
 		SymbolTreeCache:              nil,
 		BuildSymbolTreeCacheMetadata: nil,
 	})

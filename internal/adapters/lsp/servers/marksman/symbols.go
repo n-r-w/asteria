@@ -2,6 +2,7 @@ package lspmarksman
 
 import (
 	"context"
+	"path/filepath"
 
 	"github.com/n-r-w/asteria/internal/domain"
 )
@@ -52,4 +53,9 @@ func (s *Service) FindReferencingSymbols(
 	}
 
 	return s.std.FindReferencingSymbols(ctx, request)
+}
+
+// shouldIgnoreDir excludes dependency documentation from workspace traversal.
+func shouldIgnoreDir(relativePath string) bool {
+	return filepath.Base(relativePath) == "node_modules"
 }
