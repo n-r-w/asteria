@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 
 	lsphelpers "github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/domain"
@@ -56,6 +57,41 @@ func TestIntegrationServiceFindSymbolResolvesNestedHeading(t *testing.T) {
 	symbol, ok := findFoundSymbol(result.Symbols, "Guide/Installation")
 	require.True(t, ok, "expected nested heading match, got %#v", result.Symbols)
 	assert.Equal(t, "guide.markdown", symbol.File)
+}
+
+type marksmanSearchSuite struct {
+	suite.Suite
+}
+
+func TestIntegrationMarksmanSearch(t *testing.T) {
+	suite.Run(t, new(marksmanSearchSuite))
+}
+
+func (s *marksmanSearchSuite) TestFindSymbolSkipsDependencyDirectories() {
+	t := s.T()
+	workspaceRoot := prepareMarksmanWorkspace(t)
+	service := newIntegrationService(t)
+
+	writeMarksmanWorkspaceFile(t, workspaceRoot, "docs/search.md", "# Search Target\n")
+	writeMarksmanWorkspaceFile(t, workspaceRoot, "node_modules/package/search.md", "# Search Target\n")
+	writeMarksmanWorkspaceFile(t, workspaceRoot, "docs/node_modules/package/search.md", "# Search Target\n")
+
+	for _, scope := range []string{"", "docs", "node_modules/package/search.md"} {
+		s.Run("scope="+scope, func() {
+			result, err := service.FindSymbol(s.T().Context(), &domain.FindSymbolRequest{
+				FindSymbolFilter: domain.FindSymbolFilter{Path: "Search Target"},
+				WorkspaceRoot:    workspaceRoot,
+				Scope:            scope,
+			})
+			s.Require().NoError(err)
+			s.Require().Len(result.Symbols, 1)
+			expectedFile := "docs/search.md"
+			if scope == "node_modules/package/search.md" {
+				expectedFile = scope
+			}
+			s.Equal(expectedFile, result.Symbols[0].File)
+		})
+	}
 }
 
 // TestIntegrationServiceFindReferencingSymbolsGroupsMarkdownLinks proves that heading references from links
