@@ -20,7 +20,6 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 	svc := &Service{ //nolint:exhaustruct_v5 // only cfg is relevant for output limiting
 		cfg: &config.Config{
 			CacheRoot:              "",
-			SystemPrompt:           "",
 			GetSymbolsOverviewDesc: "",
 			FindSymbolDesc:         "",
 			FindReferencesDesc:     "",
@@ -61,7 +60,6 @@ func TestLimitFindSymbolOutputReturnsPublicSizeError(t *testing.T) {
 	svc := &Service{ //nolint:exhaustruct_v5 // only cfg is relevant for output limiting
 		cfg: &config.Config{
 			CacheRoot:              "",
-			SystemPrompt:           "",
 			GetSymbolsOverviewDesc: "",
 			FindSymbolDesc:         "",
 			FindReferencesDesc:     "",
@@ -88,7 +86,6 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 	svc := &Service{ //nolint:exhaustruct_v5 // only cfg is relevant for output limiting
 		cfg: &config.Config{
 			CacheRoot:              "",
-			SystemPrompt:           "",
 			GetSymbolsOverviewDesc: "",
 			FindSymbolDesc:         "",
 			FindReferencesDesc:     "",

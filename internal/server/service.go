@@ -30,10 +30,7 @@ func New(serverVersion string, search ILSP, cfg *config.Config) *Service {
 			Version: serverVersion,
 			Title:   domain.ServerName,
 		},
-		//nolint:exhaustruct_v5 // optional fields use defaults
-		&mcp.ServerOptions{
-			Instructions: cfg.SystemPrompt,
-		},
+		nil,
 	)
 
 	svc := &Service{

@@ -27,10 +27,11 @@ This server implements following tools:
 3. `find_referencing_symbols`: Finds references to the symbol. Returns metadata and code snippets around each reference.
 
 Tool descriptions:
-- `internal/config/consts.go` - contains mcp system prompt (description for all tools) and individual tool descriptions
+- `internal/config/consts.go` - contains tool descriptions and rules that all tool descriptions share
 - `internal/server/dto.go` - contains MCP request and response models (DTOs) for each tool
 - REMEMBER, ALL tool descriptions in `internal/config/consts.go` are intended for LLM and should be concise to save tokens,
-while still providing enough information for the LLM to understand what each tool does. NO NEED to duplicate information in tool descriptions that is already present in the system prompt.
+while still providing enough information for the LLM to understand what each tool does.
+- Tool descriptions and parameter descriptions in `internal/server/dto.go` carry all usage rules, because MCP clients do not pass server instructions to every agent. Each rule stays in description of tool or parameter that it concerns.
 
 ## Instructions
 1. DON'T edit AGENTS.md and ifaceguard.cfg without DIRECT user request.

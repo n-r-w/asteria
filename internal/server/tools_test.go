@@ -544,7 +544,6 @@ func newToolTestService(search ILSP) *Service {
 	return &Service{
 		cfg: &config.Config{
 			CacheRoot:              "",
-			SystemPrompt:           "",
 			GetSymbolsOverviewDesc: "",
 			FindSymbolDesc:         "",
 			FindReferencesDesc:     "",

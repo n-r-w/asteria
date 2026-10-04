@@ -19,7 +19,6 @@ import (
 // Config holds static application configuration loaded from environment variables.
 type Config struct {
 	CacheRoot              string
-	SystemPrompt           string
 	GetSymbolsOverviewDesc string
 	FindSymbolDesc         string
 	FindReferencesDesc     string
@@ -47,7 +46,6 @@ type LogConfig struct {
 // envConfig is an intermediate struct for parsing environment variables.
 type envConfig struct {
 	CacheRoot              string        `env:"ASTERIAMCP_CACHE_ROOT"`
-	SystemPrompt           string        `env:"ASTERIAMCP_SYSTEM_PROMPT"`
 	GetSymbolsOverviewDesc string        `env:"ASTERIAMCP_GET_SYMBOLS_OVERVIEW_DESC"`
 	FindSymbolDesc         string        `env:"ASTERIAMCP_FIND_SYMBOL_DESC"`
 	FindReferencesDesc     string        `env:"ASTERIAMCP_FIND_REFERENCES_DESC"`
@@ -78,7 +76,6 @@ func Load() (*Config, error) {
 // buildConfig normalizes already-parsed env values and validates the final static application config.
 func buildConfig(ec *envConfig) (*Config, error) {
 	ec.CacheRoot = strings.TrimSpace(ec.CacheRoot)
-	ec.SystemPrompt = strings.TrimSpace(ec.SystemPrompt)
 	ec.GetSymbolsOverviewDesc = strings.TrimSpace(ec.GetSymbolsOverviewDesc)
 	ec.FindSymbolDesc = strings.TrimSpace(ec.FindSymbolDesc)
 	ec.FindReferencesDesc = strings.TrimSpace(ec.FindReferencesDesc)
@@ -116,12 +113,13 @@ func buildConfig(ec *envConfig) (*Config, error) {
 	}
 
 	cfg := &Config{
-		CacheRoot:    cacheRoot,
-		SystemPrompt: lo.Ternary(ec.SystemPrompt != "", ec.SystemPrompt, systemPrompt),
+		CacheRoot: cacheRoot,
 		GetSymbolsOverviewDesc: lo.Ternary(ec.GetSymbolsOverviewDesc != "",
-			ec.GetSymbolsOverviewDesc, toolGetSymbolsOverviewDesc),
-		FindSymbolDesc:        lo.Ternary(ec.FindSymbolDesc != "", ec.FindSymbolDesc, toolFindSymbolDesc),
-		FindReferencesDesc:    lo.Ternary(ec.FindReferencesDesc != "", ec.FindReferencesDesc, toolFindReferencesDesc),
+			ec.GetSymbolsOverviewDesc, toolGetSymbolsOverviewDesc) + sharedToolRules,
+		FindSymbolDesc: lo.Ternary(ec.FindSymbolDesc != "",
+			ec.FindSymbolDesc, toolFindSymbolDesc) + sharedToolRules,
+		FindReferencesDesc: lo.Ternary(ec.FindReferencesDesc != "",
+			ec.FindReferencesDesc, toolFindReferencesDesc) + sharedToolRules,
 		ToolTimeout:           ec.ToolTimeout,
 		LSPSessionIdleTimeout: ec.LSPSessionIdleTimeout,
 		ToolOutputMaxBytes:    ec.ToolOutputMaxBytes,
