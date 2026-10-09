@@ -291,8 +291,11 @@ func toReferencingFileDTOs(input []domain.ReferencingSymbol) []referencingFileDT
 	return files
 }
 
-// formatRange converts one inclusive line range into the compact transport form expected by MCP clients.
+// formatRange converts one inclusive 0-based domain line range into the compact 1-based transport form
+// expected by MCP clients.
 func formatRange(startLine, endLine int) string {
+	startLine++
+	endLine++
 	if startLine == endLine {
 		return strconv.Itoa(startLine)
 	}

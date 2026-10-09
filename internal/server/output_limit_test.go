@@ -31,10 +31,10 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 		},
 	}
 	output := findSymbolOutput{Symbols: []foundSymbolDTO{
-		{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "0"},
-		{Kind: 12, Body: "", Info: "", Path: "Bravo", File: "b.go", Range: "1"},
-		{Kind: 12, Body: "", Info: "", Path: "Charlie", File: "c.go", Range: "2"},
-		{Kind: 12, Body: "", Info: "", Path: "Delta", File: "d.go", Range: "3"},
+		{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "1"},
+		{Kind: 12, Body: "", Info: "", Path: "Bravo", File: "b.go", Range: "2"},
+		{Kind: 12, Body: "", Info: "", Path: "Charlie", File: "c.go", Range: "3"},
+		{Kind: 12, Body: "", Info: "", Path: "Delta", File: "d.go", Range: "4"},
 	}, ReturnedPercent: 0}
 
 	limited, err := svc.limitFindSymbolOutput(output)
@@ -46,8 +46,8 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(
 		t,
-		`{"symbols":[{"kind":12,"path":"Alpha","file":"a.go","range":"0"},`+
-			`{"kind":12,"path":"Bravo","file":"b.go","range":"1"}],"returned_percent":50}`,
+		`{"symbols":[{"kind":12,"path":"Alpha","file":"a.go","range":"1"},`+
+			`{"kind":12,"path":"Bravo","file":"b.go","range":"2"}],"returned_percent":50}`,
 		string(payload),
 	)
 }
@@ -72,7 +72,7 @@ func TestLimitFindSymbolOutputReturnsPublicSizeError(t *testing.T) {
 	}
 
 	_, err := svc.limitFindSymbolOutput(findSymbolOutput{
-		Symbols:         []foundSymbolDTO{{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "0"}},
+		Symbols:         []foundSymbolDTO{{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "1"}},
 		ReturnedPercent: 0,
 	})
 	require.EqualError(t, err, outputTooLargePublicMessage)
@@ -100,15 +100,15 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 		{
 			File: "a.go",
 			Symbols: []referencingSymbolDTO{
-				{Kind: 12, Path: "A/One", Range: "0", Content: "one"},
-				{Kind: 12, Path: "A/Two", Range: "1", Content: "two"},
+				{Kind: 12, Path: "A/One", Range: "1", Content: "one"},
+				{Kind: 12, Path: "A/Two", Range: "2", Content: "two"},
 			},
 		},
 		{
 			File: "b.go",
 			Symbols: []referencingSymbolDTO{
-				{Kind: 12, Path: "B/Three", Range: "2", Content: "three"},
-				{Kind: 12, Path: "B/Four", Range: "3", Content: "four"},
+				{Kind: 12, Path: "B/Three", Range: "3", Content: "three"},
+				{Kind: 12, Path: "B/Four", Range: "4", Content: "four"},
 			},
 		},
 	}, Incomplete: false, ReturnedPercent: 0}
@@ -132,14 +132,14 @@ func TestTrimOverviewEntriesCountsGroupedSymbols(t *testing.T) {
 		{
 			Kind: 6,
 			Symbols: []overviewGroupSymbolDTO{
-				{Path: "A", Range: "0"},
-				{Path: "B", Range: "1"},
+				{Path: "A", Range: "1"},
+				{Path: "B", Range: "2"},
 			},
 		},
 		{
 			Kind: 12,
 			Symbols: []overviewGroupSymbolDTO{
-				{Path: "C", Range: "2"},
+				{Path: "C", Range: "3"},
 			},
 		},
 	}, 2)
@@ -147,8 +147,8 @@ func TestTrimOverviewEntriesCountsGroupedSymbols(t *testing.T) {
 	assert.Equal(t, []overviewKindGroupDTO{{
 		Kind: 6,
 		Symbols: []overviewGroupSymbolDTO{
-			{Path: "A", Range: "0"},
-			{Path: "B", Range: "1"},
+			{Path: "A", Range: "1"},
+			{Path: "B", Range: "2"},
 		},
 	}}, trimmed)
 }

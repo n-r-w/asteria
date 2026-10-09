@@ -31,6 +31,6 @@ const (
 
 	// sharedToolRules ends each tool description, because each tool returns ranges and supports same languages.
 	sharedToolRules = `
-Ranges are 0-based and inclusive: 'start-end' or 'start'. Truncated response has 'returned_percent': approximate share of returned results.
+Ranges and '@line:character' path suffixes are 1-based; ranges are inclusive: 'start-end' or 'start'. Truncated response has 'returned_percent': approximate share of returned results.
 Languages: Go, TypeScript/JavaScript, Python, Rust, C/C++, PHP, Markdown.`
 )

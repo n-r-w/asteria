@@ -59,7 +59,7 @@ func (s *configSuite) TestToolDescriptionsCarrySharedRules() {
 			cfg, err := buildConfig(ec)
 			s.Require().NoError(err)
 			for _, description := range []string{cfg.GetSymbolsOverviewDesc, cfg.FindSymbolDesc, cfg.FindReferencesDesc} {
-				s.Contains(description, "0-based")
+				s.Contains(description, "1-based")
 				s.Contains(description, "Languages:")
 				if override != "" {
 					s.Contains(description, override)

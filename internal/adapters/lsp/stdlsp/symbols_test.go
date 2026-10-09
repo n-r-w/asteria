@@ -267,8 +267,8 @@ func TestMapRawSymbolsToTreeDisambiguatesDuplicateSiblingPaths(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 	require.Len(t, nodes[0].Children, 2)
-	assert.Equal(t, "execute/notification@2:14", nodes[0].Children[0].NamePath)
-	assert.Equal(t, "execute/notification@6:10", nodes[0].Children[1].NamePath)
+	assert.Equal(t, "execute/notification@3:15", nodes[0].Children[0].NamePath)
+	assert.Equal(t, "execute/notification@7:11", nodes[0].Children[1].NamePath)
 }
 
 // TestCollectMatchedNodesFlattensRequestedDepth proves that shared traversal returns the match

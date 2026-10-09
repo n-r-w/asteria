@@ -61,7 +61,7 @@ func TestToFoundSymbolDTOsKeepsFileForSingleFileScope(t *testing.T) {
 	assert.Equal(t, "internal/adapters/lsp/servers/gopls/testdata/basic/fixture.go", result[0].File)
 	assert.Equal(t, 12, result[0].Kind)
 	assert.Equal(t, "MakeBucket", result[0].Path)
-	assert.Equal(t, "34-39", result[0].Range)
+	assert.Equal(t, "35-40", result[0].Range)
 }
 
 // TestToFoundSymbolDTOsKeepsFileForMultiFileScope preserves file information when results may come from many files.
@@ -129,15 +129,15 @@ func TestToOverviewKindGroupDTOsGroupsByKind(t *testing.T) {
 	require.Len(t, result, 2)
 	assert.Equal(t, 6, result[0].Kind)
 	assert.Equal(t, []overviewGroupSymbolDTO{
-		{Path: "FixtureContract/Describe", Range: "14"},
-		{Path: "FixtureBucket/Describe", Range: "29-31"},
+		{Path: "FixtureContract/Describe", Range: "15"},
+		{Path: "FixtureBucket/Describe", Range: "30-32"},
 	}, result[0].Symbols)
 	assert.Equal(t, 12, result[1].Kind)
-	assert.Equal(t, []overviewGroupSymbolDTO{{Path: "MakeBucket", Range: "34-39"}}, result[1].Symbols)
+	assert.Equal(t, []overviewGroupSymbolDTO{{Path: "MakeBucket", Range: "35-40"}}, result[1].Symbols)
 }
 
 // TestGetSymbolsOverviewOutputJSONGroupsSymbolsByKind preserves grouped overview output while keeping
-// zero-based line ranges.
+// 1-based line ranges.
 func TestGetSymbolsOverviewOutputJSONGroupsSymbolsByKind(t *testing.T) {
 	t.Parallel()
 
@@ -145,11 +145,11 @@ func TestGetSymbolsOverviewOutputJSONGroupsSymbolsByKind(t *testing.T) {
 		Kind: 23,
 		Symbols: []overviewGroupSymbolDTO{{
 			Path:  "Service",
-			Range: "0",
+			Range: "1",
 		}},
 	}}, ReturnedPercent: 0})
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"groups":[{"kind":23,"symbols":[{"path":"Service","range":"0"}]}]}`, string(payload))
+	assert.JSONEq(t, `{"groups":[{"kind":23,"symbols":[{"path":"Service","range":"1"}]}]}`, string(payload))
 }
 
 // TestFindSymbolOutputJSONKeepsKindRangeAndFile keeps file information stable in the published payload.
@@ -168,7 +168,7 @@ func TestFindSymbolOutputJSONKeepsKindRangeAndFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(
 		t,
-		`{"symbols":[{"kind":5,"path":"Service","file":"internal/server/service.go","range":"0"}]}`,
+		`{"symbols":[{"kind":5,"path":"Service","file":"internal/server/service.go","range":"1"}]}`,
 		string(payload),
 	)
 }
@@ -195,14 +195,14 @@ func TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields(t *testing.T) 
 		Symbols: []referencingSymbolDTO{{
 			Kind:    12,
 			Path:    "UseMakeBucketOnce",
-			Range:   "0-2",
+			Range:   "1-3",
 			Content: "",
 		}},
 	}}, Incomplete: false, ReturnedPercent: 0})
 	require.NoError(t, err)
 	assert.JSONEq(
 		t,
-		`{"files":[{"file":"references.go","symbols":[{"kind":12,"path":"UseMakeBucketOnce","range":"0-2","content":""}]}]}`,
+		`{"files":[{"file":"references.go","symbols":[{"kind":12,"path":"UseMakeBucketOnce","range":"1-3","content":""}]}]}`,
 		string(payload),
 	)
 }
