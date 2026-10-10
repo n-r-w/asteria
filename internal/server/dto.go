@@ -65,6 +65,8 @@ type findSymbolInput struct {
 type findSymbolOutput struct {
 	// Symbols contains matched symbol locations. Empty means no matches survived the requested scope and filters.
 	Symbols []foundSymbolDTO `json:"symbols"`
+	// Warnings names files that the search skipped because their language server failed.
+	Warnings []string `json:"warnings,omitempty"`
 	// ReturnedPercent is the approximate percentage of logical result objects returned when the response is truncated.
 	ReturnedPercent int `json:"returned_percent,omitempty"`
 }

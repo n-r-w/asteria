@@ -289,7 +289,13 @@ func (s *Service) waitUntilReady(ctx context.Context, _ jsonrpc2.Conn, workspace
 	case <-state.readyCh:
 		return nil
 	case <-waitCtx.Done():
-		return fmt.Errorf("wait for rust-analyzer quiescent startup: %w", waitCtx.Err())
+		// The runtime stops the server after this error, so a retry starts indexing again.
+		return fmt.Errorf(
+			"rust-analyzer did not finish indexing the project within %s; increase %s: %w",
+			s.startupReadyTimeout,
+			startupReadyTimeoutEnvName,
+			waitCtx.Err(),
+		)
 	}
 }
 

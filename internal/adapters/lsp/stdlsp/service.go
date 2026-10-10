@@ -127,7 +127,7 @@ func (s *Service) FindSymbol(
 	matcher := newNamePathMatcher(trimmedPath, request.SubstringMatching)
 	fileCache := make(map[string]string)
 	hoverInfoByKey := make(map[string]string)
-	result := domain.FindSymbolResult{Symbols: make([]domain.FoundSymbol, 0)}
+	result := domain.FindSymbolResult{Symbols: make([]domain.FoundSymbol, 0), Warnings: nil}
 
 	for _, relativePath := range searchFiles {
 		_, symbolTree, treeErr := s.loadSymbolTree(ctx, workspaceRoot, relativePath)

@@ -81,7 +81,7 @@ func TestAugmentFindSymbolWithPHPConstants(t *testing.T) {
 		SubstringMatching: false,
 		WorkspaceRoot:     workspaceRoot,
 		Scope:             "fixture.php",
-	}, domain.FindSymbolResult{Symbols: nil})
+	}, domain.FindSymbolResult{Symbols: nil, Warnings: nil})
 	require.NoError(t, err)
 	require.Len(t, result.Symbols, 1)
 	assert.Equal(t, domain.FoundSymbol{

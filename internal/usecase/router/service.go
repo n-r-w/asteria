@@ -4,11 +4,12 @@ package router
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/samber/lo"
@@ -76,10 +77,7 @@ func (s *Service) GetSymbolsOverview(
 	// Get the symbols overview from LSP
 	result, err := lsp.GetSymbolsOverview(ctx, request)
 	if err != nil {
-		return domain.GetSymbolsOverviewResult{}, sanitizePublicError(
-			err,
-			fmt.Sprintf("lsp %T failed to get symbols overview", lsp),
-		)
+		return domain.GetSymbolsOverviewResult{}, fmt.Errorf("lsp %T failed to get symbols overview: %w", lsp, err)
 	}
 
 	return result, nil
@@ -127,21 +125,30 @@ func (s *Service) FindSymbol(
 
 			result, findErr := lspsForFile[0].FindSymbol(ctx, fileRequest)
 			if findErr != nil {
-				return domain.FindSymbolResult{}, sanitizePublicError(
+				return domain.FindSymbolResult{}, fmt.Errorf(
+					"lsp %T failed to find symbol: %w",
+					lspsForFile[0],
 					findErr,
-					fmt.Sprintf("lsp %T failed to find symbol", lspsForFile[0]),
 				)
 			}
 
 			results = mergeFoundSymbols(results, result.Symbols)
 		}
 
-		return domain.FindSymbolResult{Symbols: results}, nil
+		return domain.FindSymbolResult{Symbols: results, Warnings: nil}, nil
 	}
 
 	// Directory and workspace scopes must fan out once per matching adapter, not once per file, because each
 	// adapter owns its own traversal rules such as ignored directories and language-specific search semantics.
-	for _, lsp := range s.getLSPsForFiles(fileNames) {
+	// One failed adapter, for example a TypeScript server without TypeScript for one script in a Go repository,
+	// must not hide symbols of other adapters, so its error becomes a warning unless every adapter fails.
+	matchedExtensions := s.collectMatchedExtensions(fileNames)
+	lsps := s.selectLSPsByExtensions(matchedExtensions)
+	var (
+		warnings []string
+		firstErr error
+	)
+	for _, lsp := range lsps {
 		searchRequest := &domain.FindSymbolRequest{
 			FindSymbolFilter: request.FindSymbolFilter,
 			WorkspaceRoot:    effectiveRoot,
@@ -150,16 +157,40 @@ func (s *Service) FindSymbol(
 
 		result, findErr := lsp.FindSymbol(ctx, searchRequest)
 		if findErr != nil {
-			return domain.FindSymbolResult{}, sanitizePublicError(
-				findErr,
-				fmt.Sprintf("lsp %T failed to find symbol", lsp),
-			)
+			lspErr := fmt.Errorf("lsp %T failed to find symbol: %w", lsp, findErr)
+			slog.WarnContext(ctx, "skip failed LSP in symbol search", "lsp", fmt.Sprintf("%T", lsp), "err", findErr)
+			if firstErr == nil {
+				firstErr = lspErr
+			}
+			warnings = append(warnings, fmt.Sprintf(
+				"%s files are not searched: %s",
+				strings.Join(s.matchedExtensionsOf(lsp, matchedExtensions), ", "),
+				lspErr,
+			))
+
+			continue
 		}
 
 		results = mergeFoundSymbols(results, result.Symbols)
 	}
+	if firstErr != nil && len(warnings) == len(lsps) {
+		return domain.FindSymbolResult{}, firstErr
+	}
 
-	return domain.FindSymbolResult{Symbols: results}, nil
+	return domain.FindSymbolResult{Symbols: results, Warnings: warnings}, nil
+}
+
+// matchedExtensionsOf returns sorted extensions of one search scope that the given LSP serves.
+func (s *Service) matchedExtensionsOf(lsp ILSP, matchedExtensions map[string]struct{}) []string {
+	var extensions []string
+	for extension := range matchedExtensions {
+		if s.lspByExtension[extension] == lsp {
+			extensions = append(extensions, extension)
+		}
+	}
+	slices.Sort(extensions)
+
+	return extensions
 }
 
 // FindReferencingSymbols returns references for a target symbol.
@@ -174,9 +205,10 @@ func (s *Service) FindReferencingSymbols(
 
 	result, err := lsp.FindReferencingSymbols(ctx, request)
 	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, sanitizePublicError(
+		return domain.FindReferencingSymbolsResult{}, fmt.Errorf(
+			"lsp %T failed to find referencing symbols: %w",
+			lsp,
 			err,
-			fmt.Sprintf("lsp %T failed to find referencing symbols", lsp),
 		)
 	}
 
@@ -232,7 +264,7 @@ func (s *Service) getFilesForPath(
 ) (fileNames []string, isSingleFileScope bool, err error) {
 	fileInfo, err := os.Stat(searchRootPath)
 	if err != nil {
-		return nil, false, sanitizePathAccessError("scope_path", requestedScopePath, err)
+		return nil, false, domain.NewPathError("scope_path", requestedScopePath, err)
 	}
 	if !fileInfo.IsDir() {
 		return []string{searchRootPath}, true, nil
@@ -250,10 +282,7 @@ func (s *Service) getFilesForPath(
 		return nil
 	})
 	if err != nil {
-		return nil, false, domain.NewSafeError(
-			domain.NewPathReadError("scope_path", requestedScopePath, err).Error(),
-			err,
-		)
+		return nil, false, domain.NewPathReadError("scope_path", requestedScopePath, err)
 	}
 	return files, false, nil
 }
@@ -305,7 +334,7 @@ func (s *Service) getAbsoluteFilePath(workspaceRoot, relativeFilePath, argName s
 
 	fileInfo, err := os.Stat(absoluteFilePath)
 	if err != nil {
-		return "", sanitizePathAccessError(argName, relativeFilePath, err)
+		return "", domain.NewPathError(argName, relativeFilePath, err)
 	}
 	if fileInfo.IsDir() {
 		return "", domain.NewPathPointsToDirectoryError(argName, relativeFilePath)
@@ -342,7 +371,7 @@ func (s *Service) getAbsolutePath(workspaceRoot, relativePath, argName string) (
 func normalizeWorkspaceRoot(workspaceRoot string) (string, error) {
 	trimmedWorkspaceRoot := strings.TrimSpace(workspaceRoot)
 	if trimmedWorkspaceRoot == "" {
-		return "", domain.NewSafeError("workspace_root is required", nil)
+		return "", domain.NewToolError("workspace_root is required", nil)
 	}
 	if !filepath.IsAbs(trimmedWorkspaceRoot) {
 		return "", domain.NewPathMustBeAbsoluteError("workspace_root", trimmedWorkspaceRoot)
@@ -351,43 +380,18 @@ func normalizeWorkspaceRoot(workspaceRoot string) (string, error) {
 	cleanWorkspaceRoot := filepath.Clean(trimmedWorkspaceRoot)
 	normalizedWorkspaceRoot, err := filepath.EvalSymlinks(cleanWorkspaceRoot)
 	if err != nil {
-		return "", sanitizePathAccessError("workspace_root", cleanWorkspaceRoot, err)
+		return "", domain.NewPathError("workspace_root", cleanWorkspaceRoot, err)
 	}
 
 	fileInfo, err := os.Stat(normalizedWorkspaceRoot)
 	if err != nil {
-		return "", sanitizePathAccessError("workspace_root", cleanWorkspaceRoot, err)
+		return "", domain.NewPathError("workspace_root", cleanWorkspaceRoot, err)
 	}
 	if !fileInfo.IsDir() {
 		return "", domain.NewPathMustPointToDirectoryError("workspace_root", cleanWorkspaceRoot)
 	}
 
 	return normalizedWorkspaceRoot, nil
-}
-
-// sanitizePublicError preserves explicit safe errors and turns uncategorized LSP startup timeouts into one public hint.
-func sanitizePublicError(err error, internalMessage string) error {
-	if safeErr, ok := errors.AsType[*domain.SafeError](err); ok {
-		return safeErr
-	}
-
-	if errors.Is(err, context.DeadlineExceeded) {
-		return domain.NewSafeError(
-			timeoutWarmupPublicMessage,
-			fmt.Errorf("%s: %w", internalMessage, err),
-		)
-	}
-
-	return fmt.Errorf("%s: %w", internalMessage, err)
-}
-
-// sanitizePathAccessError maps filesystem errors to public-safe path validation messages.
-func sanitizePathAccessError(argName, path string, err error) error {
-	if errors.Is(err, fs.ErrNotExist) {
-		return domain.NewPathNotFoundError(argName, path, err)
-	}
-
-	return domain.NewPathAccessError(argName, path, err)
 }
 
 // mergeFoundSymbols deduplicates broad search results while keeping the first-seen order stable.

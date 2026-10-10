@@ -330,10 +330,10 @@ func (s *Service) reexportFromDefinitionLocation(
 	}, true, nil
 }
 
-// isExpectedReexportResolutionMiss identifies project-level lookup misses that are safe to report to clients.
+// isExpectedReexportResolutionMiss identifies lookup misses after which the resolver tries the next source.
 func isExpectedReexportResolutionMiss(err error) bool {
-	safeErr, ok := errors.AsType[*domain.SafeError](err)
-	return ok && safeErr.Cause() == nil
+	toolErr, ok := errors.AsType[*domain.ToolError](err)
+	return ok && toolErr.Cause() == nil
 }
 
 // isRelativeModuleSpecifier reports whether the filesystem resolver can interpret a TypeScript module specifier.
@@ -342,13 +342,13 @@ func isRelativeModuleSpecifier(moduleSpecifier string) bool {
 		strings.HasPrefix(moduleSpecifier, "./") || strings.HasPrefix(moduleSpecifier, "../")
 }
 
-// newUnresolvedReexportError reports a project dependency or configuration problem without exposing server internals.
-func newUnresolvedReexportError(relativePath, moduleSpecifier string) *domain.SafeError {
-	return domain.NewSafeError(
+// newUnresolvedReexportError reports a module specifier that the resolver cannot resolve.
+func newUnresolvedReexportError(relativePath, moduleSpecifier string) *domain.ToolError {
+	return domain.NewToolError(
 		fmt.Sprintf(
 			"cannot resolve module specifier %q from %q",
 			moduleSpecifier,
-			domain.NormalizePublicPath(relativePath),
+			domain.NormalizeMessagePath(relativePath),
 		),
 		nil,
 	)
@@ -510,7 +510,7 @@ func (s *Service) requestDefinitionLocation(
 		return protocol.Location{}, fmt.Errorf("request definition for %q: %w", relativePath, err)
 	}
 	if len(locations) == 0 {
-		return protocol.Location{}, domain.NewSafeError(
+		return protocol.Location{}, domain.NewToolError(
 			fmt.Sprintf("no definition matches %q", relativePath),
 			nil,
 		)
@@ -551,7 +551,7 @@ func (s *Service) findDefinitionOverviewSymbol(
 		}
 	}
 	if !found {
-		return domain.SymbolLocation{}, domain.NewSafeError(
+		return domain.SymbolLocation{}, domain.NewToolError(
 			fmt.Sprintf(
 				"no source symbol contains %q:%d:%d",
 				relativePath,
@@ -591,7 +591,7 @@ func (s *Service) findOverviewSymbolByPath(
 		}
 	}
 
-	return domain.SymbolLocation{}, domain.NewSafeError(
+	return domain.SymbolLocation{}, domain.NewToolError(
 		fmt.Sprintf("no source symbol matches %q", path),
 		nil,
 	)
@@ -776,7 +776,7 @@ func findDefaultExportPosition(workspaceRoot, relativePath string) (protocol.Pos
 	content := string(rawContent)
 	offset := strings.Index(content, "export default")
 	if offset < 0 {
-		return protocol.Position{}, domain.NewSafeError(
+		return protocol.Position{}, domain.NewToolError(
 			fmt.Sprintf("no default export found in %q", relativePath),
 			nil,
 		)

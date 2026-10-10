@@ -151,21 +151,21 @@ func (s *Service) findReferencingSymbolsOnce(
 	if err == nil && len(result.Symbols) > 0 {
 		return result, nil
 	}
-	if err != nil && !isNoSymbolMatchesSafeError(err) {
+	if err != nil && !isNoSymbolMatchesError(err) {
 		return result, err
 	}
 
 	return s.stdReferences.FindReferencingSymbols(ctx, rawRequest)
 }
 
-// isNoSymbolMatchesSafeError identifies the public-safe miss case where retrying the raw impl path is valid.
-func isNoSymbolMatchesSafeError(err error) bool {
-	var safeErr *domain.SafeError
-	if !errors.As(err, &safeErr) {
+// isNoSymbolMatchesError identifies the symbol miss after which the raw impl path is retried.
+func isNoSymbolMatchesError(err error) bool {
+	var toolErr *domain.ToolError
+	if !errors.As(err, &toolErr) {
 		return false
 	}
 
-	return strings.HasPrefix(safeErr.Error(), `no symbol matches `)
+	return strings.HasPrefix(toolErr.Error(), `no symbol matches `)
 }
 
 // shouldIgnoreDir filters directories that add Rust analysis noise or unnecessary filesystem cost.

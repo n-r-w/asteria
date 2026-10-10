@@ -49,10 +49,11 @@ func (s *Service) limitFindSymbolOutput(output findSymbolOutput) (findSymbolOutp
 		s.cfg.ToolOutputMaxBytes,
 		totalItems,
 		output,
-		findSymbolOutput{Symbols: make([]foundSymbolDTO, 0), ReturnedPercent: 0},
+		findSymbolOutput{Symbols: make([]foundSymbolDTO, 0), Warnings: output.Warnings, ReturnedPercent: 0},
 		func(count int) findSymbolOutput {
 			return findSymbolOutput{
 				Symbols:         append(make([]foundSymbolDTO, 0, count), output.Symbols[:count]...),
+				Warnings:        output.Warnings,
 				ReturnedPercent: 0,
 			}
 		},
@@ -117,7 +118,7 @@ func limitOutputByBytes[T any](
 		return zeroValue[T](), fmt.Errorf("marshal empty output: %w", err)
 	}
 	if baseBytes >= maxBytes {
-		return zeroValue[T](), domain.NewSafeError(
+		return zeroValue[T](), domain.NewToolError(
 			outputTooLargePublicMessage,
 			fmt.Errorf(
 				"base output size %d exceeds configured maximum %d; increase %s",
@@ -140,7 +141,7 @@ func limitOutputByBytes[T any](
 	}
 
 	if bestCount <= 0 {
-		return zeroValue[T](), domain.NewSafeError(
+		return zeroValue[T](), domain.NewToolError(
 			outputTooLargePublicMessage,
 			fmt.Errorf(
 				"no logical result objects fit within %d bytes; increase %s",

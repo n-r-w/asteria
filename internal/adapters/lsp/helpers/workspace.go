@@ -28,12 +28,12 @@ func ResolveWorkspaceRoot(workspaceRoot string) (string, error) {
 	cleanWorkspaceRoot := filepath.Clean(trimmedWorkspaceRoot)
 	normalizedWorkspaceRoot, err := filepath.EvalSymlinks(cleanWorkspaceRoot)
 	if err != nil {
-		return "", sanitizeWorkspaceRootError(cleanWorkspaceRoot, err)
+		return "", domain.NewPathError("workspace_root", cleanWorkspaceRoot, err)
 	}
 
 	fileInfo, err := os.Stat(normalizedWorkspaceRoot)
 	if err != nil {
-		return "", sanitizeWorkspaceRootError(cleanWorkspaceRoot, err)
+		return "", domain.NewPathError("workspace_root", cleanWorkspaceRoot, err)
 	}
 	if !fileInfo.IsDir() {
 		return "", domain.NewPathMustPointToDirectoryError("workspace_root", cleanWorkspaceRoot)
@@ -51,8 +51,8 @@ func ResolveDocumentPath(workspaceRootPath, relativePath string) (cleanRelativeP
 
 	cleanRelativePath = filepath.Clean(trimmedRelativePath)
 	if cleanRelativePath == "." || filepath.IsAbs(cleanRelativePath) {
-		return "", "", domain.NewSafeError(
-			fmt.Sprintf("relative path %q must point to a workspace file", domain.NormalizePublicPath(relativePath)),
+		return "", "", domain.NewToolError(
+			fmt.Sprintf("relative path %q must point to a workspace file", domain.NormalizeMessagePath(relativePath)),
 			nil,
 		)
 	}
@@ -72,11 +72,7 @@ func ResolveDocumentPath(workspaceRootPath, relativePath string) (cleanRelativeP
 
 	fileInfo, err := os.Stat(absolutePath)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", "", domain.NewPathNotFoundError("relative path", cleanRelativePath, err)
-		}
-
-		return "", "", domain.NewPathAccessError("relative path", cleanRelativePath, err)
+		return "", "", domain.NewPathError("relative path", cleanRelativePath, err)
 	}
 	if fileInfo.IsDir() {
 		return "", "", domain.NewPathPointsToDirectoryError("relative path", cleanRelativePath)
@@ -139,13 +135,4 @@ func CollectDirectoryFiles(
 	sort.Strings(files)
 
 	return files, nil
-}
-
-// sanitizeWorkspaceRootError maps workspace-root filesystem failures to public-safe validation errors.
-func sanitizeWorkspaceRootError(workspaceRoot string, err error) error {
-	if errors.Is(err, fs.ErrNotExist) {
-		return domain.NewPathNotFoundError("workspace_root", workspaceRoot, err)
-	}
-
-	return domain.NewPathAccessError("workspace_root", workspaceRoot, err)
 }

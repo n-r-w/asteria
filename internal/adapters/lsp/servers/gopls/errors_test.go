@@ -10,36 +10,35 @@ import (
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
-// TestSanitizeGoplsPublicErrorReturnsBuildConfigMessage proves that tagged Go files outside the active build
-// graph surface one safe public error instead of leaking raw gopls internals.
-func TestSanitizeGoplsPublicErrorReturnsBuildConfigMessage(t *testing.T) {
+// TestExplainGoplsBuildTagErrorReturnsBuildConfigMessage proves that tagged Go files outside the active build
+// graph explain how to fix the build flags.
+func TestExplainGoplsBuildTagErrorReturnsBuildConfigMessage(t *testing.T) {
 	t.Parallel()
 
 	rootCause := errors.New(
 		`request references for "tagged_only_featurex.go": no package metadata for file file:///tmp/tagged_only_featurex.go`,
 	)
 
-	err := sanitizeGoplsPublicError("file_path", "tagged_only_featurex.go", rootCause)
+	err := explainGoplsBuildTagError("file_path", "tagged_only_featurex.go", rootCause)
 	require.Error(t, err)
 	require.EqualError(
 		t,
 		err,
 		`file_path "tagged_only_featurex.go" is excluded from the active Go build configuration; `+
-			`include its build tags in the active build flags`,
+			`include its build tags in the active build flags: `+rootCause.Error(),
 	)
 	require.ErrorIs(t, err, rootCause)
 
-	safeErr, ok := errors.AsType[*domain.SafeError](err)
+	toolErr, ok := errors.AsType[*domain.ToolError](err)
 	require.True(t, ok)
-	assert.Same(t, rootCause, safeErr.Cause())
+	assert.Same(t, rootCause, toolErr.Cause())
 }
 
-// TestSanitizeGoplsPublicErrorKeepsExplicitSafeMessages proves that adapter-local classification does not rewrite
-// safe public errors that shared layers already prepared.
-func TestSanitizeGoplsPublicErrorKeepsExplicitSafeMessages(t *testing.T) {
+// TestExplainGoplsBuildTagErrorKeepsExistingToolError proves that the adapter keeps errors that already have a message.
+func TestExplainGoplsBuildTagErrorKeepsExistingToolError(t *testing.T) {
 	t.Parallel()
 
-	safeErr := domain.NewSafeError("no symbol matches", errors.New("internal detail"))
+	toolErr := domain.NewToolError("no symbol matches", errors.New("internal detail"))
 
-	assert.Same(t, safeErr, sanitizeGoplsPublicError("file_path", "fixture.go", safeErr))
+	assert.Same(t, toolErr, explainGoplsBuildTagError("file_path", "fixture.go", toolErr))
 }

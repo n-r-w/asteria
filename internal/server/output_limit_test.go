@@ -25,7 +25,7 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 			FindReferencesDesc:     "",
 			ToolTimeout:            10 * time.Second,
 			LSPSessionIdleTimeout:  0,
-			ToolOutputMaxBytes:     120,
+			ToolOutputMaxBytes:     150,
 			Log:                    config.LogConfig{},
 			Adapters:               cfgadapters.Config{},
 		},
@@ -35,7 +35,7 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 		{Kind: 12, Body: "", Info: "", Path: "Bravo", File: "b.go", Range: "2"},
 		{Kind: 12, Body: "", Info: "", Path: "Charlie", File: "c.go", Range: "3"},
 		{Kind: 12, Body: "", Info: "", Path: "Delta", File: "d.go", Range: "4"},
-	}, ReturnedPercent: 0}
+	}, Warnings: []string{".js skipped"}, ReturnedPercent: 0}
 
 	limited, err := svc.limitFindSymbolOutput(output)
 	require.NoError(t, err)
@@ -47,13 +47,12 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 	assert.JSONEq(
 		t,
 		`{"symbols":[{"kind":12,"path":"Alpha","file":"a.go","range":"1"},`+
-			`{"kind":12,"path":"Bravo","file":"b.go","range":"2"}],"returned_percent":50}`,
+			`{"kind":12,"path":"Bravo","file":"b.go","range":"2"}],"warnings":[".js skipped"],"returned_percent":50}`,
 		string(payload),
 	)
 }
 
-// TestLimitFindSymbolOutputReturnsPublicSizeError proves that oversized responses do not expose
-// server configuration names.
+// TestLimitFindSymbolOutputReturnsPublicSizeError proves that oversized responses name the setting that limits them.
 func TestLimitFindSymbolOutputReturnsPublicSizeError(t *testing.T) {
 	t.Parallel()
 
@@ -73,9 +72,14 @@ func TestLimitFindSymbolOutputReturnsPublicSizeError(t *testing.T) {
 
 	_, err := svc.limitFindSymbolOutput(findSymbolOutput{
 		Symbols:         []foundSymbolDTO{{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "1"}},
+		Warnings:        nil,
 		ReturnedPercent: 0,
 	})
-	require.EqualError(t, err, outputTooLargePublicMessage)
+	require.EqualError(
+		t,
+		err,
+		outputTooLargePublicMessage+": base output size 14 exceeds configured maximum 1; increase "+toolOutputMaxBytesEnvName,
+	)
 }
 
 // TestLimitFindReferencingSymbolsOutputCountsNestedSymbols proves that returned percentage is based

@@ -14,14 +14,14 @@ const (
 		"include its build tags in the active build flags"
 )
 
-// sanitizeGoplsPublicError keeps Go-specific public error classification inside the gopls adapter.
-func sanitizeGoplsPublicError(argName, path string, err error) error {
+// explainGoplsBuildTagError adds build flag advice to gopls errors for files outside the active build.
+func explainGoplsBuildTagError(argName, path string, err error) error {
 	if err == nil {
 		return nil
 	}
 
-	if safeErr, ok := errors.AsType[*domain.SafeError](err); ok {
-		return safeErr
+	if toolErr, ok := errors.AsType[*domain.ToolError](err); ok {
+		return toolErr
 	}
 	if !isGoplsNoPackageMetadataError(err) {
 		return err
@@ -32,8 +32,8 @@ func sanitizeGoplsPublicError(argName, path string, err error) error {
 		publicArgName = "file_path"
 	}
 
-	return domain.NewSafeError(
-		fmt.Sprintf(goplsExcludedBuildFileMessageFormat, publicArgName, domain.NormalizePublicPath(path)),
+	return domain.NewToolError(
+		fmt.Sprintf(goplsExcludedBuildFileMessageFormat, publicArgName, domain.NormalizeMessagePath(path)),
 		err,
 	)
 }

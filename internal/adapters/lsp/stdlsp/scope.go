@@ -1,9 +1,7 @@
 package stdlsp
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,11 +37,7 @@ func resolveSearchScope(workspaceRootPath, relativePath string) (searchScope, er
 
 	fileInfo, err := os.Stat(absolutePath)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return searchScope{}, domain.NewPathNotFoundError("relative path", cleanRelativePath, err)
-		}
-
-		return searchScope{}, domain.NewPathAccessError("relative path", cleanRelativePath, err)
+		return searchScope{}, domain.NewPathError("relative path", cleanRelativePath, err)
 	}
 
 	return searchScope{

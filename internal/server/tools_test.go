@@ -164,7 +164,7 @@ func TestFindSymbolOutputJSONKeepsKindRangeAndFile(t *testing.T) {
 		File:      "internal/server/service.go",
 		StartLine: 0,
 		EndLine:   0,
-	}}), ReturnedPercent: 0})
+	}}), Warnings: nil, ReturnedPercent: 0})
 	require.NoError(t, err)
 	assert.JSONEq(
 		t,
@@ -219,15 +219,15 @@ func TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet(t *testing.T)
 	assert.JSONEq(t, `{"files":[],"incomplete":true}`, string(payload))
 }
 
-// TestProcessErrorKeepsSafeMessageAndCause proves that MCP tool responses include both the public context and the
+// TestProcessErrorKeepsMessageAndCause proves that MCP tool responses include both the context message and the
 // underlying diagnostic cause.
-func TestProcessErrorKeepsSafeMessageAndCause(t *testing.T) {
+func TestProcessErrorKeepsMessageAndCause(t *testing.T) {
 	t.Parallel()
 
 	err := processError(
 		t.Context(),
 		domain.ToolNameFindReferencingSymbols,
-		domain.NewSafeError("use a more specific symbol_path", errors.New("internal detail")),
+		domain.NewToolError("use a more specific symbol_path", errors.New("internal detail")),
 	)
 	require.EqualError(t, err, "find_referencing_symbols: use a more specific symbol_path: internal detail")
 }
@@ -239,7 +239,7 @@ func TestProcessErrorLogsReturnedMessageAsPublicError(t *testing.T) {
 	assertProcessErrorPublicLog(
 		t,
 		domain.ToolNameFindReferencingSymbols,
-		domain.NewSafeError("use a more specific symbol_path", errors.New("internal detail")),
+		domain.NewToolError("use a more specific symbol_path", errors.New("internal detail")),
 		"find_referencing_symbols: use a more specific symbol_path: internal detail",
 	)
 	assertProcessErrorPublicLog(
@@ -282,23 +282,23 @@ func assertProcessErrorPublicLog(t *testing.T, toolName string, inputErr error, 
 	assert.Equal(t, strings.TrimPrefix(expected, toolName+": "), matchedRecord["error"])
 }
 
-// TestSafeErrorLogLevelKeepsExpectedPublicFailuresOutOfErrorNoise proves that user-facing validation and
+// TestToolErrorLogLevelKeepsExpectedPublicFailuresOutOfErrorNoise proves that user-facing validation and
 // routing messages do not masquerade as server failures in logs.
-func TestSafeErrorLogLevelKeepsExpectedPublicFailuresOutOfErrorNoise(t *testing.T) {
+func TestToolErrorLogLevelKeepsExpectedPublicFailuresOutOfErrorNoise(t *testing.T) {
 	t.Parallel()
 
-	assert.Equal(t, slog.LevelInfo, safeErrorLogLevel(domain.NewUnsupportedExtensionError(".md")))
+	assert.Equal(t, slog.LevelInfo, toolErrorLogLevel(domain.NewUnsupportedExtensionError(".md")))
 }
 
-// TestSafeErrorLogLevelKeepsInternalCauseAtErrorLevel proves that wrapped internal failures remain error-level
+// TestToolErrorLogLevelKeepsInternalCauseAtErrorLevel proves that wrapped internal failures remain error-level
 // records when they include a diagnostic cause.
-func TestSafeErrorLogLevelKeepsInternalCauseAtErrorLevel(t *testing.T) {
+func TestToolErrorLogLevelKeepsInternalCauseAtErrorLevel(t *testing.T) {
 	t.Parallel()
 
 	assert.Equal(
 		t,
 		slog.LevelError,
-		safeErrorLogLevel(domain.NewSafeError("internal error", errors.New("boom"))),
+		toolErrorLogLevel(domain.NewToolError("internal error", errors.New("boom"))),
 	)
 }
 
@@ -310,9 +310,9 @@ func TestProcessErrorReturnsUnexpectedInternalDetails(t *testing.T) {
 	require.EqualError(t, err, "find_symbol: boom *lspgopls.Service")
 }
 
-// TestSanitizeValidationErrorUsesPublicArgumentNames keeps MCP validation feedback aligned
+// TestMapValidationErrorUsesPublicArgumentNames keeps MCP validation feedback aligned
 // with the public tool contract.
-func TestSanitizeValidationErrorUsesPublicArgumentNames(t *testing.T) {
+func TestMapValidationErrorUsesPublicArgumentNames(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
@@ -378,8 +378,8 @@ func TestSanitizeValidationErrorUsesPublicArgumentNames(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 
-			safeErr := sanitizeValidationError(testCase.toolName, testCase.err)
-			require.EqualError(t, safeErr, testCase.expected)
+			toolErr := mapValidationError(testCase.toolName, testCase.err)
+			require.EqualError(t, toolErr, testCase.expected)
 		})
 	}
 }
@@ -441,13 +441,41 @@ func TestFindSymbolToolMapsWorkspaceRoot(t *testing.T) {
 		WorkspaceRoot:     "/tmp/workspace",
 		Scope:             "internal/service.go",
 	}
-	expectedResult := domain.FindSymbolResult{Symbols: nil}
+	expectedResult := domain.FindSymbolResult{Symbols: nil, Warnings: nil}
 
 	search.EXPECT().FindSymbol(gomock.Any(), expectedRequest).Return(expectedResult, nil)
 
 	_, output, err := service.findSymbolTool(t.Context(), nil, input)
 	require.NoError(t, err)
 	assert.Empty(t, output.Symbols)
+}
+
+// TestFindSymbolToolReturnsWarnings proves that the client sees which files the search skipped.
+func TestFindSymbolToolReturnsWarnings(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	search := NewMockILSP(ctrl)
+	service := newToolTestService(search)
+
+	input := &findSymbolInput{
+		WorkspaceRoot:     "/tmp/workspace",
+		SymbolQuery:       "Service",
+		ScopePath:         "",
+		IncludeKinds:      nil,
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       false,
+		IncludeInfo:       false,
+		SubstringMatching: false,
+	}
+	warning := ".js files are not searched: initialize typescript-language-server: boom"
+	search.EXPECT().FindSymbol(gomock.Any(), gomock.Any()).
+		Return(domain.FindSymbolResult{Symbols: nil, Warnings: []string{warning}}, nil)
+
+	_, output, err := service.findSymbolTool(t.Context(), nil, input)
+	require.NoError(t, err)
+	assert.Equal(t, []string{warning}, output.Warnings)
 }
 
 // TestFindReferencingSymbolsToolMapsWorkspaceRoot proves that reference requests preserve workspace_root.

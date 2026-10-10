@@ -1,11 +1,11 @@
 package router
 
 import (
-	"context"
 	"errors"
-	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -107,9 +107,8 @@ func TestServiceGetSymbolsOverviewRejectsUnsupportedExtension(t *testing.T) {
 	assert.ErrorContains(t, getErr, `files with extension ".md" are not supported`)
 }
 
-// TestServiceGetSymbolsOverviewRejectsMissingFileWithoutFilesystemNoise keeps user-facing errors
-// free of syscall details.
-func TestServiceGetSymbolsOverviewRejectsMissingFileWithoutFilesystemNoise(t *testing.T) {
+// TestServiceGetSymbolsOverviewRejectsMissingFile names the missing file argument.
+func TestServiceGetSymbolsOverviewRejectsMissingFile(t *testing.T) {
 	t.Parallel()
 	workspaceRoot := t.TempDir()
 
@@ -126,8 +125,8 @@ func TestServiceGetSymbolsOverviewRejectsMissingFileWithoutFilesystemNoise(t *te
 			WorkspaceRoot: workspaceRoot,
 			File:          "missing.go",
 		})
-	require.Error(t, getErr)
-	assert.EqualError(t, getErr, `file_path "missing.go" not found`)
+	require.ErrorIs(t, getErr, fs.ErrNotExist)
+	assert.ErrorContains(t, getErr, `file_path "missing.go": stat `)
 }
 
 // TestServiceGetSymbolsOverviewRejectsPathOutsideWorkspace keeps file requests inside the workspace root.
@@ -214,6 +213,7 @@ func TestServiceFindSymbol(t *testing.T) {
 			Symbols: []domain.FoundSymbol{
 				{Kind: 23, Body: "", Info: "", Path: "Service", File: request.Scope, StartLine: 11, EndLine: 18},
 			},
+			Warnings: nil,
 		}
 
 		goLSP.EXPECT().FindSymbol(t.Context(), lspRequest).Return(expected, nil)
@@ -275,6 +275,7 @@ func TestServiceFindSymbol(t *testing.T) {
 					EndLine:   45,
 				},
 			},
+			Warnings: nil,
 		}
 
 		goLSP.EXPECT().FindSymbol(t.Context(), lspRequest).Return(expected, nil)
@@ -317,6 +318,7 @@ func TestServiceFindSymbol(t *testing.T) {
 			Symbols: []domain.FoundSymbol{
 				{Kind: 23, Body: "", Info: "", Path: "Service", File: "pkg.v2/service.go", StartLine: 6, EndLine: 10},
 			},
+			Warnings: nil,
 		}
 
 		goLSP.EXPECT().FindSymbol(t.Context(), lspRequest).Return(expected, nil)
@@ -410,6 +412,7 @@ func TestServiceFindSymbol(t *testing.T) {
 					EndLine:   45,
 				},
 			},
+			Warnings: nil,
 		}
 		pyResult := domain.FindSymbolResult{
 			Symbols: []domain.FoundSymbol{
@@ -424,6 +427,7 @@ func TestServiceFindSymbol(t *testing.T) {
 				},
 				{Kind: 23, Body: "", Info: "", Path: "Service", File: "pkg/example.py", StartLine: 6, EndLine: 9},
 			},
+			Warnings: nil,
 		}
 
 		goLSP.EXPECT().FindSymbol(t.Context(), goRequest).Return(goResult, nil)
@@ -496,7 +500,61 @@ func TestServiceFindSymbol(t *testing.T) {
 		assert.NotEqual(t, "internal error", findErr.Error())
 	})
 
-	t.Run("missing scope path is sanitized", func(t *testing.T) {
+	t.Run("workspace fan-out keeps results of other lsps when one lsp fails", func(t *testing.T) {
+		t.Parallel()
+		workspaceRoot := t.TempDir()
+		workspaceRoot = normalizeTestWorkspaceRoot(t, workspaceRoot)
+		writeTestFile(t, workspaceRoot, "internal/usecase/router/service.go")
+		writeTestFile(t, workspaceRoot, "scripts/init.js")
+
+		ctrl := gomock.NewController(t)
+		goLSP := NewMockILSP(ctrl)
+		tsLSP := NewMockILSP(ctrl)
+		goLSP.EXPECT().Extensions().Return([]string{".go"}).AnyTimes()
+		tsLSP.EXPECT().Extensions().Return([]string{".ts", ".js"}).AnyTimes()
+
+		svc, err := New([]ILSP{goLSP, tsLSP})
+		require.NoError(t, err)
+
+		request := &domain.FindSymbolRequest{
+			Path:              "Service",
+			Depth:             0,
+			IncludeBody:       false,
+			IncludeInfo:       false,
+			IncludeKinds:      nil,
+			ExcludeKinds:      nil,
+			SubstringMatching: false,
+			WorkspaceRoot:     workspaceRoot,
+			Scope:             "",
+		}
+		lspRequest := &domain.FindSymbolRequest{
+			FindSymbolFilter: request.FindSymbolFilter,
+			WorkspaceRoot:    workspaceRoot,
+			Scope:            "",
+		}
+		goSymbol := domain.FoundSymbol{
+			Kind:      23,
+			Body:      "",
+			Info:      "",
+			Path:      "Service",
+			File:      "internal/usecase/router/service.go",
+			StartLine: 11,
+			EndLine:   18,
+		}
+		goLSP.EXPECT().FindSymbol(t.Context(), lspRequest).
+			Return(domain.FindSymbolResult{Symbols: []domain.FoundSymbol{goSymbol}, Warnings: nil}, nil)
+		tsLSP.EXPECT().FindSymbol(t.Context(), lspRequest).
+			Return(domain.FindSymbolResult{}, domain.NewToolError("initialize typescript-language-server", errors.New("boom")))
+
+		result, findErr := svc.FindSymbol(t.Context(), request)
+		require.NoError(t, findErr)
+		assert.Equal(t, []domain.FoundSymbol{goSymbol}, result.Symbols)
+		require.Len(t, result.Warnings, 1)
+		assert.True(t, strings.HasPrefix(result.Warnings[0], ".js files are not searched: "), result.Warnings[0])
+		assert.Contains(t, result.Warnings[0], "initialize typescript-language-server: boom")
+	})
+
+	t.Run("missing scope path names the argument", func(t *testing.T) {
 		t.Parallel()
 		workspaceRoot := t.TempDir()
 
@@ -518,8 +576,8 @@ func TestServiceFindSymbol(t *testing.T) {
 			WorkspaceRoot:     workspaceRoot,
 			Scope:             "missing.go",
 		})
-		require.Error(t, findErr)
-		assert.EqualError(t, findErr, `scope_path "missing.go" not found`)
+		require.ErrorIs(t, findErr, fs.ErrNotExist)
+		assert.ErrorContains(t, findErr, `scope_path "missing.go": stat `)
 	})
 }
 
@@ -566,6 +624,7 @@ func TestServiceFindSymbolUsesExplicitWorkspaceRoot(t *testing.T) {
 		Symbols: []domain.FoundSymbol{
 			{Kind: 23, Body: "", Info: "", Path: "Service", File: "pkg/service.go", StartLine: 0, EndLine: 0},
 		},
+		Warnings: nil,
 	}
 
 	goLSP.EXPECT().FindSymbol(t.Context(), lspRequest).Return(expected, nil)
@@ -808,9 +867,8 @@ func TestServiceFindReferencingSymbolsUsesExplicitWorkspaceRoot(t *testing.T) {
 	assert.Equal(t, expected, result)
 }
 
-// TestServiceFindReferencingSymbolsRejectsUnsupportedExtensionWithoutLSPLeak keeps router details
-// out of the published error.
-func TestServiceFindReferencingSymbolsRejectsUnsupportedExtensionWithoutLSPLeak(t *testing.T) {
+// TestServiceFindReferencingSymbolsRejectsUnsupportedExtension names the extension that no LSP serves.
+func TestServiceFindReferencingSymbolsRejectsUnsupportedExtension(t *testing.T) {
 	t.Parallel()
 	workspaceRoot := t.TempDir()
 	writeTestFile(t, workspaceRoot, "AGENTS.md")
@@ -831,45 +889,6 @@ func TestServiceFindReferencingSymbolsRejectsUnsupportedExtensionWithoutLSPLeak(
 	})
 	require.Error(t, findErr)
 	assert.EqualError(t, findErr, `files with extension ".md" are not supported`)
-}
-
-// TestSanitizePublicErrorKeepsUnexpectedCause returns actionable adapter details instead of replacing them with a
-// generic internal error.
-func TestSanitizePublicErrorKeepsUnexpectedCause(t *testing.T) {
-	t.Parallel()
-
-	err := sanitizePublicError(errors.New("boom"), "find symbol in workspace")
-
-	require.EqualError(t, err, "find symbol in workspace: boom")
-}
-
-// TestSanitizePublicErrorReturnsTimeoutWarmupMessage keeps LSP startup timeouts out of the generic
-// internal-error bucket.
-func TestSanitizePublicErrorReturnsTimeoutWarmupMessage(t *testing.T) {
-	t.Parallel()
-
-	err := sanitizePublicError(
-		fmt.Errorf("wait for rust-analyzer quiescent startup: %w", context.DeadlineExceeded),
-		"find symbol in workspace",
-	)
-
-	require.EqualError(t, err, "request timed out, the LSP server may still be warming up")
-}
-
-// TestSanitizePublicErrorKeepsExplicitSafeMessages avoids replacing deliberate public messages
-// with one generic timeout hint.
-func TestSanitizePublicErrorKeepsExplicitSafeMessages(t *testing.T) {
-	t.Parallel()
-
-	err := sanitizePublicError(
-		domain.NewSafeError(
-			"project index is still loading, retry later",
-			fmt.Errorf("wait for rust-analyzer quiescent startup: %w", context.DeadlineExceeded),
-		),
-		"find symbol in workspace",
-	)
-
-	require.EqualError(t, err, "project index is still loading, retry later")
 }
 
 func normalizeTestWorkspaceRoot(t *testing.T, workspaceRoot string) string {

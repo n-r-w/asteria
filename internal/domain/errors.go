@@ -1,27 +1,30 @@
 package domain
 
-// SafeError keeps one client-facing context message together with its optional underlying cause.
-type SafeError struct {
+// ToolError describes a failed tool request with context message and optional cause.
+type ToolError struct {
 	message string
 	cause   error
 }
 
-// NewSafeError creates one error with a client-facing context message and an optional diagnostic cause.
-func NewSafeError(message string, cause error) *SafeError {
-	return &SafeError{message: message, cause: cause}
+// NewToolError creates one error with context message and optional cause.
+func NewToolError(message string, cause error) *ToolError {
+	return &ToolError{message: message, cause: cause}
 }
 
-// Error returns the client-facing context message.
-func (e *SafeError) Error() string {
+// Error returns the context message followed by the cause.
+func (e *ToolError) Error() string {
 	if e == nil {
 		return ""
 	}
+	if e.cause == nil {
+		return e.message
+	}
 
-	return e.message
+	return e.message + ": " + e.cause.Error()
 }
 
-// Unwrap returns the underlying cause for MCP responses, logs, and errors.Is/errors.As checks.
-func (e *SafeError) Unwrap() error {
+// Unwrap returns the underlying cause for errors.Is/errors.As checks.
+func (e *ToolError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
@@ -29,8 +32,8 @@ func (e *SafeError) Unwrap() error {
 	return e.cause
 }
 
-// Cause returns the underlying cause without changing the context returned by Error.
-func (e *SafeError) Cause() error {
+// Cause returns the underlying cause.
+func (e *ToolError) Cause() error {
 	if e == nil {
 		return nil
 	}

@@ -713,8 +713,7 @@ func TestIntegrationServiceFindReferencingSymbolsSupportsTaggedOnlyBuildFlags(t 
 }
 
 // TestIntegrationServiceFindReferencingSymbolsReturnsBuildConfigMessageForTaggedOnlyFileWithoutBuildFlags proves
-// that tagged-only files outside the active Go build graph return one safe public message instead of raw gopls
-// metadata errors.
+// that tagged-only files outside the active Go build graph explain how to fix the build flags.
 func TestIntegrationServiceFindReferencingSymbolsReturnsBuildConfigMessageForTaggedOnlyFileWithoutBuildFlags(
 	t *testing.T,
 ) {
@@ -732,7 +731,6 @@ func TestIntegrationServiceFindReferencingSymbolsReturnsBuildConfigMessageForTag
 		err,
 		`file_path "tagged_only_featurex.go" is excluded from the active Go build configuration`,
 	)
-	assert.NotContains(t, err.Error(), "no package metadata for file")
 	assert.Empty(t, result.Symbols)
 }
 

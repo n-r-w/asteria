@@ -539,7 +539,7 @@ func TestIntegrationServiceFindReferencingSymbolsIgnoresUnrelatedUnresolvedReexp
 }
 
 // TestIntegrationServiceFindSymbolReportsUnresolvedMatchingReexport proves that a requested unavailable
-// package re-export produces an actionable client-safe error instead of an internal error.
+// package re-export names the module specifier that cannot be resolved.
 func TestIntegrationServiceFindSymbolReportsUnresolvedMatchingReexport(t *testing.T) {
 	workspaceRoot := tslsFixtureRoot(t)
 	service, ctx := newIntegrationService(t)
@@ -554,9 +554,9 @@ func TestIntegrationServiceFindSymbolReportsUnresolvedMatchingReexport(t *testin
 		err,
 		`cannot resolve module specifier "@missing/ui" from "unresolved_reexports.ts"`,
 	)
-	var safeErr *domain.SafeError
-	require.ErrorAs(t, err, &safeErr)
-	assert.Nil(t, safeErr.Cause())
+	var toolErr *domain.ToolError
+	require.ErrorAs(t, err, &toolErr)
+	assert.Nil(t, toolErr.Cause())
 }
 
 // TestIntegrationServiceGetSymbolsOverviewReportsUnresolvedReexport proves that overview reports the
@@ -574,9 +574,9 @@ func TestIntegrationServiceGetSymbolsOverviewReportsUnresolvedReexport(t *testin
 		err,
 		`cannot resolve module specifier "@missing/ui" from "unresolved_reexports.ts"`,
 	)
-	var safeErr *domain.SafeError
-	require.ErrorAs(t, err, &safeErr)
-	assert.Nil(t, safeErr.Cause())
+	var toolErr *domain.ToolError
+	require.ErrorAs(t, err, &toolErr)
+	assert.Nil(t, toolErr.Cause())
 }
 
 // TestIntegrationServiceFindReferencingSymbolsTracksAdvancedModuleImports proves that richer module
