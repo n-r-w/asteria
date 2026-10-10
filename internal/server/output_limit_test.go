@@ -20,23 +20,26 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 	svc := &Service{ //nolint:exhaustruct_v5 // only cfg is relevant for output limiting
 		cfg: &config.Config{
 			CacheRoot:              "",
-			SystemPrompt:           "",
 			GetSymbolsOverviewDesc: "",
 			FindSymbolDesc:         "",
 			FindReferencesDesc:     "",
 			ToolTimeout:            10 * time.Second,
 			LSPSessionIdleTimeout:  0,
-			ToolOutputMaxBytes:     120,
+			ToolOutputMaxBytes:     150,
 			Log:                    config.LogConfig{},
 			Adapters:               cfgadapters.Config{},
 		},
 	}
-	output := findSymbolOutput{Symbols: []foundSymbolDTO{
-		{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "0"},
-		{Kind: 12, Body: "", Info: "", Path: "Bravo", File: "b.go", Range: "1"},
-		{Kind: 12, Body: "", Info: "", Path: "Charlie", File: "c.go", Range: "2"},
-		{Kind: 12, Body: "", Info: "", Path: "Delta", File: "d.go", Range: "3"},
-	}, ReturnedPercent: 0}
+	output := findSymbolOutput{
+		Symbols: []foundSymbolDTO{
+			{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "1"},
+			{Kind: 12, Body: "", Info: "", Path: "Bravo", File: "b.go", Range: "2"},
+			{Kind: 12, Body: "", Info: "", Path: "Charlie", File: "c.go", Range: "3"},
+			{Kind: 12, Body: "", Info: "", Path: "Delta", File: "d.go", Range: "4"},
+		},
+		Warnings:        []string{".js skipped"},
+		ReturnedPercent: 0,
+	}
 
 	limited, err := svc.limitFindSymbolOutput(output)
 	require.NoError(t, err)
@@ -47,21 +50,19 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(
 		t,
-		`{"symbols":[{"kind":12,"path":"Alpha","file":"a.go","range":"0"},`+
-			`{"kind":12,"path":"Bravo","file":"b.go","range":"1"}],"returned_percent":50}`,
+		`{"symbols":[{"kind":12,"path":"Alpha","file":"a.go","range":"1"},`+
+			`{"kind":12,"path":"Bravo","file":"b.go","range":"2"}],"warnings":[".js skipped"],"returned_percent":50}`,
 		string(payload),
 	)
 }
 
-// TestLimitFindSymbolOutputReturnsPublicSizeError proves that oversized responses do not expose
-// server configuration names.
+// TestLimitFindSymbolOutputReturnsPublicSizeError proves that oversized responses name the setting that limits them.
 func TestLimitFindSymbolOutputReturnsPublicSizeError(t *testing.T) {
 	t.Parallel()
 
 	svc := &Service{ //nolint:exhaustruct_v5 // only cfg is relevant for output limiting
 		cfg: &config.Config{
 			CacheRoot:              "",
-			SystemPrompt:           "",
 			GetSymbolsOverviewDesc: "",
 			FindSymbolDesc:         "",
 			FindReferencesDesc:     "",
@@ -74,10 +75,15 @@ func TestLimitFindSymbolOutputReturnsPublicSizeError(t *testing.T) {
 	}
 
 	_, err := svc.limitFindSymbolOutput(findSymbolOutput{
-		Symbols:         []foundSymbolDTO{{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "0"}},
+		Symbols:         []foundSymbolDTO{{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "1"}},
+		Warnings:        nil,
 		ReturnedPercent: 0,
 	})
-	require.EqualError(t, err, outputTooLargePublicMessage)
+	require.EqualError(
+		t,
+		err,
+		outputTooLargePublicMessage+": base output size 14 exceeds configured maximum 1; increase "+toolOutputMaxBytesEnvName,
+	)
 }
 
 // TestLimitFindReferencingSymbolsOutputCountsNestedSymbols proves that returned percentage is based
@@ -88,7 +94,6 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 	svc := &Service{ //nolint:exhaustruct_v5 // only cfg is relevant for output limiting
 		cfg: &config.Config{
 			CacheRoot:              "",
-			SystemPrompt:           "",
 			GetSymbolsOverviewDesc: "",
 			FindSymbolDesc:         "",
 			FindReferencesDesc:     "",
@@ -99,22 +104,26 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 			Adapters:               cfgadapters.Config{},
 		},
 	}
-	output := findReferencingSymbolsOutput{Files: []referencingFileDTO{
-		{
-			File: "a.go",
-			Symbols: []referencingSymbolDTO{
-				{Kind: 12, Path: "A/One", Range: "0", Content: "one"},
-				{Kind: 12, Path: "A/Two", Range: "1", Content: "two"},
+	output := findReferencingSymbolsOutput{
+		Files: []referencingFileDTO{
+			{
+				File: "a.go",
+				Symbols: []referencingSymbolDTO{
+					{Kind: 12, Path: "A/One", Range: "1", Content: "one"},
+					{Kind: 12, Path: "A/Two", Range: "2", Content: "two"},
+				},
+			},
+			{
+				File: "b.go",
+				Symbols: []referencingSymbolDTO{
+					{Kind: 12, Path: "B/Three", Range: "3", Content: "three"},
+					{Kind: 12, Path: "B/Four", Range: "4", Content: "four"},
+				},
 			},
 		},
-		{
-			File: "b.go",
-			Symbols: []referencingSymbolDTO{
-				{Kind: 12, Path: "B/Three", Range: "2", Content: "three"},
-				{Kind: 12, Path: "B/Four", Range: "3", Content: "four"},
-			},
-		},
-	}, Incomplete: false, ReturnedPercent: 0}
+		Incomplete:      false,
+		ReturnedPercent: 0,
+	}
 
 	limited, err := svc.limitFindReferencingSymbolsOutput(output)
 	require.NoError(t, err)
@@ -135,14 +144,14 @@ func TestTrimOverviewEntriesCountsGroupedSymbols(t *testing.T) {
 		{
 			Kind: 6,
 			Symbols: []overviewGroupSymbolDTO{
-				{Path: "A", Range: "0"},
-				{Path: "B", Range: "1"},
+				{Path: "A", Range: "1"},
+				{Path: "B", Range: "2"},
 			},
 		},
 		{
 			Kind: 12,
 			Symbols: []overviewGroupSymbolDTO{
-				{Path: "C", Range: "2"},
+				{Path: "C", Range: "3"},
 			},
 		},
 	}, 2)
@@ -150,8 +159,8 @@ func TestTrimOverviewEntriesCountsGroupedSymbols(t *testing.T) {
 	assert.Equal(t, []overviewKindGroupDTO{{
 		Kind: 6,
 		Symbols: []overviewGroupSymbolDTO{
-			{Path: "A", Range: "0"},
-			{Path: "B", Range: "1"},
+			{Path: "A", Range: "1"},
+			{Path: "B", Range: "2"},
 		},
 	}}, trimmed)
 }

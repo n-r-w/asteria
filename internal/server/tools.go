@@ -47,7 +47,7 @@ func (s *Service) getSymbolsOverviewTool(
 		return nil, getSymbolsOverviewOutput{}, processError(
 			ctx,
 			domain.ToolNameGetSymbolsOverview,
-			sanitizeValidationError(domain.ToolNameGetSymbolsOverview, err),
+			mapValidationError(domain.ToolNameGetSymbolsOverview, err),
 			logAttrs...,
 		)
 	}
@@ -106,7 +106,7 @@ func (s *Service) findSymbolTool(
 		return nil, findSymbolOutput{}, processError(
 			ctx,
 			domain.ToolNameFindSymbol,
-			sanitizeValidationError(domain.ToolNameFindSymbol, err),
+			mapValidationError(domain.ToolNameFindSymbol, err),
 			logAttrs...,
 		)
 	}
@@ -123,6 +123,7 @@ func (s *Service) findSymbolTool(
 
 			return s.limitFindSymbolOutput(findSymbolOutput{
 				Symbols:         toFoundSymbolDTOs(result.Symbols),
+				Warnings:        result.Warnings,
 				ReturnedPercent: 0,
 			})
 		},
@@ -166,7 +167,7 @@ func (s *Service) findReferencingSymbolsTool(
 		return nil, findReferencingSymbolsOutput{}, processError(
 			ctx,
 			domain.ToolNameFindReferencingSymbols,
-			sanitizeValidationError(domain.ToolNameFindReferencingSymbols, err),
+			mapValidationError(domain.ToolNameFindReferencingSymbols, err),
 			logAttrs...,
 		)
 	}
@@ -200,7 +201,7 @@ func runWithToolTimeout[T any](
 	run func(context.Context) (T, error),
 	logAttrs ...any,
 ) (T, error) {
-	timeoutErr := domain.NewSafeError(
+	timeoutErr := domain.NewToolError(
 		fmt.Sprintf("tool execution timed out after %s", s.cfg.ToolTimeout),
 		context.DeadlineExceeded,
 	)
@@ -291,8 +292,11 @@ func toReferencingFileDTOs(input []domain.ReferencingSymbol) []referencingFileDT
 	return files
 }
 
-// formatRange converts one inclusive line range into the compact transport form expected by MCP clients.
+// formatRange converts one inclusive 0-based domain line range into the compact 1-based transport form
+// expected by MCP clients.
 func formatRange(startLine, endLine int) string {
+	startLine++
+	endLine++
 	if startLine == endLine {
 		return strconv.Itoa(startLine)
 	}
@@ -306,36 +310,32 @@ func processError(ctx context.Context, toolName string, err error, logAttrs ...a
 		return nil
 	}
 
-	clientErr := err
 	logLevel := slog.LevelError
-	if safeErr, ok := errors.AsType[*domain.SafeError](err); ok {
-		logLevel = safeErrorLogLevel(safeErr)
-		if cause := safeErr.Cause(); cause != nil {
-			clientErr = fmt.Errorf("%s: %w", safeErr.Error(), cause)
-		}
+	if toolErr, ok := errors.AsType[*domain.ToolError](err); ok {
+		logLevel = toolErrorLogLevel(toolErr)
 	}
 
-	publicErr := fmt.Errorf("%s: %w", toolName, clientErr)
-	attrs := append([]any{logErrorKey, clientErr, logPublicErrorKey, publicErr.Error()}, logAttrs...)
+	publicErr := fmt.Errorf("%s: %w", toolName, err)
+	attrs := append([]any{logErrorKey, err, logPublicErrorKey, publicErr.Error()}, logAttrs...)
 	slog.Log(ctx, logLevel, toolName, attrs...)
 
 	return publicErr
 }
 
-// safeErrorLogLevel keeps expected public validation and routing failures out of the error-level server noise.
-func safeErrorLogLevel(safeErr *domain.SafeError) slog.Level {
-	if safeErr == nil || safeErr.Cause() != nil {
+// toolErrorLogLevel logs expected validation and routing failures below error level.
+func toolErrorLogLevel(toolErr *domain.ToolError) slog.Level {
+	if toolErr == nil || toolErr.Cause() != nil {
 		return slog.LevelError
 	}
 
 	return slog.LevelInfo
 }
 
-// sanitizeValidationError maps internal validation field names to the public MCP argument names.
-func sanitizeValidationError(toolName string, err error) error {
+// mapValidationError maps internal validation field names to the public MCP argument names.
+func mapValidationError(toolName string, err error) error {
 	messages := flattenErrorMessages(err)
 	if len(messages) == 0 {
-		return domain.NewSafeError("invalid input", err)
+		return domain.NewToolError("invalid input", err)
 	}
 
 	publicMessages := make([]string, 0, len(messages))
@@ -343,7 +343,8 @@ func sanitizeValidationError(toolName string, err error) error {
 		publicMessages = append(publicMessages, mapValidationMessage(toolName, message))
 	}
 
-	return domain.NewSafeError(strings.Join(publicMessages, "; "), err)
+	// The cause repeats these messages with internal field names, which the client cannot map to its arguments.
+	return domain.NewToolError(strings.Join(publicMessages, "; "), nil)
 }
 
 // flattenErrorMessages converts wrapped and joined validation errors into one flat message list.

@@ -81,7 +81,7 @@ func TestAugmentFindSymbolWithPHPConstants(t *testing.T) {
 		SubstringMatching: false,
 		WorkspaceRoot:     workspaceRoot,
 		Scope:             "fixture.php",
-	}, domain.FindSymbolResult{Symbols: nil})
+	}, domain.FindSymbolResult{Symbols: nil, Warnings: nil})
 	require.NoError(t, err)
 	require.Len(t, result.Symbols, 1)
 	assert.Equal(t, domain.FoundSymbol{
@@ -104,7 +104,7 @@ func TestPHPActorPropertyReferenceTarget(t *testing.T) {
 		Kind: 7,
 		Body: "",
 		Info: "",
-		Path: "PerHotelCommissionsService@18:0/commissionHotelsKafkaTopic@37:4",
+		Path: "PerHotelCommissionsService@19:1/commissionHotelsKafkaTopic@38:5",
 		File: filepath.ToSlash(
 			filepath.Join("core", "src", "Pricing", "Client", "PerHotelCommissionsService.php"),
 		),

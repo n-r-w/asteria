@@ -247,7 +247,12 @@ func TestGetSymbolsOverviewReusesCachedTreeAcrossRequests(t *testing.T) {
 	require.NoError(t, err)
 
 	conn, documentSymbolCalls := testDocumentSymbolConn(t, uri.File(normalizedAbsolutePath))
-	cacheStore := &memorySymbolTreeCache{mu: sync.Mutex{}, entries: map[string][]byte{}, readCount: 0, writeCount: 0}
+	cacheStore := &memorySymbolTreeCache{
+		mu:         sync.Mutex{},
+		entries:    map[string][]byte{},
+		readCount:  0,
+		writeCount: 0,
+	}
 	service := &Service{config: &Config{
 		Extensions: []string{".ts"},
 		EnsureConn: func(context.Context, string) (jsonrpc2.Conn, error) {

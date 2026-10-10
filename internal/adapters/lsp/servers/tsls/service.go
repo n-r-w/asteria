@@ -72,7 +72,11 @@ func New(config cfgadapters.TSLSConfig, sessionIdleTimeout time.Duration) (*Serv
 		return nil, err
 	}
 
-	return &Service{Service: std, rt: rt, withRequestDocument: withRequestDocument}, nil
+	return &Service{
+		Service:             std,
+		rt:                  rt,
+		withRequestDocument: withRequestDocument,
+	}, nil
 }
 
 func patchInitializeParams(

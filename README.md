@@ -67,7 +67,7 @@ brew install --cask n-r-w/homebrew-tap/asteria-mcp
 
 Requirements:
 
-- Go `1.27.1`
+- Go `1.27.2`
 
 ```bash
 go build -o asteria-mcp ./cmd/asteria-mcp
@@ -259,17 +259,14 @@ Clangd and Marksman retain the indexing needed for symbol and reference search.
 - `ASTERIAMCP_CACHE_ROOT` (optional, default: `<os-user-cache-dir>/asteria/cache`)
 	- Absolute path for managed adapter artifacts.
 
-- `ASTERIAMCP_SYSTEM_PROMPT` (optional, default: built-in server instructions)
-	- Overrides MCP server instructions.
-
 - `ASTERIAMCP_GET_SYMBOLS_OVERVIEW_DESC` (optional, default: built-in `get_symbols_overview` description)
-	- Overrides the MCP tool description.
+	- Overrides the tool-specific part of the MCP tool description. The server appends rules shared by all tools: line range format and supported languages.
 
 - `ASTERIAMCP_FIND_SYMBOL_DESC` (optional, default: built-in `find_symbol` description)
-	- Overrides the MCP tool description.
+	- Overrides the tool-specific part of the MCP tool description. The server appends rules shared by all tools: line range format and supported languages.
 
 - `ASTERIAMCP_FIND_REFERENCES_DESC` (optional, default: built-in `find_referencing_symbols` description)
-	- Overrides the MCP tool description.
+	- Overrides the tool-specific part of the MCP tool description. The server appends rules shared by all tools: line range format and supported languages.
 
 - `ASTERIAMCP_TOOL_TIMEOUT` (optional, default: `360s`)
 	- Global timeout for one MCP tool call.

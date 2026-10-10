@@ -31,9 +31,9 @@ type overviewKindGroupDTO struct {
 
 // overviewGroupSymbolDTO is transport model for one symbol entry inside one grouped overview kind bucket.
 type overviewGroupSymbolDTO struct {
-	// Path is the slash-delimited symbol path. Duplicate same-name siblings add '@line:character' to the last segment.
+	// Path is the slash-delimited symbol path. Duplicate same-name siblings add 1-based '@line:character' to the last segment.
 	Path string `json:"path"`
-	// Range is the 0-based inclusive line range of the symbol, formatted as "start-end" or "start".
+	// Range is the 1-based inclusive line range of the symbol, formatted as "start-end" or "start".
 	Range string `json:"range"`
 }
 
@@ -44,13 +44,13 @@ type findSymbolInput struct {
 	// WorkspaceRoot selects the workspace root used to resolve ScopePath.
 	WorkspaceRoot string `json:"workspace_root" jsonschema:"Required absolute workspace root directory used to resolve scope_path."`
 	// SymbolQuery is the requested symbol query.
-	SymbolQuery string `json:"symbol_query" jsonschema:"Symbol search query, not a filesystem path. Supports simple names, suffix lookup, and exact lookup with a leading '/'. Slash-separated segments mean parent/child nesting in the symbol tree, not a general semantic relation. Duplicate same-name siblings add '@line:character' to the last segment; reuse the returned path when you need one exact duplicate."`
+	SymbolQuery string `json:"symbol_query" jsonschema:"Symbol search query, not a filesystem path. Supports simple names, suffix lookup, and exact lookup with a leading '/'. Slash-separated segments mean parent/child nesting in the symbol tree, not a general semantic relation. Duplicate same-name siblings add '@line:character' (1-based) to the last segment; reuse the returned path when you need one exact duplicate. Narrow generic names ('New', 'Run', 'Handle') with scope_path and kind filters. When the parent is known, use exact lookup like '/Service/New'."`
 	// ScopePath optionally narrows search scope to one workspace-relative file or directory.
 	ScopePath string `json:"scope_path,omitempty" jsonschema:"Optional workspace-relative filesystem path to one file or directory that limits search, relative to the selected workspace_root."`
 	// IncludeKinds restricts results to the provided symbol kinds.
-	IncludeKinds []int `json:"include_kinds,omitempty" jsonschema:"List of LSP symbol kind integers to include. If not provided, all kinds are included."`
+	IncludeKinds []int `json:"include_kinds,omitempty" jsonschema:"List of LSP SymbolKind numbers to include. If not provided, all kinds are included."`
 	// ExcludeKinds removes results matching the provided symbol kinds.
-	ExcludeKinds []int `json:"exclude_kinds,omitempty" jsonschema:"List of LSP symbol kind integers to exclude. Takes precedence over include_kinds. If not provided, no kinds are excluded."`
+	ExcludeKinds []int `json:"exclude_kinds,omitempty" jsonschema:"List of LSP SymbolKind numbers to exclude. Takes precedence over include_kinds. If not provided, no kinds are excluded."`
 	// Depth limits how deep child symbols should be returned.
 	Depth int `json:"depth,omitempty" jsonschema:"Depth up to which descendants shall be retrieved (e.g. use 1 to also retrieve immediate children; for the case where the symbol is a class, this will return its methods). Depth expands descendants of matched symbols; it does not change how symbol_query is matched. Default 0. include_kinds and exclude_kinds apply to every returned symbol, including descendants, so filtered descendants are omitted."`
 	// IncludeBody requests symbol body/source inclusion when supported.
@@ -65,6 +65,8 @@ type findSymbolInput struct {
 type findSymbolOutput struct {
 	// Symbols contains matched symbol locations. Empty means no matches survived the requested scope and filters.
 	Symbols []foundSymbolDTO `json:"symbols"`
+	// Warnings names files that the search skipped because their language server failed.
+	Warnings []string `json:"warnings,omitempty"`
 	// ReturnedPercent is the approximate percentage of logical result objects returned when the response is truncated.
 	ReturnedPercent int `json:"returned_percent,omitempty"`
 }
@@ -77,11 +79,11 @@ type foundSymbolDTO struct {
 	Body string `json:"body,omitempty"`
 	// Info is the metadata of the symbol, if requested.
 	Info string `json:"info,omitempty"`
-	// Path is the slash-delimited symbol path. Duplicate same-name siblings add '@line:character' to the last segment.
+	// Path is the slash-delimited symbol path. Duplicate same-name siblings add 1-based '@line:character' to the last segment.
 	Path string `json:"path"`
 	// File is the workspace-relative file path containing the symbol.
 	File string `json:"file"`
-	// Range is the 0-based inclusive line range of the symbol, formatted as "start-end" or "start".
+	// Range is the 1-based inclusive line range of the symbol, formatted as "start-end" or "start".
 	Range string `json:"range"`
 }
 
@@ -94,11 +96,11 @@ type findReferencingSymbolsInput struct {
 	// FilePath is the workspace-relative file path where the target symbol is declared.
 	FilePath string `json:"file_path" jsonschema:"Workspace-relative filesystem path to the file where the target symbol is declared, relative to the selected workspace_root."`
 	// SymbolPath identifies the target symbol inside FilePath.
-	SymbolPath string `json:"symbol_path" jsonschema:"Symbol path inside the declaration file file_path, not a filesystem path. Supports suffix lookup and exact file-local lookup with a leading '/'. Slash-separated segments mean parent/child nesting in the symbol tree, not a general semantic relation. Duplicate same-name siblings add '@line:character' to the last segment; reuse the returned path when you need one exact duplicate. Use this to identify the declared target symbol whose usages should be found."`
+	SymbolPath string `json:"symbol_path" jsonschema:"Symbol path inside the declaration file file_path, not a filesystem path. Supports suffix lookup and exact file-local lookup with a leading '/'. Slash-separated segments mean parent/child nesting in the symbol tree, not a general semantic relation. Duplicate same-name siblings add '@line:character' (1-based) to the last segment; reuse the returned path when you need one exact duplicate. Use this to identify the declared target symbol whose usages should be found. Take file_path and symbol_path from the same declaration of an earlier result."`
 	// IncludeKinds restricts results to the provided symbol kinds.
-	IncludeKinds []int `json:"include_kinds,omitempty" jsonschema:"List of LSP symbol kind integers to include. If not provided, all kinds are included."`
+	IncludeKinds []int `json:"include_kinds,omitempty" jsonschema:"List of LSP SymbolKind numbers to include. If not provided, all kinds are included."`
 	// ExcludeKinds removes results matching the provided symbol kinds.
-	ExcludeKinds []int `json:"exclude_kinds,omitempty" jsonschema:"List of LSP symbol kind integers to exclude. Takes precedence over include_kinds. If not provided, no kinds are excluded."`
+	ExcludeKinds []int `json:"exclude_kinds,omitempty" jsonschema:"List of LSP SymbolKind numbers to exclude. Takes precedence over include_kinds. If not provided, no kinds are excluded."`
 }
 
 // findReferencingSymbolsOutput is MCP output DTO for find_referencing_symbols tool.
@@ -124,9 +126,9 @@ type referencingFileDTO struct {
 type referencingSymbolDTO struct {
 	// Kind is the stable LSP symbol kind code for the referencing symbol.
 	Kind int `json:"kind"`
-	// Path is the slash-delimited symbol path. Duplicate same-name siblings add '@line:character' to the last segment.
+	// Path is the slash-delimited symbol path. Duplicate same-name siblings add 1-based '@line:character' to the last segment.
 	Path string `json:"path"`
-	// Range is the 0-based inclusive line range of the returned code snippet, not of the exact reference token, formatted as "start-end" or "start".
+	// Range is the 1-based inclusive line range of the returned code snippet, not of the exact reference token, formatted as "start-end" or "start".
 	Range string `json:"range"`
 	// Content is a short source snippet around the representative reference.
 	Content string `json:"content"`

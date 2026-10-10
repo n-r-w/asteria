@@ -1,9 +1,7 @@
 package stdlsp
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +14,11 @@ import (
 func resolveSearchScope(workspaceRootPath, relativePath string) (searchScope, error) {
 	trimmedRelativePath := strings.TrimSpace(relativePath)
 	if trimmedRelativePath == "" {
-		return searchScope{RelativePath: "", AbsolutePath: workspaceRootPath, IsDir: true}, nil
+		return searchScope{
+			RelativePath: "",
+			AbsolutePath: workspaceRootPath,
+			IsDir:        true,
+		}, nil
 	}
 
 	cleanRelativePath := filepath.Clean(trimmedRelativePath)
@@ -24,7 +26,11 @@ func resolveSearchScope(workspaceRootPath, relativePath string) (searchScope, er
 		return searchScope{}, domain.NewPathMustBeWorkspaceRelativeError("relative path", relativePath)
 	}
 	if cleanRelativePath == "." {
-		return searchScope{RelativePath: "", AbsolutePath: workspaceRootPath, IsDir: true}, nil
+		return searchScope{
+			RelativePath: "",
+			AbsolutePath: workspaceRootPath,
+			IsDir:        true,
+		}, nil
 	}
 
 	absolutePath := filepath.Join(workspaceRootPath, cleanRelativePath)
@@ -39,11 +45,7 @@ func resolveSearchScope(workspaceRootPath, relativePath string) (searchScope, er
 
 	fileInfo, err := os.Stat(absolutePath)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return searchScope{}, domain.NewPathNotFoundError("relative path", cleanRelativePath, err)
-		}
-
-		return searchScope{}, domain.NewPathAccessError("relative path", cleanRelativePath, err)
+		return searchScope{}, domain.NewPathError("relative path", cleanRelativePath, err)
 	}
 
 	return searchScope{

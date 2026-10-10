@@ -232,3 +232,18 @@ func decodeNotification(t *testing.T, raw string) jsonrpc2.Request {
 
 	return &request
 }
+
+// TestWaitUntilReadyTimeoutNamesTimeoutSetting proves that the client learns which setting lets indexing finish.
+func TestWaitUntilReadyTimeoutNamesTimeoutSetting(t *testing.T) {
+	t.Parallel()
+
+	service := newTestService(t.TempDir(), cfgadapters.RustAnalyzerConfig{
+		WorkspaceSymbolSearchLimit: 128,
+		StartupReadyTimeout:        10 * time.Millisecond,
+	})
+
+	err := service.waitUntilReady(t.Context(), nil, "/workspace")
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorContains(t, err, "within 10ms; increase ASTERIAMCP_RUST_ANALYZER_STARTUP_READY_TIMEOUT")
+}

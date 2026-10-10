@@ -28,7 +28,11 @@ func TestCollectScopeFilesAppliesAdapterIgnoreRules(t *testing.T) {
 	)
 	require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, "pkg", "kept.go"), []byte("package pkg\n"), 0o600))
 
-	scope := searchScope{RelativePath: "", AbsolutePath: workspaceRoot, IsDir: true}
+	scope := searchScope{
+		RelativePath: "",
+		AbsolutePath: workspaceRoot,
+		IsDir:        true,
+	}
 	files, err := collectScopeFiles(workspaceRoot, scope, []string{".go"}, func(relativePath string) bool {
 		return filepath.Base(relativePath) == ".hidden"
 	})

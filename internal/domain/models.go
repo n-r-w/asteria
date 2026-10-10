@@ -131,6 +131,8 @@ func (r *FindSymbolRequest) Validate() error {
 type FindSymbolResult struct {
 	// Symbols contains the matched symbol locations.
 	Symbols []FoundSymbol
+	// Warnings names files that the search skipped because their language server failed.
+	Warnings []string
 }
 
 // FoundSymbol describes a symbol found by the FindSymbol operation.

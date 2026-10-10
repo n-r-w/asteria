@@ -152,7 +152,7 @@ func findUniqueNode(nodes []*node, namePath string) (*node, error) {
 	matcher := newNamePathMatcher(namePath, false)
 	candidates := collectMatchingNodes(nodes, matcher)
 	if len(candidates) == 0 {
-		return nil, domain.NewSafeError(fmt.Sprintf("no symbol matches %q", namePath), nil)
+		return nil, domain.NewToolError(fmt.Sprintf("no symbol matches %q", namePath), nil)
 	}
 	if len(candidates) == 1 {
 		return candidates[0], nil
@@ -181,7 +181,7 @@ func findUniqueNode(nodes []*node, namePath string) (*node, error) {
 	}
 	sort.Strings(descriptions)
 
-	return nil, domain.NewSafeError(
+	return nil, domain.NewToolError(
 		fmt.Sprintf(
 			"multiple symbols match %q; use a more specific symbol_path. Candidates: %s",
 			namePath,
@@ -302,15 +302,16 @@ func namePathLeaf(namePath string) string {
 	return namePath[separatorIndex+1:]
 }
 
-// disambiguatedNamePathComponent appends one stable line:character suffix to duplicate sibling names.
+// disambiguatedNamePathComponent appends one stable 1-based line:character suffix to duplicate sibling names.
+// The LSP position is 0-based, so both values are incremented for transport.
 func disambiguatedNamePathComponent(baseName string, position protocol.Position) string {
 	return fmt.Sprintf(
 		"%s%s%d%s%d",
 		baseName,
 		namePathDiscriminatorSeparator,
-		int(position.Line),
+		int(position.Line)+1,
 		namePathDiscriminatorValueSeparator,
-		int(position.Character),
+		int(position.Character)+1,
 	)
 }
 

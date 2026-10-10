@@ -153,7 +153,6 @@ func TestFindReferencingSymbolsToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 func newSchemaTestService() *Service {
 	return New("v0.0.0", nil, &config.Config{
 		CacheRoot:              "",
-		SystemPrompt:           "",
 		GetSymbolsOverviewDesc: "",
 		FindSymbolDesc:         "",
 		FindReferencesDesc:     "",

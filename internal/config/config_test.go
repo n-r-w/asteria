@@ -49,6 +49,26 @@ func (s *configSuite) TestSessionIdleTimeoutRejectsNonpositiveDuration() {
 	}
 }
 
+// TestToolDescriptionsCarrySharedRules checks that each tool description ends with rules that apply to all tools,
+// also when environment replaces tool-specific part of description.
+func (s *configSuite) TestToolDescriptionsCarrySharedRules() {
+	for _, override := range []string{"", "custom description"} {
+		s.Run("override="+override, func() {
+			ec := s.parseEnvironment("")
+			ec.GetSymbolsOverviewDesc, ec.FindSymbolDesc, ec.FindReferencesDesc = override, override, override
+			cfg, err := buildConfig(ec)
+			s.Require().NoError(err)
+			for _, description := range []string{cfg.GetSymbolsOverviewDesc, cfg.FindSymbolDesc, cfg.FindReferencesDesc} {
+				s.Contains(description, "1-based")
+				s.Contains(description, "Languages:")
+				if override != "" {
+					s.Contains(description, override)
+				}
+			}
+		})
+	}
+}
+
 func (s *configSuite) parseEnvironment(idleTimeout string) *envConfig {
 	s.T().Helper()
 	values := map[string]string{

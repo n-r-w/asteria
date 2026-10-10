@@ -516,7 +516,7 @@ func collectPHPScopeFiles(workspaceRoot, scopePath string) ([]string, error) {
 
 	fileInfo, err := os.Stat(absoluteScopePath)
 	if err != nil {
-		return nil, domain.NewPathAccessError("relative path", cleanScopePath, err)
+		return nil, domain.NewPathError("relative path", cleanScopePath, err)
 	}
 	if !fileInfo.IsDir() {
 		if strings.ToLower(filepath.Ext(cleanScopePath)) != phpExtension {
