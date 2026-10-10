@@ -67,7 +67,7 @@ brew install --cask n-r-w/homebrew-tap/asteria-mcp
 
 Requirements:
 
-- Go `1.27.1`
+- Go `1.27.2`
 
 ```bash
 go build -o asteria-mcp ./cmd/asteria-mcp
