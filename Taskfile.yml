@@ -43,6 +43,7 @@ tasks:
     cmds:
       - go fmt ./...
       - go tool golangci-lint fmt --config .golangci.yml ./...
+      - go tool structfmt --base-formatter=none -w .
 
   vet:
     desc: "Run go vet"

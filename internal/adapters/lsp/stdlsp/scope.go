@@ -14,7 +14,11 @@ import (
 func resolveSearchScope(workspaceRootPath, relativePath string) (searchScope, error) {
 	trimmedRelativePath := strings.TrimSpace(relativePath)
 	if trimmedRelativePath == "" {
-		return searchScope{RelativePath: "", AbsolutePath: workspaceRootPath, IsDir: true}, nil
+		return searchScope{
+			RelativePath: "",
+			AbsolutePath: workspaceRootPath,
+			IsDir:        true,
+		}, nil
 	}
 
 	cleanRelativePath := filepath.Clean(trimmedRelativePath)
@@ -22,7 +26,11 @@ func resolveSearchScope(workspaceRootPath, relativePath string) (searchScope, er
 		return searchScope{}, domain.NewPathMustBeWorkspaceRelativeError("relative path", relativePath)
 	}
 	if cleanRelativePath == "." {
-		return searchScope{RelativePath: "", AbsolutePath: workspaceRootPath, IsDir: true}, nil
+		return searchScope{
+			RelativePath: "",
+			AbsolutePath: workspaceRootPath,
+			IsDir:        true,
+		}, nil
 	}
 
 	absolutePath := filepath.Join(workspaceRootPath, cleanRelativePath)

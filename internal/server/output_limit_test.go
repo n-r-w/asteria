@@ -30,12 +30,16 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 			Adapters:               cfgadapters.Config{},
 		},
 	}
-	output := findSymbolOutput{Symbols: []foundSymbolDTO{
+	output := findSymbolOutput{
+		Symbols:         []foundSymbolDTO{
 		{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "1"},
 		{Kind: 12, Body: "", Info: "", Path: "Bravo", File: "b.go", Range: "2"},
 		{Kind: 12, Body: "", Info: "", Path: "Charlie", File: "c.go", Range: "3"},
 		{Kind: 12, Body: "", Info: "", Path: "Delta", File: "d.go", Range: "4"},
-	}, Warnings: []string{".js skipped"}, ReturnedPercent: 0}
+	},
+		Warnings:        []string{".js skipped"},
+		ReturnedPercent: 0,
+	}
 
 	limited, err := svc.limitFindSymbolOutput(output)
 	require.NoError(t, err)
@@ -100,7 +104,8 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 			Adapters:               cfgadapters.Config{},
 		},
 	}
-	output := findReferencingSymbolsOutput{Files: []referencingFileDTO{
+	output := findReferencingSymbolsOutput{
+		Files:           []referencingFileDTO{
 		{
 			File: "a.go",
 			Symbols: []referencingSymbolDTO{
@@ -115,7 +120,10 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 				{Kind: 12, Path: "B/Four", Range: "4", Content: "four"},
 			},
 		},
-	}, Incomplete: false, ReturnedPercent: 0}
+	},
+		Incomplete:      false,
+		ReturnedPercent: 0,
+	}
 
 	limited, err := svc.limitFindReferencingSymbolsOutput(output)
 	require.NoError(t, err)

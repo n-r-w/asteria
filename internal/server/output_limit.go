@@ -49,7 +49,11 @@ func (s *Service) limitFindSymbolOutput(output findSymbolOutput) (findSymbolOutp
 		s.cfg.ToolOutputMaxBytes,
 		totalItems,
 		output,
-		findSymbolOutput{Symbols: make([]foundSymbolDTO, 0), Warnings: output.Warnings, ReturnedPercent: 0},
+		findSymbolOutput{
+			Symbols:         make([]foundSymbolDTO, 0),
+			Warnings:        output.Warnings,
+			ReturnedPercent: 0,
+		},
 		func(count int) findSymbolOutput {
 			return findSymbolOutput{
 				Symbols:         append(make([]foundSymbolDTO, 0, count), output.Symbols[:count]...),
@@ -175,7 +179,11 @@ func newFitWindow[T any](
 ) (fitWindow, error) {
 	estimatedCount := max(min((maxBytes-baseBytes)/avgItemBytes, totalItems), 0)
 
-	window := fitWindow{best: 0, high: totalItems, low: 0}
+	window := fitWindow{
+		best: 0,
+		high: totalItems,
+		low:  0,
+	}
 	if estimatedCount <= 0 || estimatedCount >= totalItems {
 		return window, nil
 	}

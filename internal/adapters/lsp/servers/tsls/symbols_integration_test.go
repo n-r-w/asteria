@@ -470,7 +470,11 @@ func TestIntegrationServiceFindSymbolReturnsModuleReexportBodies(t *testing.T) {
 	service, ctx := newIntegrationService(t)
 
 	defaultAliasResult, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
-		FindSymbolFilter: domain.FindSymbolFilter{Path: "defaultBucket", IncludeBody: true, IncludeInfo: true},
+		FindSymbolFilter: domain.FindSymbolFilter{
+			Path:        "defaultBucket",
+			IncludeBody: true,
+			IncludeInfo: true,
+		},
 		WorkspaceRoot:    workspaceRoot,
 		Scope:            "module_reexports.ts",
 	})

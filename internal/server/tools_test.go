@@ -156,7 +156,8 @@ func TestGetSymbolsOverviewOutputJSONGroupsSymbolsByKind(t *testing.T) {
 func TestFindSymbolOutputJSONKeepsKindRangeAndFile(t *testing.T) {
 	t.Parallel()
 
-	payload, err := json.Marshal(findSymbolOutput{Symbols: toFoundSymbolDTOs([]domain.FoundSymbol{{
+	payload, err := json.Marshal(findSymbolOutput{
+		Symbols:         toFoundSymbolDTOs([]domain.FoundSymbol{{
 		Kind:      5,
 		Body:      "",
 		Info:      "",
@@ -164,7 +165,10 @@ func TestFindSymbolOutputJSONKeepsKindRangeAndFile(t *testing.T) {
 		File:      "internal/server/service.go",
 		StartLine: 0,
 		EndLine:   0,
-	}}), Warnings: nil, ReturnedPercent: 0})
+	}}),
+		Warnings:        nil,
+		ReturnedPercent: 0,
+	})
 	require.NoError(t, err)
 	assert.JSONEq(
 		t,
@@ -179,7 +183,11 @@ func TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray(t *testing.T) {
 	t.Parallel()
 
 	payload, err := json.Marshal(
-		findReferencingSymbolsOutput{Files: toReferencingFileDTOs(nil), Incomplete: false, ReturnedPercent: 0},
+		findReferencingSymbolsOutput{
+			Files:           toReferencingFileDTOs(nil),
+			Incomplete:      false,
+			ReturnedPercent: 0,
+		},
 	)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"files":[]}`, string(payload))
@@ -190,7 +198,8 @@ func TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray(t *testing.T) {
 func TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields(t *testing.T) {
 	t.Parallel()
 
-	payload, err := json.Marshal(findReferencingSymbolsOutput{Files: []referencingFileDTO{{
+	payload, err := json.Marshal(findReferencingSymbolsOutput{
+		Files:           []referencingFileDTO{{
 		File: "references.go",
 		Symbols: []referencingSymbolDTO{{
 			Kind:    12,
@@ -198,7 +207,10 @@ func TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields(t *testing.T) 
 			Range:   "1-3",
 			Content: "",
 		}},
-	}}, Incomplete: false, ReturnedPercent: 0})
+	}},
+		Incomplete:      false,
+		ReturnedPercent: 0,
+	})
 	require.NoError(t, err)
 	assert.JSONEq(
 		t,
@@ -213,7 +225,11 @@ func TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet(t *testing.T)
 	t.Parallel()
 
 	payload, err := json.Marshal(
-		findReferencingSymbolsOutput{Files: toReferencingFileDTOs(nil), Incomplete: true, ReturnedPercent: 0},
+		findReferencingSymbolsOutput{
+			Files:           toReferencingFileDTOs(nil),
+			Incomplete:      true,
+			ReturnedPercent: 0,
+		},
 	)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"files":[],"incomplete":true}`, string(payload))
