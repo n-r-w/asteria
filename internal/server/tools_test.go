@@ -157,15 +157,15 @@ func TestFindSymbolOutputJSONKeepsKindRangeAndFile(t *testing.T) {
 	t.Parallel()
 
 	payload, err := json.Marshal(findSymbolOutput{
-		Symbols:         toFoundSymbolDTOs([]domain.FoundSymbol{{
-		Kind:      5,
-		Body:      "",
-		Info:      "",
-		Path:      "Service",
-		File:      "internal/server/service.go",
-		StartLine: 0,
-		EndLine:   0,
-	}}),
+		Symbols: toFoundSymbolDTOs([]domain.FoundSymbol{{
+			Kind:      5,
+			Body:      "",
+			Info:      "",
+			Path:      "Service",
+			File:      "internal/server/service.go",
+			StartLine: 0,
+			EndLine:   0,
+		}}),
 		Warnings:        nil,
 		ReturnedPercent: 0,
 	})
@@ -199,15 +199,15 @@ func TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields(t *testing.T) 
 	t.Parallel()
 
 	payload, err := json.Marshal(findReferencingSymbolsOutput{
-		Files:           []referencingFileDTO{{
-		File: "references.go",
-		Symbols: []referencingSymbolDTO{{
-			Kind:    12,
-			Path:    "UseMakeBucketOnce",
-			Range:   "1-3",
-			Content: "",
+		Files: []referencingFileDTO{{
+			File: "references.go",
+			Symbols: []referencingSymbolDTO{{
+				Kind:    12,
+				Path:    "UseMakeBucketOnce",
+				Range:   "1-3",
+				Content: "",
+			}},
 		}},
-	}},
 		Incomplete:      false,
 		ReturnedPercent: 0,
 	})

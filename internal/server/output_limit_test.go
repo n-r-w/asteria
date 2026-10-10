@@ -31,12 +31,12 @@ func TestLimitFindSymbolOutputAddsReturnedPercent(t *testing.T) {
 		},
 	}
 	output := findSymbolOutput{
-		Symbols:         []foundSymbolDTO{
-		{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "1"},
-		{Kind: 12, Body: "", Info: "", Path: "Bravo", File: "b.go", Range: "2"},
-		{Kind: 12, Body: "", Info: "", Path: "Charlie", File: "c.go", Range: "3"},
-		{Kind: 12, Body: "", Info: "", Path: "Delta", File: "d.go", Range: "4"},
-	},
+		Symbols: []foundSymbolDTO{
+			{Kind: 12, Body: "", Info: "", Path: "Alpha", File: "a.go", Range: "1"},
+			{Kind: 12, Body: "", Info: "", Path: "Bravo", File: "b.go", Range: "2"},
+			{Kind: 12, Body: "", Info: "", Path: "Charlie", File: "c.go", Range: "3"},
+			{Kind: 12, Body: "", Info: "", Path: "Delta", File: "d.go", Range: "4"},
+		},
 		Warnings:        []string{".js skipped"},
 		ReturnedPercent: 0,
 	}
@@ -105,22 +105,22 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 		},
 	}
 	output := findReferencingSymbolsOutput{
-		Files:           []referencingFileDTO{
-		{
-			File: "a.go",
-			Symbols: []referencingSymbolDTO{
-				{Kind: 12, Path: "A/One", Range: "1", Content: "one"},
-				{Kind: 12, Path: "A/Two", Range: "2", Content: "two"},
+		Files: []referencingFileDTO{
+			{
+				File: "a.go",
+				Symbols: []referencingSymbolDTO{
+					{Kind: 12, Path: "A/One", Range: "1", Content: "one"},
+					{Kind: 12, Path: "A/Two", Range: "2", Content: "two"},
+				},
+			},
+			{
+				File: "b.go",
+				Symbols: []referencingSymbolDTO{
+					{Kind: 12, Path: "B/Three", Range: "3", Content: "three"},
+					{Kind: 12, Path: "B/Four", Range: "4", Content: "four"},
+				},
 			},
 		},
-		{
-			File: "b.go",
-			Symbols: []referencingSymbolDTO{
-				{Kind: 12, Path: "B/Three", Range: "3", Content: "three"},
-				{Kind: 12, Path: "B/Four", Range: "4", Content: "four"},
-			},
-		},
-	},
 		Incomplete:      false,
 		ReturnedPercent: 0,
 	}
