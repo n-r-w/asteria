@@ -238,14 +238,15 @@ func (*Service) Extensions() []string {
 	return extensions
 }
 
-// closeSessionAfterCanceledRequest stops phpactor work that can no longer produce a tool response.
+// closeSessionAfterCanceledRequest stops phpactor work that can no longer produce a tool response, without making the
+// tool response wait for the shutdown.
 func (s *Service) closeSessionAfterCanceledRequest(ctx context.Context, workspaceRoot string) {
 	if ctx.Err() == nil {
 		return
 	}
 
 	cleanupCtx := context.WithoutCancel(ctx)
-	if err := s.rt.CloseSession(cleanupCtx, workspaceRoot); err != nil {
+	if err := s.rt.CloseSessionInBackground(cleanupCtx, workspaceRoot); err != nil {
 		slog.WarnContext(
 			cleanupCtx,
 			"close phpactor session after canceled request",

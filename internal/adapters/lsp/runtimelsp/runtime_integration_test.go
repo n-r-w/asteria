@@ -5,6 +5,7 @@ package runtimelsp
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -169,9 +170,10 @@ func TestIntegrationRuntimeCloseSessionIsolatedByRoot(t *testing.T) {
 	secondConn, secondErr := runtime.EnsureConn(ctx, secondRoot)
 	require.NoError(t, secondErr)
 
-	require.NoError(t, runtime.CloseSession(ctx, firstRoot))
-	assert.False(t, sessionAlive(firstSession))
-	assert.Nil(t, firstSession.connection())
+	require.NoError(t, runtime.CloseSessionInBackground(ctx, firstRoot))
+	require.Eventually(t, func() bool {
+		return !sessionAlive(firstSession) && firstSession.connection() == nil
+	}, 10*time.Second, 10*time.Millisecond)
 	assert.NoError(t, secondConn.Err())
 
 	restartedConn, restartErr := runtime.EnsureConn(ctx, firstRoot)
@@ -182,7 +184,7 @@ func TestIntegrationRuntimeCloseSessionIsolatedByRoot(t *testing.T) {
 	require.NoError(t, reuseErr)
 	assert.Same(t, secondConn, reusedSecondConn)
 
-	require.NoError(t, runtime.CloseSession(ctx, t.TempDir()))
+	require.NoError(t, runtime.CloseSessionInBackground(ctx, t.TempDir()))
 }
 
 // TestIntegrationRuntimeEnsureConnConcurrentSameRootReusesSingleSession proves that concurrent callers share one session for one root.

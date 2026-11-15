@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,8 @@ type Runtime struct {
 	mu       sync.Mutex
 	closing  bool
 	active   int
+	// backgroundCloses counts the sessions that shut down in the background, so Close can wait for them.
+	backgroundCloses sync.WaitGroup
 }
 
 // New validates runtime configuration, normalizes defaults in place, and prepares lazy session storage.
@@ -59,11 +62,12 @@ func New(config *RuntimeConfig) (*Runtime, error) {
 	}
 
 	runtime := &Runtime{
-		config:   config,
-		sessions: make(map[string]*managedSession),
-		mu:       sync.Mutex{},
-		closing:  false,
-		active:   0,
+		config:           config,
+		sessions:         make(map[string]*managedSession),
+		mu:               sync.Mutex{},
+		closing:          false,
+		active:           0,
+		backgroundCloses: sync.WaitGroup{},
 	}
 
 	return runtime, nil
@@ -185,8 +189,10 @@ func (r *Runtime) newSessionConfig(workspaceRoot string) (*sessionConfig, error)
 	}, nil
 }
 
-// CloseSession shuts down the session for one workspace root without affecting other live sessions.
-func (r *Runtime) CloseSession(ctx context.Context, workspaceRoot string) error {
+// CloseSessionInBackground detaches the session of one workspace root, so the next access to this root starts a new
+// session at once, and shuts the detached session down in the background without affecting other live sessions;
+// Close waits until this shutdown ends.
+func (r *Runtime) CloseSessionInBackground(ctx context.Context, workspaceRoot string) error {
 	normalizedWorkspaceRoot, err := normalizeWorkspaceRoot(workspaceRoot)
 	if err != nil {
 		return err
@@ -199,17 +205,28 @@ func (r *Runtime) CloseSession(ctx context.Context, workspaceRoot string) error 
 		return nil
 	}
 	sessionToClose, ok := r.sessions[normalizedWorkspaceRoot]
-	if ok {
-		sessionToClose.stopIdleTimer()
-		delete(r.sessions, normalizedWorkspaceRoot)
-	}
-	r.mu.Unlock()
-
 	if !ok {
+		r.mu.Unlock()
+
 		return nil
 	}
+	sessionToClose.stopIdleTimer()
+	delete(r.sessions, normalizedWorkspaceRoot)
+	r.backgroundCloses.Add(1)
+	r.mu.Unlock()
 
-	return sessionToClose.session.close(ctx)
+	closeCtx := context.WithoutCancel(ctx)
+	go func() {
+		defer r.backgroundCloses.Done()
+
+		// The session owns a bounded shutdown budget, so the close needs no deadline of the request.
+		if closeErr := sessionToClose.session.close(closeCtx); closeErr != nil {
+			slog.WarnContext(closeCtx, "close LSP session in background",
+				"server_name", r.config.ServerName, "workspace_root", normalizedWorkspaceRoot, "err", closeErr)
+		}
+	}()
+
+	return nil
 }
 
 // Close shuts down all live sessions so process-level cleanup stays explicit to the caller.
@@ -221,6 +238,9 @@ func (r *Runtime) Close(ctx context.Context) error {
 	}
 	r.closing = true
 	r.mu.Unlock()
+
+	// No background close starts while the runtime is closing, and each one ends within its shutdown budget.
+	r.backgroundCloses.Wait()
 
 	closeCtx, cancel := newShutdownContext(ctx, r.config.ShutdownTimeout)
 	defer cancel()
