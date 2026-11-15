@@ -29,10 +29,12 @@ type Service struct {
 	ensureConn          stdlsp.EnsureConnFunc
 	std                 *stdlsp.Service
 	withRequestDocument stdlsp.WithRequestDocumentFunc
-	// runPropertyReferences returns the property usages that phpactor's member-reference command finds.
+	// runPropertyReferences returns the property usages that phpactor's member-reference command finds in the index at
+	// indexPath.
 	runPropertyReferences func(
 		ctx context.Context,
 		workspaceRoot string,
+		indexPath string,
 		referenceTarget string,
 		propertyName string,
 	) ([]phpactorReferenceRow, error)

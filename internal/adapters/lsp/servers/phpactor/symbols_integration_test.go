@@ -147,13 +147,13 @@ func TestIntegrationServiceReferenceDeadlineDuringIndexingKeepsSession(t *testin
 	assert.True(t, ok, "expected reference after indexing, got %#v", result.Symbols)
 }
 
-// TestIntegrationBuildPHPActorIndexHonorsContextCancellation proves that the CLI fallback cannot outlive a canceled
-// MCP tool request.
-func TestIntegrationBuildPHPActorIndexHonorsContextCancellation(t *testing.T) {
+// TestIntegrationPropertyReferencesCommandHonorsContextCancellation proves that the CLI fallback cannot outlive a
+// canceled MCP tool request.
+func TestIntegrationPropertyReferencesCommandHonorsContextCancellation(t *testing.T) {
 	requestCtx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	err := buildPHPActorIndex(requestCtx, phpactorFixtureRoot(t))
+	_, err := runPHPActorPropertyReferences(requestCtx, phpactorFixtureRoot(t), t.TempDir(), "Bucket", "value")
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -604,6 +604,50 @@ func TestIntegrationServiceFindReferencingSymbolsReturnsPropertyUsageContainers(
 	require.True(t, ok, "expected describe property reference, got %#v", result.Symbols)
 	assert.Equal(t, "fixture.php", describeSymbol.File)
 	assert.Contains(t, describeSymbol.Content, "return $this->value")
+}
+
+// TestIntegrationServicePropertyFallbackUsesManagedIndex proves that the property reference fallback finds usages
+// through the index in the managed cache and writes nothing into phpactor's default index directory.
+func TestIntegrationServicePropertyFallbackUsesManagedIndex(t *testing.T) {
+	// phpactor places its default cache, and the default index in it, under XDG_CACHE_HOME.
+	cacheHome := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheHome)
+	workspaceRoot := phpactorFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	var fallbackRows []phpactorReferenceRow
+	runPropertyReferences := service.runPropertyReferences
+	service.runPropertyReferences = func(
+		ctx context.Context,
+		workspaceRoot string,
+		indexPath string,
+		referenceTarget string,
+		propertyName string,
+	) ([]phpactorReferenceRow, error) {
+		rows, err := runPropertyReferences(ctx, workspaceRoot, indexPath, referenceTarget, propertyName)
+		fallbackRows = rows
+
+		return rows, err
+	}
+
+	result, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "Bucket/value"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "fixture.php",
+	})
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, fallbackRows, "expected property usages from the phpactor command")
+	_, ok := findReferencingSymbol(result.Symbols, "Bucket/describe")
+	assert.True(t, ok, "expected describe property reference, got %#v", result.Symbols)
+	assert.NoDirExists(t, filepath.Join(cacheHome, "phpactor", "index"))
+	normalizedRoot, err := helpers.ResolveWorkspaceRoot(workspaceRoot)
+	require.NoError(t, err)
+	indexPath, err := phpactorIndexerPath(service.cacheRoot, normalizedRoot)
+	require.NoError(t, err)
+	indexEntries, err := os.ReadDir(indexPath)
+	require.NoError(t, err)
+	assert.NotEmpty(t, indexEntries)
 }
 
 // TestIntegrationServiceFindReferencingSymbolsUsesDeclarationFileForProjectLikePropertyLookup proves that the

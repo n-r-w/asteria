@@ -3,6 +3,7 @@ package lspphpactor
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -222,7 +223,12 @@ func (s *Service) augmentPropertyReferenceResults(
 		return result, nil
 	}
 
-	referenceRows, err := s.runPropertyReferences(ctx, workspaceRoot, referenceTarget, propertyName)
+	// The command reads the index that the language server session of the workspace builds and keeps current.
+	indexPath, err := phpactorIndexerPath(s.cacheRoot, workspaceRoot)
+	if err != nil {
+		return result, err
+	}
+	referenceRows, err := s.runPropertyReferences(ctx, workspaceRoot, indexPath, referenceTarget, propertyName)
 	if err != nil {
 		return result, err
 	}
@@ -457,16 +463,18 @@ func smallestContainingSymbol(
 	return symbols[bestIndex], true
 }
 
-// runPHPActorPropertyReferences executes phpactor's official member-reference command for one property target and
-// parses its table output into file/line pairs.
+// runPHPActorPropertyReferences executes phpactor's official member-reference command for one property target over
+// the index at indexPath and parses its table output into file/line pairs.
 func runPHPActorPropertyReferences(
 	ctx context.Context,
 	workspaceRoot string,
+	indexPath string,
 	referenceTarget string,
 	propertyName string,
 ) ([]phpactorReferenceRow, error) {
-	if err := buildPHPActorIndex(ctx, workspaceRoot); err != nil {
-		return nil, err
+	configExtra, err := json.Marshal(map[string]string{phpactorIndexerPathKey: indexPath})
+	if err != nil {
+		return nil, fmt.Errorf("encode phpactor index path: %w", err)
 	}
 
 	stdout := bytes.Buffer{}
@@ -477,6 +485,7 @@ func runPHPActorPropertyReferences(
 		phpactorServerName,
 		"--no-interaction",
 		"--no-ansi",
+		"--config-extra="+string(configExtra),
 		"references:member",
 		"--type=property",
 		referenceTarget,
@@ -486,7 +495,7 @@ func runPHPActorPropertyReferences(
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	if err = cmd.Run(); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, fmt.Errorf("run phpactor property references: %w", ctxErr)
 		}
@@ -495,31 +504,6 @@ func runPHPActorPropertyReferences(
 	}
 
 	return parsePHPActorReferenceRows(stdout.String())
-}
-
-// buildPHPActorIndex prepares phpactor's project index before CLI fallback queries rely on class resolution.
-func buildPHPActorIndex(ctx context.Context, workspaceRoot string) error {
-	stderr := bytes.Buffer{}
-
-	cmd := runtimelsp.NewCommand(
-		ctx,
-		phpactorServerName,
-		"--no-interaction",
-		"--no-ansi",
-		"index:build",
-	)
-	cmd.Dir = workspaceRoot
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return fmt.Errorf("build phpactor index: %w", ctxErr)
-		}
-
-		return fmt.Errorf("build phpactor index: %w: %s", err, strings.TrimSpace(stderr.String()))
-	}
-
-	return nil
 }
 
 // parsePHPActorReferenceRows extracts file paths and 1-based line numbers from phpactor's tabular reference output.

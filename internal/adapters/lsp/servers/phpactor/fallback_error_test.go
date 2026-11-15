@@ -209,7 +209,7 @@ func (s *inMemorySearchSuite) TestDeadlineSkipsPropertyFallback() {
 		},
 	)
 	var fallbackRuns atomic.Int32
-	service.runPropertyReferences = func(context.Context, string, string, string) ([]phpactorReferenceRow, error) {
+	service.runPropertyReferences = func(context.Context, string, string, string, string) ([]phpactorReferenceRow, error) {
 		fallbackRuns.Add(1)
 
 		return nil, nil
@@ -341,7 +341,7 @@ func (s *inMemorySearchSuite) TestPropertyFallbackErrorAfterDeadlineKeepsSearchR
 	files := fixtureFiles()
 	files["b.php"] = usageFixture("B")
 	service, request := s.newService(files, fixtureAnswer(nil), nil, nil)
-	service.runPropertyReferences = func(ctx context.Context, _, _, _ string) ([]phpactorReferenceRow, error) {
+	service.runPropertyReferences = func(ctx context.Context, _, _, _, _ string) ([]phpactorReferenceRow, error) {
 		<-ctx.Done()
 
 		return nil, ctx.Err()
@@ -572,7 +572,7 @@ func (s *inMemorySearchSuite) newServiceWithServer(
 		ensureConn:          ensureConn,
 		std:                 std,
 		withRequestDocument: withRequestDocument,
-		runPropertyReferences: func(context.Context, string, string, string) ([]phpactorReferenceRow, error) {
+		runPropertyReferences: func(context.Context, string, string, string, string) ([]phpactorReferenceRow, error) {
 			return propertyRows, nil
 		},
 		cacheRoot: t.TempDir(),
