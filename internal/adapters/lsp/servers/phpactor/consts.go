@@ -20,6 +20,9 @@ const (
 	phpactorPHPStanEnabledKey    = "language_server_phpstan.enabled"
 	phpactorPsalmEnabledKey      = "language_server_psalm.enabled"
 	phpactorPHPCSFixerEnabledKey = "language_server_php_cs_fixer.enabled"
+	// phpactorAutoConfigKey controls whether phpactor writes the tools that it detects in composer.lock into
+	// .phpactor.json of the project.
+	phpactorAutoConfigKey = "language_server_configuration.auto_config"
 	// phpactorIndexingDoneMessagePrefix starts the window/showMessage text with which phpactor reports the end of
 	// indexing.
 	phpactorIndexingDoneMessagePrefix = "Done indexing"

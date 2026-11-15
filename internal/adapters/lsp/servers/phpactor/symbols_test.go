@@ -111,14 +111,15 @@ func TestPatchInitializeParams(t *testing.T) {
 	assert.True(t, params.RootPath.IsZero())
 	assert.Equal(t, new(uri.File(workspaceRoot)), params.RootURI)
 	expectedOptions, err := json.Marshal(map[string]any{
-		phpactorIndexerPathKey:                  filepath.Join(expectedCacheDir, phpactorIndexerDirName),
-		"indexer.enabled_watchers":              []string{"lsp"},
-		phpactorPHPStanEnabledKey:               false,
-		phpactorPsalmEnabledKey:                 false,
-		phpactorPHPCSFixerEnabledKey:            false,
-		"language_server.diagnostics_on_open":   false,
-		"language_server.diagnostics_on_update": false,
-		"language_server.diagnostics_on_save":   false,
+		phpactorIndexerPathKey:                      filepath.Join(expectedCacheDir, phpactorIndexerDirName),
+		"indexer.enabled_watchers":                  []string{"lsp"},
+		phpactorPHPStanEnabledKey:                   false,
+		phpactorPsalmEnabledKey:                     false,
+		phpactorPHPCSFixerEnabledKey:                false,
+		"language_server_configuration.auto_config": false,
+		"language_server.diagnostics_on_open":       false,
+		"language_server.diagnostics_on_update":     false,
+		"language_server.diagnostics_on_save":       false,
 	})
 	require.NoError(t, err)
 	assert.JSONEq(t, string(expectedOptions), string(params.InitializationOptions))

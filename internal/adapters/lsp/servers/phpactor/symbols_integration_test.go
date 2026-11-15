@@ -147,6 +147,35 @@ func TestIntegrationServiceReferenceDeadlineDuringIndexingKeepsSession(t *testin
 	assert.True(t, ok, "expected reference after indexing, got %#v", result.Symbols)
 }
 
+// TestIntegrationServiceDoesNotWriteAutoConfigIntoWorkspace proves that a phpactor session over a project whose
+// composer.lock lists tools that phpactor can configure writes no .phpactor.json into the project.
+func TestIntegrationServiceDoesNotWriteAutoConfigIntoWorkspace(t *testing.T) {
+	workspaceRoot := phpactorFixtureRoot(t)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(workspaceRoot, "composer.json"),
+		[]byte(`{"require-dev": {"phpstan/phpstan": "^1.10", "phpspec/prophecy": "^1.17"}}`),
+		phpactorFixtureFilePermissions,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(workspaceRoot, "composer.lock"),
+		[]byte(`{"packages": [], "packages-dev": [`+
+			`{"name": "phpstan/phpstan", "version": "1.10.0"}, `+
+			`{"name": "phpspec/prophecy", "version": "1.17.0"}]}`),
+		phpactorFixtureFilePermissions,
+	))
+	service, ctx := newIntegrationService(t)
+
+	// The reference search waits until phpactor finishes indexing, which happens after its startup configuration.
+	_, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "make_bucket"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "fixture.php",
+	})
+	require.NoError(t, err)
+
+	assert.NoFileExists(t, filepath.Join(workspaceRoot, ".phpactor.json"))
+}
+
 // TestIntegrationPropertyReferencesCommandHonorsContextCancellation proves that the CLI fallback cannot outlive a
 // canceled MCP tool request.
 func TestIntegrationPropertyReferencesCommandHonorsContextCancellation(t *testing.T) {

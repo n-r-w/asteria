@@ -277,8 +277,8 @@ func (s *Service) addPropertyReferences(
 }
 
 // patchInitializeParams keeps the deprecated startup workaround local to phpactor while disabling helper
-// integrations that add noise to symbolic-search startup, redirecting Phpactor state into the managed cache, and making
-// reference searches wait for the indexing of the starting session.
+// integrations that add noise to symbolic-search startup, keeping Phpactor state and configuration out of the
+// workspace, and making reference searches wait for the indexing of the starting session.
 func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.InitializeParams) error {
 	// The runtime calls this hook before phpactor starts, so the new session cannot report the end of indexing earlier.
 	s.startIndexing(workspaceRoot)
@@ -296,6 +296,7 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 		phpactorPHPStanEnabledKey:      false,
 		phpactorPsalmEnabledKey:        false,
 		phpactorPHPCSFixerEnabledKey:   false,
+		phpactorAutoConfigKey:          false,
 		phpactorDiagnosticsOnOpenKey:   false,
 		phpactorDiagnosticsOnUpdateKey: false,
 		phpactorDiagnosticsOnSaveKey:   false,
