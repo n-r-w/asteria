@@ -73,16 +73,9 @@ func (s *Service) GetSymbolsOverview(
 	if err != nil {
 		return domain.GetSymbolsOverviewResult{}, err
 	}
-	resolvedAliases, skipped, err := s.resolveReexportAliases(ctx, workspaceRoot, cleanFile)
+	resolvedAliases, err := s.resolveReexportAliases(ctx, workspaceRoot, cleanFile)
 	if err != nil {
 		return domain.GetSymbolsOverviewResult{}, err
-	}
-	// The overview covers one file, so a neighbor skipped while an alias definition is requested only hides its
-	// declarations from that request, and only a failure of the requested file itself ends the overview.
-	for _, skippedFile := range skipped {
-		if skippedFile.RelativePath == cleanFile {
-			return domain.GetSymbolsOverviewResult{}, skippedFile.Err
-		}
 	}
 	if len(resolvedAliases) == 0 {
 		return result, nil
@@ -249,12 +242,6 @@ func (s *Service) resolveSyntheticAlias(
 	if resolveErr != nil && helpers.IsRequestError(ctx, resolveErr) {
 		return nil, true, resolveErr
 	}
-	// The alias file is a searched file, so its own failure to close follows the rules of a searched file.
-	for _, skippedFile := range skipped {
-		if skippedFile.RelativePath == relativePath {
-			return nil, true, failures.Record(ctx, relativePath, skippedFile.Err)
-		}
-	}
 	if resolveErr == nil {
 		return &resolved, false, nil
 	}
@@ -301,19 +288,20 @@ func (s *Service) resolveReferenceTarget(
 	return request, skipped, nil
 }
 
-// resolveReexportAliases resolves every explicit alias declaration needed by a complete file overview, and returns
-// the neighbor files that the alias definition requests skipped.
+// resolveReexportAliases resolves every explicit alias declaration needed by a complete file overview; a neighbor
+// file that an alias definition request skipped only hides its declarations from that request.
 func (s *Service) resolveReexportAliases(
 	ctx context.Context,
 	workspaceRoot string,
 	relativePath string,
-) ([]resolvedReexportAlias, []helpers.SkippedFile, error) {
+) ([]resolvedReexportAlias, error) {
 	aliases, err := parseReexportAliases(workspaceRoot, relativePath)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
+	resolvedAliases, _, err := s.resolveParsedReexportAliases(ctx, workspaceRoot, relativePath, aliases)
 
-	return s.resolveParsedReexportAliases(ctx, workspaceRoot, relativePath, aliases)
+	return resolvedAliases, err
 }
 
 // resolveMatchingReexportAliases filters aliases before resolution so unrelated project errors cannot affect a query,

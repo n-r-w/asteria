@@ -302,7 +302,7 @@ func (s *Service) FindReferencingSymbolsWithFailures(
 		return result, failures, nil
 	}
 
-	targetRelativePath, targetAbsolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, trimmedFile)
+	_, targetAbsolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, trimmedFile)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
@@ -312,23 +312,9 @@ func (s *Service) FindReferencingSymbolsWithFailures(
 		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
 
-	// workflowFinished separates an error of closing the target after the workflow from an error of the workflow.
-	workflowFinished := false
-	err = s.runRequestWithDocumentContext(ctx, conn, targetAbsolutePath, func(callCtx context.Context) error {
-		workflowErr := runReferenceWorkflow(callCtx)
-		workflowFinished = workflowErr == nil
-
-		return workflowErr
-	})
+	err = s.runRequestWithDocumentContext(ctx, conn, targetAbsolutePath, runReferenceWorkflow)
 	if err != nil {
-		if !workflowFinished {
-			return domain.FindReferencingSymbolsResult{}, nil, err
-		}
-		// Only closing the target failed, so the target is a failed file like any other skipped file.
-		skippedTarget := []helpers.SkippedFile{{RelativePath: targetRelativePath, Err: err}}
-		if recordErr := failures.RecordSkippedFiles(ctx, skippedTarget); recordErr != nil {
-			return domain.FindReferencingSymbolsResult{}, nil, recordErr
-		}
+		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
 
 	return result, failures, nil

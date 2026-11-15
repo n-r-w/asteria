@@ -303,36 +303,38 @@ func (s *fileFailureSuite) TestReferenceSearchLeavesOutResolvedTargetFileThatFai
 	s.Contains(result.Warnings[0], "a.ts: ")
 }
 
-// TestReferenceWorkflowTargetCloseErrorKeepsOtherReferences checks that a target file that stays open for the whole
-// reference workflow and fails only to close afterwards is named in the warning without rows, while the references
-// of other files stay.
-func (s *fileFailureSuite) TestReferenceWorkflowTargetCloseErrorKeepsOtherReferences() {
+// TestReferenceWorkflowTargetCloseErrorKeepsAllReferences checks that a target file that stays open for the whole
+// reference workflow and fails only to send didClose afterwards keeps its rows, and that no warning names it.
+func (s *fileFailureSuite) TestReferenceWorkflowTargetCloseErrorKeepsAllReferences() {
 	s.referenceLocations = []protocol.Location{s.location("b.ts", 0), s.location("a.ts", 0), s.location("c.ts", 0)}
-	closeErr := errors.New("close request document: notification failed")
+	withRequestDocument := helpers.WithRequestDocument(func(string) string { return "typescript" })
 	// The first request of a.ts is the workflow document, which closes after all other requests finished.
 	var targetOpens atomic.Int32
 	withDocument := func(
 		ctx context.Context,
-		_ jsonrpc2.Conn,
+		conn jsonrpc2.Conn,
 		absolutePath string,
 		run func(context.Context) error,
 	) error {
 		workflowDocument := filepath.Base(absolutePath) == "a.ts" && targetOpens.Add(1) == 1
-		runErr := run(ctx)
-		if workflowDocument {
-			return errors.Join(runErr, closeErr)
-		}
 
-		return runErr
+		return withRequestDocument(ctx, conn, absolutePath, func(callCtx context.Context) error {
+			runErr := run(callCtx)
+			if workflowDocument {
+				// A closed connection makes the didClose notification of the workflow document fail.
+				s.Require().NoError(conn.Close())
+			}
+
+			return runErr
+		})
 	}
 	service := s.newReferenceWorkflowService(withDocument)
 
 	result, err := service.FindReferencingSymbols(s.T().Context(), s.referenceRequest())
 	s.Require().NoError(err)
 
-	s.Equal([]string{"b.ts", "c.ts"}, referencingFiles(result))
-	s.Require().Len(result.Warnings, 1)
-	s.Contains(result.Warnings[0], "a.ts: ")
+	s.ElementsMatch([]string{"a.ts", "b.ts", "c.ts"}, referencingFiles(result))
+	s.Empty(result.Warnings)
 }
 
 // TestReferenceDeadlineReturnsProcessedFiles checks that a reference search that reaches the deadline while it
@@ -363,37 +365,6 @@ func (s *fileFailureSuite) TestReferenceDeadlineDuringLocationRequestEndsSearch(
 
 	_, err := service.FindReferencingSymbols(s.deadlineContext(), s.referenceRequest())
 	s.ErrorIs(err, context.DeadlineExceeded)
-}
-
-// TestReferenceWorkflowTargetCloseErrorAfterDeadlineKeepsProcessedFiles checks that a target file that fails to
-// close after a search stopped by the deadline is named in the warning, while the references of the files
-// processed before the stop stay.
-func (s *fileFailureSuite) TestReferenceWorkflowTargetCloseErrorAfterDeadlineKeepsProcessedFiles() {
-	s.referenceLocations = []protocol.Location{s.location("b.ts", 0), s.location("c.ts", 0)}
-	closeErr := errors.New("close request document: notification failed")
-	waitAtC := waitForDeadline("c.ts", 0)
-	// The first request of a.ts is the workflow document, which closes after all other requests finished.
-	var targetOpens atomic.Int32
-	service := s.newReferenceWorkflowService(func(
-		ctx context.Context,
-		conn jsonrpc2.Conn,
-		absolutePath string,
-		run func(context.Context) error,
-	) error {
-		if filepath.Base(absolutePath) == "a.ts" && targetOpens.Add(1) == 1 {
-			return errors.Join(run(ctx), closeErr)
-		}
-
-		return waitAtC(ctx, conn, absolutePath, run)
-	})
-
-	result, err := service.FindReferencingSymbols(s.deadlineContext(), s.referenceRequest())
-	s.Require().NoError(err)
-
-	s.Equal([]string{"b.ts"}, referencingFiles(result))
-	s.Require().Len(result.Warnings, 2)
-	s.Contains(result.Warnings[0], "a.ts: ")
-	s.Equal(".ts: 1 file is not processed: search stopped by timeout", result.Warnings[1])
 }
 
 // TestReferenceDeadlineBeforeTargetLocationStopsProcessing checks that a reference search whose deadline passes after
@@ -433,7 +404,7 @@ func (s *fileFailureSuite) TestTimeoutReasonStaysWhenEachNotProcessedFileFailed(
 
 	s.Require().True(failures.StopByTimeout(ctx, []string{"b.php"}))
 	s.Require().NoError(failures.RecordSkippedFiles(ctx, []helpers.SkippedFile{
-		{RelativePath: "b.php", Err: errors.New("close request document: notification failed")},
+		{RelativePath: "b.php", Err: errors.New("open request document: notification failed")},
 	}))
 	result := domain.FindReferencingSymbolsResult{
 		Symbols:    nil,
@@ -443,7 +414,7 @@ func (s *fileFailureSuite) TestTimeoutReasonStaysWhenEachNotProcessedFileFailed(
 	failures.CompleteReferenceResult(&result)
 
 	s.Equal([]string{
-		".php: 1 file is not processed: b.php: close request document: notification failed",
+		".php: 1 file is not processed: b.php: open request document: notification failed",
 		".php: search stopped by timeout",
 	}, result.Warnings)
 }
@@ -456,7 +427,7 @@ func (s *fileFailureSuite) TestTimeoutLineLeavesOutFailedFiles() {
 
 	s.Require().True(failures.StopByTimeout(ctx, []string{"b.php", "c.php"}))
 	s.Require().NoError(failures.RecordSkippedFiles(ctx, []helpers.SkippedFile{
-		{RelativePath: "b.php", Err: errors.New("close request document: notification failed")},
+		{RelativePath: "b.php", Err: errors.New("open request document: notification failed")},
 	}))
 	result := domain.FindReferencingSymbolsResult{
 		Symbols:    nil,
@@ -466,7 +437,7 @@ func (s *fileFailureSuite) TestTimeoutLineLeavesOutFailedFiles() {
 	failures.CompleteReferenceResult(&result)
 
 	s.Equal([]string{
-		".php: 1 file is not processed: b.php: close request document: notification failed",
+		".php: 1 file is not processed: b.php: open request document: notification failed",
 		".php: 1 file is not processed: search stopped by timeout",
 	}, result.Warnings)
 }

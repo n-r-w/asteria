@@ -96,6 +96,25 @@ func TestWithRequestDocumentClosesAfterRunError(t *testing.T) {
 	waitForURIMethods(t, recorder, uri.File(fixturePath), []string{"textDocument/didOpen", "textDocument/didClose"})
 }
 
+// TestWithRequestDocumentReturnsRunErrorWhenCloseFails proves that a failed didClose notification leaves the error
+// of the wrapped request unchanged.
+func TestWithRequestDocumentReturnsRunErrorWhenCloseFails(t *testing.T) {
+	t.Parallel()
+
+	fixturePath := writeRequestDocumentFixture(t, "fixture.ts")
+	conn, _ := newLifecycleRecorderConn(t)
+	withRequestDocument := WithRequestDocument(func(_ string) string { return "typescript" })
+	expectedErr := errors.New("request failed")
+
+	err := withRequestDocument(t.Context(), conn, fixturePath, func(context.Context) error {
+		// A closed connection makes the didClose notification fail.
+		require.NoError(t, conn.Close())
+
+		return expectedErr
+	})
+	require.Equal(t, expectedErr, err)
+}
+
 // TestWithRequestDocumentKeepsOneOpenForConcurrentSameURI proves that overlapping callers for the same
 // file share one lifecycle state and close the document only after the last caller exits.
 func TestWithRequestDocumentKeepsOneOpenForConcurrentSameURI(t *testing.T) {

@@ -47,8 +47,7 @@ func CollectReferenceWorkflowFiles(
 
 // RunWithReferenceWorkflowFiles keeps the supplied file set open until the wrapped shared references
 // workflow finishes. A file that cannot be opened is skipped and returned, unless it is the target, which is the last
-// file, or its error ends the whole request. A file that cannot be closed after the workflow finished is skipped and
-// returned also after the request deadline, unless its error ends the whole request.
+// file, or its error ends the whole request.
 // run receives the files that are open and the files that could not be opened.
 func RunWithReferenceWorkflowFiles(
 	ctx context.Context,
@@ -90,13 +89,12 @@ func openReferenceWorkflowFiles(
 
 	relativePath := remainingPaths[0]
 	absolutePath := filepath.Join(workspaceRoot, filepath.FromSlash(relativePath))
-	// opened separates an error of opening this file from an error of the work that runs inside it, and workflowErr
-	// separates an error of that work from an error of closing this file after the work finished.
+	// opened separates an error of opening this file from an error of the work that runs inside it.
 	opened := false
-	var workflowErr error
 	err := withRequestDocument(ctx, conn, absolutePath, func(callCtx context.Context) error {
 		opened = true
-		workflowErr = openReferenceWorkflowFiles(
+
+		return openReferenceWorkflowFiles(
 			callCtx,
 			conn,
 			workspaceRoot,
@@ -106,19 +104,8 @@ func openReferenceWorkflowFiles(
 			withRequestDocument,
 			run,
 		)
-
-		return workflowErr
 	})
 	if err == nil {
-		return nil
-	}
-	if opened && workflowErr == nil {
-		if IsSkippedFileRequestError(ctx, err) {
-			return err
-		}
-		// The workflow already finished, and only closing this file failed: it is reported without a new run.
-		*skipped = append(*skipped, SkippedFile{RelativePath: relativePath, Err: err})
-
 		return nil
 	}
 	if opened || IsRequestError(ctx, err) {

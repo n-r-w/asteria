@@ -56,7 +56,7 @@ func (s *Service) FindReferencingSymbols(
 	// failures holds every file that this request skipped, so that the retry and the final result leave out the
 	// same files.
 	failures := stdlsp.NewFileFailures(workspaceRoot, false)
-	skipped, err := runWithReferenceWorkflowFiles(
+	_, err = runWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
@@ -90,10 +90,6 @@ func (s *Service) FindReferencingSymbols(
 	)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
-	}
-	// The files that failed to close after the workflow are known only now; the files recorded earlier count once.
-	if recordErr := failures.RecordSkippedFiles(ctx, skipped); recordErr != nil {
-		return domain.FindReferencingSymbolsResult{}, recordErr
 	}
 	failures.CompleteReferenceResult(&result)
 
@@ -217,7 +213,7 @@ func collectReferenceWorkflowFiles(workspaceRoot, targetRelativePath string) ([]
 }
 
 // runWithReferenceWorkflowFiles opens the reference-workflow file set and warms the opened files until the wrapped
-// shared stdlsp workflow finishes, and returns the files that could not be opened, warmed, or closed. run receives
+// shared stdlsp workflow finishes, and returns the files that could not be opened or warmed. run receives
 // the warmed files and the files that could not be opened or warmed.
 func runWithReferenceWorkflowFiles(
 	ctx context.Context,

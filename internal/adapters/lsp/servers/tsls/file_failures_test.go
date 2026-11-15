@@ -411,55 +411,6 @@ func (s *fileFailureSuite) TestFindSymbolNamesUnreadableDefaultExportSource() {
 	s.NotContains(result.Warnings[0], "alias.ts")
 }
 
-// TestFileSearchEndsWhenAliasFileFailsToClose checks that a search of the alias file returns the error of this file
-// when it fails to close after the alias definition was requested.
-func (s *fileFailureSuite) TestFileSearchEndsWhenAliasFileFailsToClose() {
-	env := s.newAdapterEnv(aliasFiles(), aliasAnswers(noFailedSymbols, nil, nil), nil)
-	closeErr := errors.New("close request document: notification failed")
-	env.service.withRequestDocument = withCloseError(env.service.withRequestDocument, "alias.ts", closeErr)
-	request := env.aliasRequest(false)
-	request.Scope = "alias.ts"
-
-	_, err := env.service.FindSymbol(s.T().Context(), request)
-	s.ErrorIs(err, closeErr)
-}
-
-// TestAliasCloseErrorDoesNotHideSessionErrorOfSource checks that a search ends with the session error of the
-// source lookup of an alias even when the alias file also fails to close.
-func (s *fileFailureSuite) TestAliasCloseErrorDoesNotHideSessionErrorOfSource() {
-	sessionErr := errors.New("server stopped")
-	// The session stops after the definition request, so only the source lookup of the alias finds no session.
-	var stopped atomic.Bool
-	env := s.newAdapterEnv(aliasFiles(), aliasAnswers(noFailedSymbols, func() { stopped.Store(true) }, nil), nil)
-	env.service.Service = s.newSharedService(func(context.Context, string) (jsonrpc2.Conn, error) {
-		if stopped.Load() {
-			return nil, sessionErr
-		}
-
-		return env.conn, nil
-	}, env.service.withRequestDocument)
-	env.service.withRequestDocument = withCloseError(
-		env.service.withRequestDocument,
-		"alias.ts",
-		errors.New("close request document: notification failed"),
-	)
-
-	_, err := env.service.FindSymbol(s.T().Context(), env.aliasRequest(false))
-	s.ErrorIs(err, sessionErr)
-}
-
-// TestOverviewEndsWhenRequestedFileFailsToClose checks that an overview of the alias file returns the error of this
-// file when it fails to close after the alias definition was requested.
-func (s *fileFailureSuite) TestOverviewEndsWhenRequestedFileFailsToClose() {
-	env := s.newAdapterEnv(aliasFiles(), aliasAnswers(noFailedSymbols, nil, nil), nil)
-	closeErr := errors.New("close request document: notification failed")
-	env.service.withRequestDocument = withCloseError(env.service.withRequestDocument, "alias.ts", closeErr)
-
-	result, err := env.service.GetSymbolsOverview(s.T().Context(), env.overviewRequest())
-	s.Require().ErrorIs(err, closeErr)
-	s.Empty(result.Symbols)
-}
-
 // TestOverviewIgnoresNeighborSkippedInAliasDefinition checks that an overview of the alias file keeps the alias when
 // only a neighbor file fails while the alias definition is requested.
 func (s *fileFailureSuite) TestOverviewIgnoresNeighborSkippedInAliasDefinition() {
@@ -888,23 +839,6 @@ func (s *fileFailureSuite) newSharedService(
 	s.Require().NoError(err)
 
 	return std
-}
-
-// withCloseError wraps withRequestDocument so that each request with the file fileName also returns closeErr, the
-// way WithRequestDocument joins a failed didClose with the result of the request.
-func withCloseError(
-	withRequestDocument stdlsp.WithRequestDocumentFunc,
-	fileName string,
-	closeErr error,
-) stdlsp.WithRequestDocumentFunc {
-	return func(ctx context.Context, conn jsonrpc2.Conn, absolutePath string, run func(context.Context) error) error {
-		err := withRequestDocument(ctx, conn, absolutePath, run)
-		if filepath.Base(absolutePath) == fileName {
-			return errors.Join(err, closeErr)
-		}
-
-		return err
-	}
 }
 
 // waitForDeadline wraps withRequestDocument so that each document request with the file fileName, or with any file

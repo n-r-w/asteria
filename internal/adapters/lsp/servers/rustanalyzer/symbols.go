@@ -122,7 +122,7 @@ func (s *Service) FindReferencingSymbols(
 	// same files.
 	failures := stdlsp.NewFileFailures(workspaceRoot, false)
 	rawRequest, hasRawVariant := findReferencingSymbolsRequestWithRawRustPath(request)
-	skipped, err := helpers.RunWithReferenceWorkflowFiles(
+	_, err = helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
@@ -148,10 +148,6 @@ func (s *Service) FindReferencingSymbols(
 	)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
-	}
-	// The files that failed to close after the workflow are known only now; the files recorded earlier count once.
-	if recordErr := failures.RecordSkippedFiles(ctx, skipped); recordErr != nil {
-		return domain.FindReferencingSymbolsResult{}, recordErr
 	}
 	failures.CompleteReferenceResult(&result)
 
