@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"go.lsp.dev/jsonrpc2"
@@ -137,6 +138,46 @@ func (s *referenceWorkflowSuite) TestNeighborCloseErrorAfterWorkflowSkipsFile() 
 	s.Require().Len(skipped, 1)
 	s.Equal("a.php", skipped[0].RelativePath)
 	s.ErrorIs(skipped[0].Err, closeErr)
+}
+
+// TestCloseErrorAfterDeadlineSkipsFile checks that a file whose close fails after the workflow finished and the
+// request deadline passed is returned as skipped, so that the result of the workflow stays.
+func (s *referenceWorkflowSuite) TestCloseErrorAfterDeadlineSkipsFile() {
+	ctx, cancel := context.WithDeadline(s.T().Context(), time.Now().Add(-time.Second))
+	defer cancel()
+	closeErr := errors.New("close request document: notification failed")
+
+	skipped, err := RunWithReferenceWorkflowFiles(
+		ctx,
+		nil,
+		"/root",
+		[]string{"a.php", "target.php"},
+		failingClose("a.php", closeErr),
+		func(context.Context, []string, []SkippedFile) error { return nil },
+	)
+	s.Require().NoError(err)
+
+	s.Require().Len(skipped, 1)
+	s.Equal("a.php", skipped[0].RelativePath)
+	s.ErrorIs(skipped[0].Err, closeErr)
+}
+
+// TestCloseErrorAfterCancellationEndsRequest checks that a file whose close fails after the request was canceled
+// ends the request.
+func (s *referenceWorkflowSuite) TestCloseErrorAfterCancellationEndsRequest() {
+	ctx, cancel := context.WithCancel(s.T().Context())
+	cancel()
+	closeErr := errors.New("close request document: notification failed")
+
+	_, err := RunWithReferenceWorkflowFiles(
+		ctx,
+		nil,
+		"/root",
+		[]string{"a.php", "target.php"},
+		failingClose("a.php", closeErr),
+		func(context.Context, []string, []SkippedFile) error { return nil },
+	)
+	s.ErrorIs(err, closeErr)
 }
 
 // TestTargetFailureWithNeighborCloseErrorEndsRequest checks that a failure inside the workflow still ends the

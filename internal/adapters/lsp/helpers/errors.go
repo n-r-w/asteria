@@ -3,6 +3,8 @@ package helpers
 import (
 	"context"
 	"errors"
+
+	"github.com/n-r-w/asteria/internal/domain"
 )
 
 // sessionError marks an error after which no language server session can serve the request.
@@ -28,6 +30,16 @@ func IsRequestError(ctx context.Context, err error) bool {
 	_, ok := errors.AsType[*sessionError](err)
 
 	return ok
+}
+
+// IsSkippedFileRequestError reports whether the error of a skipped file ends the whole request; after the request
+// deadline only a session error ends it, so that a search stopped by the deadline keeps its result.
+func IsSkippedFileRequestError(ctx context.Context, err error) bool {
+	if domain.IsStoppedByTimeout(ctx) {
+		ctx = context.WithoutCancel(ctx)
+	}
+
+	return IsRequestError(ctx, err)
 }
 
 // Error returns the text of the underlying error unchanged.

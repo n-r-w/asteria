@@ -65,7 +65,7 @@ type findSymbolInput struct {
 type findSymbolOutput struct {
 	// Symbols contains matched symbol locations. Empty means no matches survived the requested scope and filters.
 	Symbols []foundSymbolDTO `json:"symbols"`
-	// Warnings names files that the search skipped because their language server failed or the file could not be processed, with the reasons; returned symbols are valid.
+	// Warnings names files that the search skipped because their language server failed or the file could not be processed, with the reasons, and the extensions whose files the search did not finish before the tool timeout, with the file count when the adapter reports it; returned symbols are valid.
 	Warnings []string `json:"warnings,omitempty"`
 	// ReturnedPercent is the approximate percentage of logical result objects returned when the response is truncated.
 	ReturnedPercent int `json:"returned_percent,omitempty"`
@@ -110,7 +110,7 @@ type findReferencingSymbolsOutput struct {
 	Files []referencingFileDTO `json:"files"`
 	// Incomplete warns callers that missing workspace index data may have omitted some references.
 	Incomplete bool `json:"incomplete,omitempty"`
-	// Warnings names files with references that the search could not process, with the reasons; other references are valid.
+	// Warnings names files with references that the search could not process, with the reasons, and counts the files that the search did not process before the tool timeout, except the files that the failure warning already counts; other references are valid.
 	Warnings []string `json:"warnings,omitempty"`
 	// ReturnedPercent is the approximate percentage of logical result objects returned when the response is truncated.
 	ReturnedPercent int `json:"returned_percent,omitempty"`

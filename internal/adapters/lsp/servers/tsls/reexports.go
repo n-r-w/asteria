@@ -106,7 +106,8 @@ func (s *Service) GetSymbolsOverview(
 
 // FindSymbol augments the shared lookup with synthetic TypeScript re-export aliases
 // when tsls omits them from documentSymbol. Warnings of the result name the files of a directory or workspace
-// search that could not be processed.
+// search that could not be processed, and count the files not searched because the search or the re-export scan
+// stopped at the request deadline.
 func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
@@ -129,24 +130,10 @@ func (s *Service) FindSymbol(
 		return domain.FindSymbolResult{}, err
 	}
 
-	searchFiles, err := syntheticSearchFiles(
-		workspaceRoot,
-		strings.TrimSpace(request.Scope),
-	)
-	if err != nil {
-		return domain.FindSymbolResult{}, err
-	}
-
-	for _, relativePath := range searchFiles {
-		if appendErr := s.appendSyntheticFoundSymbols(
-			ctx,
-			workspaceRoot,
-			request,
-			relativePath,
-			failures,
-			&result,
-		); appendErr != nil {
-			return domain.FindSymbolResult{}, appendErr
+	// After the deadline, the search returns what it found, without the re-export scan.
+	if !failures.StopFollowUpByTimeout(ctx) {
+		if scanErr := s.appendReexportScan(ctx, workspaceRoot, request, failures, &result); scanErr != nil {
+			return domain.FindSymbolResult{}, scanErr
 		}
 	}
 
@@ -156,8 +143,43 @@ func (s *Service) FindSymbol(
 	return result, nil
 }
 
+// appendReexportScan adds the matching re-export aliases of each file of the request scope to result, records the
+// files that fail in failures, and stops at the request deadline with the current file and the files after it recorded
+// as not searched. It returns only an error that must end the whole search.
+func (s *Service) appendReexportScan(
+	ctx context.Context,
+	workspaceRoot string,
+	request *domain.FindSymbolRequest,
+	failures *stdlsp.FileFailures,
+	result *domain.FindSymbolResult,
+) error {
+	searchFiles, err := syntheticSearchFiles(workspaceRoot, strings.TrimSpace(request.Scope))
+	if err != nil {
+		return err
+	}
+
+	for fileIndex, relativePath := range searchFiles {
+		// Files without matching aliases do not call the language server, so the deadline is checked before each
+		// file and not only after an error.
+		if failures.StopByTimeout(ctx, searchFiles[fileIndex:]) {
+			return nil
+		}
+		appendErr := s.appendSyntheticFoundSymbols(ctx, workspaceRoot, request, relativePath, failures, result)
+		if appendErr != nil {
+			if failures.StopByTimeout(ctx, searchFiles[fileIndex:]) {
+				return nil
+			}
+
+			return appendErr
+		}
+	}
+
+	return nil
+}
+
 // appendSyntheticFoundSymbols adds the re-export aliases of one file that match the request to result, and records
-// the files that fail in failures. It returns only an error that must end the whole search.
+// the files that fail in failures. It returns only an error that must end the whole search, or the error of the request
+// context when the deadline passes before an alias, with the aliases resolved before it left in result.
 func (s *Service) appendSyntheticFoundSymbols(
 	ctx context.Context,
 	workspaceRoot string,
@@ -177,40 +199,26 @@ func (s *Service) appendSyntheticFoundSymbols(
 		if !matchesSyntheticAliasPath(trimmedPath, request.SubstringMatching, aliases[aliasIndex].Name) {
 			continue
 		}
-		resolvedAlias, skipped, resolveErr := s.resolveReexportAliasDefinition(
+		// An alias whose source the language server already returned does not notice the deadline, so the deadline
+		// is checked before each alias; the aliases resolved before it stay in the result.
+		if domain.IsStoppedByTimeout(ctx) {
+			return ctx.Err()
+		}
+		resolvedAlias, stopFile, resolveErr := s.resolveSyntheticAlias(
 			ctx,
 			workspaceRoot,
 			relativePath,
 			&aliases[aliasIndex],
+			failures,
 		)
-		if recordErr := failures.RecordSkippedFiles(ctx, skipped); recordErr != nil {
-			return recordErr
-		}
-		if resolveErr != nil && helpers.IsRequestError(ctx, resolveErr) {
+		if stopFile {
 			return resolveErr
 		}
-		// The alias file is a searched file, so its own failure to close follows the rules of a searched file.
-		for _, skippedFile := range skipped {
-			if skippedFile.RelativePath == relativePath {
-				return failures.Record(ctx, relativePath, skippedFile.Err)
-			}
-		}
-		if resolveErr != nil {
-			// A source file whose symbols cannot be read fails by itself; only the alias that needs it stays out.
-			if sourceErr, ok := errors.AsType[*sourceFileError](resolveErr); ok {
-				if recordErr := failures.Record(ctx, sourceErr.relativePath, sourceErr.err); recordErr != nil {
-					return recordErr
-				}
-
-				continue
-			}
-
-			return failures.Record(ctx, relativePath, resolveErr)
-		}
-		if !matchesSyntheticAliasKind(request.IncludeKinds, request.ExcludeKinds, resolvedAlias.SourceKind) {
+		if resolvedAlias == nil ||
+			!matchesSyntheticAliasKind(request.IncludeKinds, request.ExcludeKinds, resolvedAlias.SourceKind) {
 			continue
 		}
-		foundSymbol, buildErr := s.syntheticFoundSymbol(ctx, workspaceRoot, request, relativePath, &resolvedAlias)
+		foundSymbol, buildErr := s.syntheticFoundSymbol(ctx, workspaceRoot, request, relativePath, resolvedAlias)
 		if buildErr != nil {
 			if recordErr := failures.Record(ctx, relativePath, buildErr); recordErr != nil {
 				return recordErr
@@ -222,6 +230,44 @@ func (s *Service) appendSyntheticFoundSymbols(
 	}
 
 	return nil
+}
+
+// resolveSyntheticAlias resolves one alias of the file relativePath and records the files that fail in failures. It
+// returns the resolved alias, or nil when the alias stays out because its source file failed; stopFile reports that
+// the other aliases of the file must not be resolved, with the error that must end the whole search, if any.
+func (s *Service) resolveSyntheticAlias(
+	ctx context.Context,
+	workspaceRoot string,
+	relativePath string,
+	alias *reexportAlias,
+	failures *stdlsp.FileFailures,
+) (resolvedAlias *resolvedReexportAlias, stopFile bool, err error) {
+	resolved, skipped, resolveErr := s.resolveReexportAliasDefinition(ctx, workspaceRoot, relativePath, alias)
+	if recordErr := failures.RecordSkippedFiles(ctx, skipped); recordErr != nil {
+		return nil, true, recordErr
+	}
+	if resolveErr != nil && helpers.IsRequestError(ctx, resolveErr) {
+		return nil, true, resolveErr
+	}
+	// The alias file is a searched file, so its own failure to close follows the rules of a searched file.
+	for _, skippedFile := range skipped {
+		if skippedFile.RelativePath == relativePath {
+			return nil, true, failures.Record(ctx, relativePath, skippedFile.Err)
+		}
+	}
+	if resolveErr == nil {
+		return &resolved, false, nil
+	}
+	// A source file whose symbols cannot be read fails by itself; only the alias that needs it stays out.
+	if sourceErr, ok := errors.AsType[*sourceFileError](resolveErr); ok {
+		if recordErr := failures.Record(ctx, sourceErr.relativePath, sourceErr.err); recordErr != nil {
+			return nil, true, recordErr
+		}
+
+		return nil, false, nil
+	}
+
+	return nil, true, failures.Record(ctx, relativePath, resolveErr)
 }
 
 // resolveReferenceTarget rewrites one re-export alias target into its defining

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -52,24 +53,10 @@ func (s *fileFailureSuite) TestRawSymbolRetryLeavesOutFileFailedInFirstAttempt()
 		return []protocol.DocumentSymbol{implSymbol()}, nil
 	}, "")
 
-	result, err := env.service.FindSymbol(s.T().Context(), &domain.FindSymbolRequest{
-		Path:              "Thing/run",
-		IncludeKinds:      nil,
-		ExcludeKinds:      nil,
-		Depth:             0,
-		IncludeBody:       false,
-		IncludeInfo:       false,
-		SubstringMatching: false,
-		WorkspaceRoot:     env.workspaceRoot,
-		Scope:             "",
-	})
+	result, err := env.service.FindSymbol(s.T().Context(), env.symbolRequest())
 	s.Require().NoError(err)
 
-	files := make([]string, 0, len(result.Symbols))
-	for _, symbol := range result.Symbols {
-		files = append(files, symbol.File)
-	}
-	s.Equal([]string{"b.rs"}, files)
+	s.Equal([]string{"b.rs"}, foundFiles(result))
 	s.Require().Len(result.Warnings, 1)
 	s.Contains(result.Warnings[0], "a.rs")
 }
@@ -121,6 +108,112 @@ func (s *fileFailureSuite) TestRawReferenceRetryKeepsFailureOfFirstAttempt() {
 	s.Equal([]string{"y.rs"}, referencingFiles(result))
 	s.Require().Len(result.Warnings, 1)
 	s.Contains(result.Warnings[0], "x.rs")
+}
+
+// TestDeadlineDuringRawSymbolRetryKeepsFoundSymbols checks that a deadline during the raw impl-path attempt returns
+// the symbols that this attempt found before the stop and counts the file that was not searched.
+func (s *fileFailureSuite) TestDeadlineDuringRawSymbolRetryKeepsFoundSymbols() {
+	// The first request of b.rs belongs to the first attempt, and the second one to the raw attempt.
+	env := s.newDeadlineEnv(waitForDeadline("b.rs", 1))
+
+	result, err := env.service.FindSymbol(deadlineContext(s.T()), env.symbolRequest())
+	s.Require().NoError(err)
+
+	s.Equal([]string{"a.rs"}, foundFiles(result))
+	s.Equal([]string{".rs: 1 file is not searched: search stopped by timeout"}, result.Warnings)
+}
+
+// TestDeadlineSkipsRawSymbolRetry checks that a first attempt stopped by the deadline returns without the raw
+// impl-path attempt and counts only the file that it did not search.
+func (s *fileFailureSuite) TestDeadlineSkipsRawSymbolRetry() {
+	env := s.newDeadlineEnv(waitForDeadline("b.rs", 0))
+
+	result, err := env.service.FindSymbol(deadlineContext(s.T()), env.symbolRequest())
+	s.Require().NoError(err)
+
+	s.Empty(result.Symbols)
+	s.Equal([]string{".rs: 1 file is not searched: search stopped by timeout"}, result.Warnings)
+}
+
+// TestDeadlineSkipsRawReferenceRetry checks that a standard lookup stopped by the deadline returns without the raw
+// impl-path attempt, although it found no references, and counts the file that it did not process.
+func (s *fileFailureSuite) TestDeadlineSkipsRawReferenceRetry() {
+	env := s.newReferenceDeadlineEnv([][]testReference{{{"x.rs", 0}}, {{"y.rs", 0}}}, waitForDeadline("x.rs", 0))
+
+	result, err := env.service.FindReferencingSymbols(deadlineContext(s.T()), env.referenceRequest())
+	s.Require().NoError(err)
+
+	s.Empty(result.Symbols)
+	s.Equal([]string{".rs: 1 file is not processed: search stopped by timeout"}, result.Warnings)
+}
+
+// TestDeadlineDuringRawReferenceRetryKeepsStandardLookup checks that a raw impl-path attempt that fails after the
+// deadline keeps the result of the finished standard lookup and counts the files of the reference workflow as not
+// processed.
+func (s *fileFailureSuite) TestDeadlineDuringRawReferenceRetryKeepsStandardLookup() {
+	// The standard lookup reads the symbols of t.rs and asks for its references; the third request of t.rs reads the
+	// symbols for the raw attempt.
+	env := s.newReferenceDeadlineEnv([][]testReference{{}, {{"y.rs", 0}}}, waitForDeadline("t.rs", 2))
+
+	result, err := env.service.FindReferencingSymbols(deadlineContext(s.T()), env.referenceRequest())
+	s.Require().NoError(err)
+
+	s.Empty(result.Symbols)
+	s.Equal([]string{".rs: 3 files are not processed: search stopped by timeout"}, result.Warnings)
+}
+
+// TestDeadlineAfterSymbolSearchSkipsRawRetry checks that a first attempt whose last file finishes after the deadline
+// returns without the raw impl-path attempt and counts the files of the scope as not searched.
+func (s *fileFailureSuite) TestDeadlineAfterSymbolSearchSkipsRawRetry() {
+	var requests atomic.Int32
+	env := s.newDeadlineEnv(finishAfterDeadline("b.rs", 1, &requests))
+
+	result, err := env.service.FindSymbol(deadlineContext(s.T()), env.symbolRequest())
+	s.Require().NoError(err)
+
+	s.Empty(result.Symbols)
+	s.Equal([]string{".rs: 2 files are not searched: search stopped by timeout"}, result.Warnings)
+	s.Equal(int32(2), requests.Load(), "the raw attempt must not request documents")
+}
+
+// TestDeadlineAfterReferenceLookupSkipsRawRetry checks that a standard lookup that finishes after the deadline without
+// references returns without the raw impl-path attempt and counts the files of the reference workflow as not
+// processed.
+func (s *fileFailureSuite) TestDeadlineAfterReferenceLookupSkipsRawRetry() {
+	var requests atomic.Int32
+	// The first request of t.rs reads the target symbol, and the second one asks for the references.
+	env := s.newReferenceDeadlineEnv([][]testReference{{}, {{"y.rs", 0}}}, finishAfterDeadline("t.rs", 2, &requests))
+
+	result, err := env.service.FindReferencingSymbols(deadlineContext(s.T()), env.referenceRequest())
+	s.Require().NoError(err)
+
+	s.Empty(result.Symbols)
+	s.Equal([]string{".rs: 3 files are not processed: search stopped by timeout"}, result.Warnings)
+	s.Equal(int32(2), requests.Load(), "the raw attempt must not request documents")
+}
+
+// TestDeadlineAfterMissedTargetSkipsRawRetry checks that a standard lookup that misses the target after the deadline
+// ends with an error without the raw impl-path attempt.
+func (s *fileFailureSuite) TestDeadlineAfterMissedTargetSkipsRawRetry() {
+	// The language server returns only the impl of Thing, so the standard lookup does not find "Thing/run".
+	env := s.newEnv(referenceFiles(), func(method string, _ string, _ int) (any, error) {
+		if method != protocol.MethodTextDocumentDocumentSymbol {
+			return nil, errors.New("method is not supported by the test language server")
+		}
+
+		return []protocol.DocumentSymbol{implSymbol()}, nil
+	}, "")
+	var requests atomic.Int32
+	// The first request of t.rs reads the target symbol of the standard lookup.
+	env.service.stdReferences = s.newSharedService(
+		env,
+		finishAfterDeadline("t.rs", 1, &requests)(env.service.withRequestDocument),
+	)
+
+	_, err := env.service.FindReferencingSymbols(deadlineContext(s.T()), env.referenceRequest())
+	s.Require().Error(err)
+
+	s.Equal(int32(1), requests.Load(), "the raw attempt must not request documents")
 }
 
 // testAnswer answers one language server request of a test about fileName; call counts the requests of this method
@@ -252,6 +345,136 @@ func (s *fileFailureSuite) newEnv(files []string, answer testAnswer, failOpen st
 	service.withRequestDocument = withRequestDocument
 
 	return &testEnv{service: service, workspaceRoot: workspaceRoot}
+}
+
+// newDeadlineEnv creates the environment of a symbol search over a.rs and b.rs, whose language server returns only
+// the impl of Thing, so that the path "Thing/run" needs the raw impl-path attempt. The shared search opens documents
+// through the callback that wrap builds from the default one.
+func (s *fileFailureSuite) newDeadlineEnv(
+	wrap func(stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc,
+) *testEnv {
+	env := s.newEnv([]string{"a.rs", "b.rs"}, func(method string, _ string, _ int) (any, error) {
+		if method != protocol.MethodTextDocumentDocumentSymbol {
+			return nil, errors.New("method is not supported by the test language server")
+		}
+
+		return []protocol.DocumentSymbol{implSymbol()}, nil
+	}, "")
+	env.service.std = s.newSharedService(env, wrap(env.service.withRequestDocument))
+
+	return env
+}
+
+// newReferenceDeadlineEnv creates the environment of a reference search whose language server answers the n-th
+// references request with the locations of attempts[n]. The reference lookup opens documents through the callback
+// that wrap builds from the default one.
+func (s *fileFailureSuite) newReferenceDeadlineEnv(
+	attempts [][]testReference,
+	wrap func(stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc,
+) *testEnv {
+	env := s.newEnv(referenceFiles(), referenceAnswers(attempts), "")
+	env.service.stdReferences = s.newSharedService(env, wrap(env.service.withRequestDocument))
+
+	return env
+}
+
+// newSharedService creates a shared standard-LSP service for env that opens each requested document through
+// withRequestDocument.
+func (s *fileFailureSuite) newSharedService(
+	env *testEnv,
+	withRequestDocument stdlsp.WithRequestDocumentFunc,
+) *stdlsp.Service {
+	std, err := stdlsp.New(&stdlsp.Config{
+		Extensions:                   extensions,
+		EnsureConn:                   env.service.ensureConn,
+		WithRequestDocument:          withRequestDocument,
+		OpenFileForDocumentSymbol:    true,
+		OpenFileForReferenceWorkflow: false,
+		BuildNamePath:                nil,
+		IgnoreDir:                    shouldIgnoreDir,
+		SymbolTreeCache:              nil,
+		BuildSymbolTreeCacheMetadata: nil,
+	})
+	s.Require().NoError(err)
+
+	return std
+}
+
+// waitForDeadline returns a wrapper of withRequestDocument in which the first passedCalls document requests with the
+// file fileName run, and each later one waits for the end of the request context.
+func waitForDeadline(
+	fileName string,
+	passedCalls int32,
+) func(stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc {
+	return func(withRequestDocument stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc {
+		var calls atomic.Int32
+
+		return func(ctx context.Context, conn jsonrpc2.Conn, absolutePath string, run func(context.Context) error) error {
+			if filepath.Base(absolutePath) != fileName || calls.Add(1) <= passedCalls {
+				return withRequestDocument(ctx, conn, absolutePath, run)
+			}
+			<-ctx.Done()
+
+			return ctx.Err()
+		}
+	}
+}
+
+// finishAfterDeadline returns a wrapper of withRequestDocument in which each document request runs and is counted in
+// requests, and the document request number fileCall of the file fileName waits for the end of the request context
+// after it runs.
+func finishAfterDeadline(
+	fileName string,
+	fileCall int32,
+	requests *atomic.Int32,
+) func(stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc {
+	return func(withRequestDocument stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc {
+		var fileCalls atomic.Int32
+
+		return func(ctx context.Context, conn jsonrpc2.Conn, absolutePath string, run func(context.Context) error) error {
+			requests.Add(1)
+			err := withRequestDocument(ctx, conn, absolutePath, run)
+			if filepath.Base(absolutePath) == fileName && fileCalls.Add(1) == fileCall {
+				<-ctx.Done()
+			}
+
+			return err
+		}
+	}
+}
+
+// symbolRequest builds the workspace symbol search for the path "Thing/run" of the method run.
+func (e *testEnv) symbolRequest() *domain.FindSymbolRequest {
+	return &domain.FindSymbolRequest{
+		Path:              "Thing/run",
+		IncludeKinds:      nil,
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       false,
+		IncludeInfo:       false,
+		SubstringMatching: false,
+		WorkspaceRoot:     e.workspaceRoot,
+		Scope:             "",
+	}
+}
+
+// deadlineContext returns a request context of the test t whose deadline comes soon enough for the test to wait for
+// it and late enough for the in-memory document requests before the waiting one.
+func deadlineContext(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	t.Cleanup(cancel)
+
+	return ctx
+}
+
+// foundFiles returns the file of each symbol of a symbol search result in order.
+func foundFiles(result domain.FindSymbolResult) []string {
+	files := make([]string, 0, len(result.Symbols))
+	for _, symbol := range result.Symbols {
+		files = append(files, symbol.File)
+	}
+
+	return files
 }
 
 // newConn builds an in-memory language server that accepts document notifications and answers each request

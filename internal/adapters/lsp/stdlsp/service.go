@@ -108,7 +108,8 @@ func (s *Service) GetSymbolsOverview(
 }
 
 // FindSymbol resolves normalized name-path queries by walking standard-LSP symbol trees.
-// Warnings of the result name the files of a directory or workspace search that could not be processed.
+// Warnings of the result name the files of a directory or workspace search that could not be processed, and count
+// the files not searched because the search stopped at the request deadline.
 func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
@@ -122,8 +123,9 @@ func (s *Service) FindSymbol(
 	return result, nil
 }
 
-// FindSymbolWithFailures works as FindSymbol but returns the failed files separately from the result,
-// so that an adapter can add the failures of its own per-file processing before it builds the warnings.
+// FindSymbolWithFailures works as FindSymbol but returns the failed files and the files not searched because of the
+// request deadline separately from the result, so that an adapter can add the failures of its own per-file processing
+// before it builds the warnings.
 func (s *Service) FindSymbolWithFailures(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
@@ -154,10 +156,19 @@ func (s *Service) FindSymbolWithFailures(
 	hoverInfoByKey := make(map[string]string)
 	result := domain.FindSymbolResult{Symbols: make([]domain.FoundSymbol, 0), Warnings: nil}
 	failures := NewFileFailures(workspaceRoot, !scope.IsDir)
+	failures.scopeFiles = searchFiles
 
-	for _, relativePath := range searchFiles {
+	for fileIndex, relativePath := range searchFiles {
+		// The deadline is checked before each file, and appendFoundSymbols checks it before each symbol that needs info
+		// or a body.
+		if failures.StopByTimeout(ctx, searchFiles[fileIndex:]) {
+			break
+		}
 		_, symbolTree, treeErr := s.loadSymbolTree(ctx, workspaceRoot, relativePath)
 		if treeErr != nil {
+			if failures.StopByTimeout(ctx, searchFiles[fileIndex:]) {
+				break
+			}
 			if recordErr := failures.Record(ctx, relativePath, treeErr); recordErr != nil {
 				return domain.FindSymbolResult{}, nil, recordErr
 			}
@@ -172,19 +183,22 @@ func (s *Service) FindSymbolWithFailures(
 			request.IncludeKinds,
 			request.ExcludeKinds,
 		)
-		for _, matchedNode := range matchedNodes {
-			foundSymbol, buildErr := s.buildFoundSymbol(
-				ctx,
-				workspaceRoot,
-				matchedNode,
-				request,
-				fileCache,
-				hoverInfoByKey,
-			)
-			if buildErr != nil {
-				return domain.FindSymbolResult{}, nil, buildErr
-			}
-			result.Symbols = append(result.Symbols, foundSymbol)
+		stopped, buildErr := s.appendFoundSymbols(
+			ctx,
+			workspaceRoot,
+			request,
+			matchedNodes,
+			searchFiles[fileIndex:],
+			failures,
+			fileCache,
+			hoverInfoByKey,
+			&result,
+		)
+		if buildErr != nil {
+			return domain.FindSymbolResult{}, nil, buildErr
+		}
+		if stopped {
+			break
 		}
 	}
 
@@ -193,9 +207,44 @@ func (s *Service) FindSymbolWithFailures(
 	return result, failures, nil
 }
 
+// appendFoundSymbols adds the found symbol of each matched node of one file to result, and reports whether the search
+// must stop because the request deadline passed. The symbols built before the stop stay in result, and notSearched,
+// the file and the files after it, go to failures as not searched.
+func (s *Service) appendFoundSymbols(
+	ctx context.Context,
+	workspaceRoot string,
+	request *domain.FindSymbolRequest,
+	matchedNodes []*node,
+	notSearched []string,
+	failures *FileFailures,
+	fileCache map[string]string,
+	hoverInfoByKey map[string]string,
+	result *domain.FindSymbolResult,
+) (bool, error) {
+	// Building a symbol requests its hover or reads its file only when the request asks for info or a body.
+	symbolsDoWork := request.IncludeInfo || request.IncludeBody
+	for _, matchedNode := range matchedNodes {
+		if symbolsDoWork && failures.StopByTimeout(ctx, notSearched) {
+			return true, nil
+		}
+		foundSymbol, buildErr := s.buildFoundSymbol(ctx, workspaceRoot, matchedNode, request, fileCache, hoverInfoByKey)
+		if buildErr != nil {
+			if failures.StopByTimeout(ctx, notSearched) {
+				return true, nil
+			}
+
+			return false, buildErr
+		}
+		result.Symbols = append(result.Symbols, foundSymbol)
+	}
+
+	return false, nil
+}
+
 // FindReferencingSymbols resolves the target symbol, requests references,
 // and shapes the grouped result through one shared workflow.
-// Warnings of the result name the files with references that could not be processed.
+// Warnings of the result name the files with references that could not be processed, and count the files with
+// references that the search did not process before the request deadline.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
@@ -209,9 +258,9 @@ func (s *Service) FindReferencingSymbols(
 	return result, nil
 }
 
-// FindReferencingSymbolsWithFailures works as FindReferencingSymbols but returns the failed files separately
-// from the result, so that an adapter can add the failures of its own per-file processing before it builds
-// the warnings.
+// FindReferencingSymbolsWithFailures works as FindReferencingSymbols but returns the failed files and the files not
+// processed before the request deadline separately from the result, so that an adapter can add the failures of its
+// own per-file processing before it builds the warnings.
 func (s *Service) FindReferencingSymbolsWithFailures(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
@@ -272,11 +321,12 @@ func (s *Service) FindReferencingSymbolsWithFailures(
 		return workflowErr
 	})
 	if err != nil {
-		if !workflowFinished || helpers.IsRequestError(ctx, err) {
+		if !workflowFinished {
 			return domain.FindReferencingSymbolsResult{}, nil, err
 		}
-		// Only closing the target failed, so the target is a failed file like any other referencing file.
-		if recordErr := failures.Record(ctx, targetRelativePath, err); recordErr != nil {
+		// Only closing the target failed, so the target is a failed file like any other skipped file.
+		skippedTarget := []helpers.SkippedFile{{RelativePath: targetRelativePath, Err: err}}
+		if recordErr := failures.RecordSkippedFiles(ctx, skippedTarget); recordErr != nil {
 			return domain.FindReferencingSymbolsResult{}, nil, recordErr
 		}
 	}
@@ -413,7 +463,9 @@ func (s *Service) resolveTargetSymbol(
 
 // collectReferenceMatches resolves raw reference locations into flat rows before final grouping.
 // A referencing file that cannot be processed goes to failures without its rows; the target file too, because its
-// symbol is already resolved.
+// symbol is already resolved. When the request deadline has passed before a location or when a location fails after
+// it, processing stops with the rows found so far, and the files of the remaining locations go to failures as not
+// processed.
 func (s *Service) collectReferenceMatches(
 	ctx context.Context,
 	workspaceRoot string,
@@ -427,9 +479,26 @@ func (s *Service) collectReferenceMatches(
 	referenceMatches := make([]referenceMatch, 0, len(referenceLocations))
 	containerTreeCache := map[string][]*node{targetRelativePath: targetTree}
 
-	for _, location := range referenceLocations {
+	for locationIndex, location := range referenceLocations {
+		// The paths of the remaining locations are resolved only when the deadline has passed, because each
+		// resolution reads the file system.
+		stopByTimeout := func() bool {
+			return domain.IsStoppedByTimeout(ctx) && failures.StopByTimeout(
+				ctx,
+				s.referenceLocationPaths(workspaceRoot, referenceLocations[locationIndex:]),
+			)
+		}
+		// Locations whose files are already loaded do not call the language server, so the deadline is checked
+		// before each location and not only after an error.
+		if stopByTimeout() {
+			break
+		}
+
 		referenceRelativePath, err := s.relativePathFromURI(workspaceRoot, location.URI)
 		if err != nil {
+			if stopByTimeout() {
+				break
+			}
 			if recordErr := failures.Record(ctx, location.URI.FsPath(), err); recordErr != nil {
 				return nil, recordErr
 			}
@@ -450,6 +519,10 @@ func (s *Service) collectReferenceMatches(
 			containerTreeCache,
 		)
 		if err != nil {
+			// The rows of this file that were found before the stop stay in the result.
+			if stopByTimeout() {
+				break
+			}
 			if recordErr := failures.Record(ctx, referenceRelativePath, err); recordErr != nil {
 				return nil, recordErr
 			}
@@ -462,6 +535,21 @@ func (s *Service) collectReferenceMatches(
 	}
 
 	return referenceMatches, nil
+}
+
+// referenceLocationPaths returns the workspace-relative path of the file of each location, or its file system path
+// when the location is outside the workspace.
+func (s *Service) referenceLocationPaths(workspaceRoot string, locations []protocol.Location) []string {
+	paths := make([]string, 0, len(locations))
+	for _, location := range locations {
+		relativePath, err := s.relativePathFromURI(workspaceRoot, location.URI)
+		if err != nil {
+			relativePath = location.URI.FsPath()
+		}
+		paths = append(paths, relativePath)
+	}
+
+	return paths
 }
 
 // referenceMatchFromLocation resolves one raw LSP reference range into one grouped reference row.

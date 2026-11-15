@@ -101,8 +101,14 @@ func (s *Service) FindReferencingSymbols(
 }
 
 // findReferencingSymbolsWithRetry repeats the shared reference lookup while tsls has not indexed the other open
-// files yet. It adds the files that each lookup or repeated warm-up could not process to failures, and returns the
-// result of the last lookup without the rows of any file in failures.
+// files yet. It adds the files that each lookup or repeated warm-up could not process to failures. Without a stop by
+// the request deadline, the function returns the result of the last lookup without the rows of any file in failures.
+// After the deadline, no retry starts:
+//   - a first lookup that the deadline stopped returns its own rows;
+//   - a later lookup that the deadline stopped returns the rows of all finished lookups and its own rows, and failures
+//     count the files of its remaining locations as not processed;
+//   - when a needed retry did not start or failed after the deadline, the function returns the rows of all finished
+//     lookups, and failures count the files of the reference workflow as not processed.
 func (s *Service) findReferencingSymbolsWithRetry(
 	ctx context.Context,
 	conn jsonrpc2.Conn,
@@ -112,6 +118,11 @@ func (s *Service) findReferencingSymbolsWithRetry(
 	failures *stdlsp.FileFailures,
 ) (domain.FindReferencingSymbolsResult, error) {
 	attempt := 0
+	var (
+		// finishedResult holds the rows of all finished lookups, which a stop by the deadline returns.
+		finishedResult domain.FindReferencingSymbolsResult
+		finished       bool
+	)
 	result, err := backoff.Retry(ctx, func() (domain.FindReferencingSymbolsResult, error) {
 		if attempt > 0 {
 			warmedPaths, warmSkipped, warmErr := warmReferenceWorkflowFiles(
@@ -137,6 +148,16 @@ func (s *Service) findReferencingSymbolsWithRetry(
 		failures.Merge(currentFailures)
 		// Rows of failed files are removed from the answer, so only the usable rows decide whether to retry.
 		failures.CompleteReferenceResult(&currentResult)
+		// A lookup stopped by the deadline returns what it found, without a retry; a stopped retry adds its rows
+		// to the rows of the finished lookups.
+		if failures.StoppedByTimeout() {
+			if finished {
+				currentResult = stdlsp.MergeReferenceResults(finishedResult, currentResult)
+			}
+
+			return currentResult, nil
+		}
+		finishedResult, finished = stdlsp.MergeReferenceResults(finishedResult, currentResult), true
 		if shouldRetryReferenceResult(request.File, referenceWorkflowFiles, currentResult) {
 			return currentResult, errTSLSReferencesNotReady
 		}
@@ -148,6 +169,9 @@ func (s *Service) findReferencingSymbolsWithRetry(
 	)
 	if errors.Is(err, errTSLSReferencesNotReady) {
 		return result, nil
+	}
+	if err != nil && finished && failures.StopByTimeout(ctx, referenceWorkflowFiles) {
+		return finishedResult, nil
 	}
 
 	return result, err

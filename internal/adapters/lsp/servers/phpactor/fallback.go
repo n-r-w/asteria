@@ -119,14 +119,16 @@ func augmentOverviewWithPHPConstants(
 // augmentFindSymbolWithPHPConstants supplements standard find_symbol results with top-level constants when the
 // requested scope includes PHP files that phpactor's document-symbol response does not cover.
 // recordFileFailure takes the error of one file and returns it back only when the error must end the search.
+// stopByTimeout takes the current file and the files after it and reports whether the scan must stop because the
+// request deadline passed; the result then keeps the constants of the files before them.
 func augmentFindSymbolWithPHPConstants(
 	workspaceRoot string,
 	request *domain.FindSymbolRequest,
 	result domain.FindSymbolResult,
 	recordFileFailure func(relativePath string, err error) error,
+	stopByTimeout func(notSearched []string) bool,
 ) (domain.FindSymbolResult, error) {
-	if !phpConstantRequestCanMatch(request.Path) ||
-		!phpMatchesKindFilters(int(protocol.SymbolKindConstant), request.IncludeKinds, request.ExcludeKinds) {
+	if !phpConstantFallbackApplies(request) {
 		return result, nil
 	}
 
@@ -140,9 +142,16 @@ func augmentFindSymbolWithPHPConstants(
 		existingSymbols[phpFoundSymbolKey(&symbol)] = struct{}{}
 	}
 
-	for _, relativePath := range searchFiles {
+	for fileIndex, relativePath := range searchFiles {
+		if stopByTimeout(searchFiles[fileIndex:]) {
+			break
+		}
 		constantSymbols, collectErr := collectPHPFileConstants(workspaceRoot, relativePath)
 		if collectErr != nil {
+			// The constants of the files finished before the stop stay in the result.
+			if stopByTimeout(searchFiles[fileIndex:]) {
+				break
+			}
 			if recordErr := recordFileFailure(relativePath, collectErr); recordErr != nil {
 				return domain.FindSymbolResult{}, recordErr
 			}
@@ -183,16 +192,25 @@ func augmentFindSymbolWithPHPConstants(
 	return result, nil
 }
 
+// phpConstantFallbackApplies reports whether the request can match a top-level constant, so that the constant
+// fallback of find_symbol can add symbols to its result.
+func phpConstantFallbackApplies(request *domain.FindSymbolRequest) bool {
+	return phpConstantRequestCanMatch(request.Path) &&
+		phpMatchesKindFilters(int(protocol.SymbolKindConstant), request.IncludeKinds, request.ExcludeKinds)
+}
+
 // augmentPropertyReferenceResults supplements the LSP reference result with phpactor's member-reference CLI
 // output for PHP properties, which closes cases where the LSP transport returns no field usages.
 // recordFileFailure takes the error of one referencing file and returns it back only when the error must end
-// the search.
+// the search. stopByTimeout takes the files of the current CLI row and the rows after it and reports whether the
+// fallback must stop because the request deadline passed; the result then keeps the rows before them.
 func (s *Service) augmentPropertyReferenceResults(
 	ctx context.Context,
 	workspaceRoot string,
 	request *domain.FindReferencingSymbolsRequest,
 	result domain.FindReferencingSymbolsResult,
 	recordFileFailure func(relativePath string, err error) error,
+	stopByTimeout func(notProcessed []string) bool,
 ) (domain.FindReferencingSymbolsResult, error) {
 	targetSymbol, ok, err := s.findFallbackPropertyTarget(ctx, request)
 	if err != nil || !ok {
@@ -225,6 +243,7 @@ func (s *Service) augmentPropertyReferenceResults(
 		referenceRows,
 		existingSymbols,
 		recordFileFailure,
+		stopByTimeout,
 	)
 	if err != nil {
 		return result, err
@@ -253,6 +272,7 @@ func (s *Service) augmentPropertyReferenceResults(
 // collectAugmentedPropertyReferences resolves CLI property-reference rows into grouped Asteria results and skips
 // declaration lines that should not appear in the final reference response. A referencing file that cannot be
 // processed goes to recordFileFailure without its rows; the target file too, because its property is already resolved.
+// When stopByTimeout reports a stop before a row or after a failed row, the rows finished before it stay.
 func (s *Service) collectAugmentedPropertyReferences(
 	ctx context.Context,
 	workspaceRoot string,
@@ -261,11 +281,21 @@ func (s *Service) collectAugmentedPropertyReferences(
 	referenceRows []phpactorReferenceRow,
 	existingSymbols map[string]struct{},
 	recordFileFailure func(relativePath string, err error) error,
+	stopByTimeout func(notProcessed []string) bool,
 ) ([]domain.ReferencingSymbol, error) {
 	overviewCache := make(map[string][]domain.SymbolLocation)
 	failedFiles := make(map[string]struct{})
 	augmentedSymbols := make([]domain.ReferencingSymbol, 0)
-	for _, referenceRow := range referenceRows {
+	// The files of the remaining rows are listed only when the deadline has passed.
+	stopRowsByTimeout := func(rowIndex int) bool {
+		return domain.IsStoppedByTimeout(ctx) && stopByTimeout(phpactorReferenceRowFiles(referenceRows[rowIndex:]))
+	}
+	for rowIndex, referenceRow := range referenceRows {
+		// Rows of a file whose symbols are already loaded do not call the language server, so the deadline is
+		// checked before each row and not only after an error.
+		if stopRowsByTimeout(rowIndex) {
+			break
+		}
 		if referenceRow.File == targetSymbol.File && referenceRow.Line == targetSymbol.StartLine {
 			continue
 		}
@@ -281,6 +311,9 @@ func (s *Service) collectAugmentedPropertyReferences(
 			overviewCache,
 		)
 		if err != nil {
+			if stopRowsByTimeout(rowIndex) {
+				break
+			}
 			if recordErr := recordFileFailure(referenceRow.File, err); recordErr != nil {
 				return nil, recordErr
 			}
@@ -300,6 +333,16 @@ func (s *Service) collectAugmentedPropertyReferences(
 	}
 
 	return augmentedSymbols, nil
+}
+
+// phpactorReferenceRowFiles returns the file of each CLI reference row.
+func phpactorReferenceRowFiles(referenceRows []phpactorReferenceRow) []string {
+	files := make([]string, 0, len(referenceRows))
+	for _, referenceRow := range referenceRows {
+		files = append(files, referenceRow.File)
+	}
+
+	return files
 }
 
 // findFallbackPropertyTarget resolves the exact property symbol that should be used for the phpactor

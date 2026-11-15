@@ -58,7 +58,8 @@ func (s *Service) GetSymbolsOverview(
 }
 
 // FindSymbol delegates canonical path matching to the shared standard-LSP search flow.
-// Warnings of the result name the files of a directory or workspace search that could not be processed.
+// Warnings of the result name the files of a directory or workspace search that could not be processed, and count
+// the files not searched because the search or the constant fallback stopped at the request deadline.
 func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
@@ -82,26 +83,12 @@ func (s *Service) FindSymbol(
 		return domain.FindSymbolResult{}, rootErr
 	}
 
-	augmentedResult, augmentErr := augmentFindSymbolWithPHPConstants(
-		workspaceRoot,
-		request,
-		result,
-		func(relativePath string, fileErr error) error {
-			return failures.Record(ctx, relativePath, fileErr)
-		},
-	)
-	if augmentErr != nil {
-		if fatalErr := handleFallbackError(
-			ctx,
-			"skip phpactor find_symbol constant fallback",
-			augmentErr,
-			"scope_path", request.Scope,
-			"symbol_path", request.Path,
-		); fatalErr != nil {
-			return domain.FindSymbolResult{}, fatalErr
+	// After the deadline, the search returns what it found, without the constant fallback.
+	if phpConstantFallbackApplies(request) && !failures.StopFollowUpByTimeout(ctx) {
+		result, err = addPHPConstants(ctx, workspaceRoot, request, result, failures)
+		if err != nil {
+			return domain.FindSymbolResult{}, err
 		}
-	} else {
-		result = augmentedResult
 	}
 	failures.CompleteSymbolResult(&result)
 	if !request.IncludeInfo || len(result.Symbols) == 0 {
@@ -128,9 +115,53 @@ func (s *Service) FindSymbol(
 	return result, nil
 }
 
+// addPHPConstants adds the top-level constants that phpactor omits to the result of a finished directory, workspace,
+// or file search, and records in failures the files whose constants the fallback could not read. In a directory or
+// workspace scope, the fallback stops at the request deadline and records the current file and the files after it as
+// not searched, or records each PHP file of the scope as not searched when it fails after the deadline.
+func addPHPConstants(
+	ctx context.Context,
+	workspaceRoot string,
+	request *domain.FindSymbolRequest,
+	result domain.FindSymbolResult,
+	failures *stdlsp.FileFailures,
+) (domain.FindSymbolResult, error) {
+	augmentedResult, augmentErr := augmentFindSymbolWithPHPConstants(
+		workspaceRoot,
+		request,
+		result,
+		func(relativePath string, fileErr error) error {
+			return failures.Record(ctx, relativePath, fileErr)
+		},
+		func(notSearched []string) bool {
+			return failures.StopByTimeout(ctx, notSearched)
+		},
+	)
+	if augmentErr == nil {
+		return augmentedResult, nil
+	}
+	// When the fallback of a directory or workspace search failed after the deadline, the result keeps the symbols of
+	// the finished search, and the PHP files of the scope count as not searched because their constants are left out.
+	if failures.StopFollowUpByTimeout(ctx) {
+		return result, nil
+	}
+	if fatalErr := handleFallbackError(
+		ctx,
+		"skip phpactor find_symbol constant fallback",
+		augmentErr,
+		"scope_path", request.Scope,
+		"symbol_path", request.Path,
+	); fatalErr != nil {
+		return domain.FindSymbolResult{}, fatalErr
+	}
+
+	return result, nil
+}
+
 // FindReferencingSymbols keeps the target-directory PHP file set open for the whole shared workflow so
 // phpactor can resolve property and cross-file references before stdlsp groups the final result.
-// Warnings of the result name the files with references that could not be processed.
+// Warnings of the result name the files with references that could not be processed, and count the files not processed
+// because the search or the property reference fallback stopped at the request deadline.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
@@ -192,6 +223,30 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, recordErr
 	}
 
+	// After the deadline, the search returns what it found, without the property reference fallback.
+	if !failures.StoppedByTimeout() && !failures.StopByTimeout(ctx, referenceWorkflowFiles) {
+		result, err = s.addPropertyReferences(ctx, workspaceRoot, request, result, referenceWorkflowFiles, failures)
+		if err != nil {
+			return domain.FindReferencingSymbolsResult{}, err
+		}
+	}
+	failures.CompleteReferenceResult(&result)
+
+	return result, nil
+}
+
+// addPropertyReferences adds the property references that the phpactor CLI finds to the result of a finished
+// reference search, and records in failures the files that the fallback could not process. At the request deadline,
+// the fallback keeps the rows that it finished and records the files of its other rows as not processed; when it fails
+// after the deadline before its rows, referenceWorkflowFiles count as not processed.
+func (s *Service) addPropertyReferences(
+	ctx context.Context,
+	workspaceRoot string,
+	request *domain.FindReferencingSymbolsRequest,
+	result domain.FindReferencingSymbolsResult,
+	referenceWorkflowFiles []string,
+	failures *stdlsp.FileFailures,
+) (domain.FindReferencingSymbolsResult, error) {
 	augmentedResult, augmentErr := s.augmentPropertyReferenceResults(
 		ctx,
 		workspaceRoot,
@@ -200,21 +255,26 @@ func (s *Service) FindReferencingSymbols(
 		func(relativePath string, fileErr error) error {
 			return failures.Record(ctx, relativePath, fileErr)
 		},
+		func(notProcessed []string) bool {
+			return failures.StopByTimeout(ctx, notProcessed)
+		},
 	)
-	if augmentErr != nil {
-		if fatalErr := handleFallbackError(
-			ctx,
-			"skip phpactor property reference fallback",
-			augmentErr,
-			"file_path", request.File,
-			"symbol_path", request.Path,
-		); fatalErr != nil {
-			return domain.FindReferencingSymbolsResult{}, fatalErr
-		}
-	} else {
-		result = augmentedResult
+	if augmentErr == nil {
+		return augmentedResult, nil
 	}
-	failures.CompleteReferenceResult(&result)
+	// The result keeps the references of the finished search when the fallback failed after the deadline.
+	if failures.StopByTimeout(ctx, referenceWorkflowFiles) {
+		return result, nil
+	}
+	if fatalErr := handleFallbackError(
+		ctx,
+		"skip phpactor property reference fallback",
+		augmentErr,
+		"file_path", request.File,
+		"symbol_path", request.Path,
+	); fatalErr != nil {
+		return domain.FindReferencingSymbolsResult{}, fatalErr
+	}
 
 	return result, nil
 }

@@ -271,6 +271,8 @@ Clangd and Marksman retain the indexing needed for symbol and reference search.
 - `ASTERIAMCP_TOOL_TIMEOUT` (optional, default: `360s`)
 	- Global timeout for one MCP tool call.
 	- Must be greater than `0`.
+	- When a `find_symbol` search over a directory or the workspace reaches the timeout, the tool returns the symbols found so far and warnings that list the file extensions whose search did not finish.
+	- When a `find_referencing_symbols` search reaches the timeout while it processes the files with references, the tool returns the references found so far and a timeout warning that counts the files that it did not process, unless another warning already reports them. A timeout before the language server returns the first list of reference locations ends the call with an error.
 
 - `ASTERIAMCP_LSP_SESSION_IDLE_TIMEOUT` (optional, default: `10m`)
 	- Positive duration before closing an LSP session after its last active request finishes.

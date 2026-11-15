@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -174,6 +175,113 @@ func (s *fileFailureSuite) TestRetryStopsOnUsableCrossFileReferences() {
 	s.Require().NoError(err)
 
 	s.Equal([]string{"c.ts"}, referencingFiles(result))
+	s.Empty(result.Warnings)
+}
+
+// TestReferencesDeadlineSkipsRetry checks that a lookup stopped by the deadline returns the references found before
+// the stop without a retry, although they come only from the target file, and counts the file that it did not process.
+func (s *fileFailureSuite) TestReferencesDeadlineSkipsRetry() {
+	env := s.newAdapterEnv(referenceFiles(), referenceAnswers(
+		noFailedSymbols,
+		[][]testReference{{{"a.ts", 0}, {"c.ts", 0}}},
+	), nil)
+	env.service.Service = s.newSharedService(func(context.Context, string) (jsonrpc2.Conn, error) {
+		return env.conn, nil
+	}, waitForDeadline(env.service.withRequestDocument, "c.ts"))
+
+	result, err := env.service.FindReferencingSymbols(deadlineContext(s.T()), env.referenceRequest())
+	s.Require().NoError(err)
+
+	s.Equal([]string{"a.ts"}, referencingFiles(result))
+	s.Equal([]string{".ts: 1 file is not processed: search stopped by timeout"}, result.Warnings)
+}
+
+// TestReferencesDeadlineDuringRetryKeepsFinishedLookup checks that a deadline during the retry keeps the result of
+// the last finished lookup and counts the files of the reference workflow as not processed.
+func (s *fileFailureSuite) TestReferencesDeadlineDuringRetryKeepsFinishedLookup() {
+	// Each lookup finds only the target file, so the retry repeats until the deadline.
+	env := s.newAdapterEnv(referenceFiles(), referenceAnswers(
+		noFailedSymbols,
+		[][]testReference{{{"a.ts", 0}}},
+	), nil)
+
+	result, err := env.service.FindReferencingSymbols(deadlineContext(s.T()), env.referenceRequest())
+	s.Require().NoError(err)
+
+	s.Equal([]string{"a.ts"}, referencingFiles(result))
+	s.Equal([]string{".ts: 3 files are not processed: search stopped by timeout"}, result.Warnings)
+}
+
+// TestReferencesRetryStoppedByDeadlineKeepsFinishedLookup checks that a retry that stops by the deadline before its
+// first row keeps the result of the finished lookup and counts the files of the retry that it did not process.
+func (s *fileFailureSuite) TestReferencesRetryStoppedByDeadlineKeepsFinishedLookup() {
+	env := s.newAdapterEnv(referenceFiles(), referenceAnswers(
+		noFailedSymbols,
+		[][]testReference{{{"a.ts", 0}}, {{"b.ts", 0}, {"c.ts", 0}}},
+	), nil)
+	// Each lookup reads the target symbol of a.ts and asks for its references; the deadline passes after the
+	// references of the retry arrive.
+	env.service.Service = s.newSharedService(func(context.Context, string) (jsonrpc2.Conn, error) {
+		return env.conn, nil
+	}, finishAfterDeadline(env.service.withRequestDocument, "a.ts", 4))
+
+	result, err := env.service.FindReferencingSymbols(deadlineContext(s.T()), env.referenceRequest())
+	s.Require().NoError(err)
+
+	s.Equal([]string{"a.ts"}, referencingFiles(result))
+	s.Equal([]string{".ts: 2 files are not processed: search stopped by timeout"}, result.Warnings)
+}
+
+// TestReferencesRetryStoppedByDeadlineAddsItsRows checks that a retry that stops by the deadline after some rows adds
+// them to the result of the finished lookup, without a second row for the same container.
+func (s *fileFailureSuite) TestReferencesRetryStoppedByDeadlineAddsItsRows() {
+	env := s.newAdapterEnv(referenceFiles(), referenceAnswers(
+		noFailedSymbols,
+		[][]testReference{{{"a.ts", 0}}, {{"a.ts", 0}, {"b.ts", 0}, {"c.ts", 0}}},
+	), nil)
+	// The retry is the first lookup that reads the symbols of b.ts; the deadline passes after them.
+	env.service.Service = s.newSharedService(func(context.Context, string) (jsonrpc2.Conn, error) {
+		return env.conn, nil
+	}, finishAfterDeadline(env.service.withRequestDocument, "b.ts", 1))
+
+	result, err := env.service.FindReferencingSymbols(deadlineContext(s.T()), env.referenceRequest())
+	s.Require().NoError(err)
+
+	s.Equal([]string{"a.ts", "b.ts"}, referencingFiles(result))
+	s.Equal([]string{".ts: 1 file is not processed: search stopped by timeout"}, result.Warnings)
+}
+
+// TestReferencesRetryStoppedByDeadlineKeepsRowsOfEachFinishedLookup checks that a retry that stops by the deadline
+// adds its rows to the rows of each finished lookup, also when a later finished lookup found no references.
+func (s *fileFailureSuite) TestReferencesRetryStoppedByDeadlineKeepsRowsOfEachFinishedLookup() {
+	env := s.newAdapterEnv(referenceFiles(), referenceAnswers(
+		noFailedSymbols,
+		[][]testReference{{{"a.ts", 0}}, {}, {{"b.ts", 0}, {"c.ts", 0}}},
+	), nil)
+	// The third lookup is the first one that reads the symbols of b.ts; the deadline passes after them.
+	env.service.Service = s.newSharedService(func(context.Context, string) (jsonrpc2.Conn, error) {
+		return env.conn, nil
+	}, finishAfterDeadline(env.service.withRequestDocument, "b.ts", 1))
+
+	result, err := env.service.FindReferencingSymbols(deadlineContext(s.T()), env.referenceRequest())
+	s.Require().NoError(err)
+
+	s.Equal([]string{"a.ts", "b.ts"}, referencingFiles(result))
+	s.Equal([]string{".ts: 1 file is not processed: search stopped by timeout"}, result.Warnings)
+}
+
+// TestReferencesRetryWithoutDeadlineReturnsLastLookup checks that a retry that finishes before the deadline returns
+// the rows of its own lookup only.
+func (s *fileFailureSuite) TestReferencesRetryWithoutDeadlineReturnsLastLookup() {
+	env := s.newAdapterEnv(referenceFiles(), referenceAnswers(
+		noFailedSymbols,
+		[][]testReference{{{"a.ts", 0}}, {{"b.ts", 0}}},
+	), nil)
+
+	result, err := env.service.FindReferencingSymbols(s.T().Context(), env.referenceRequest())
+	s.Require().NoError(err)
+
+	s.Equal([]string{"b.ts"}, referencingFiles(result))
 	s.Empty(result.Warnings)
 }
 
@@ -435,6 +543,121 @@ func (s *fileFailureSuite) TestHoverWithoutSessionEndsRequest() {
 	s.ErrorIs(err, sessionErr)
 }
 
+// TestFindSymbolSkipsReexportsAfterDeadline checks that a workspace search stopped by the deadline returns the symbols
+// of the files processed before the stop without scanning re-exports, and counts the file that was not searched.
+func (s *fileFailureSuite) TestFindSymbolSkipsReexportsAfterDeadline() {
+	files := aliasFiles()
+	files["neighbor.ts"] = "export const shared = 1;\n"
+	env := s.newAdapterEnv(files, aliasAnswers(noFailedSymbols, nil, nil), nil)
+	env.service.Service = s.newSharedService(func(context.Context, string) (jsonrpc2.Conn, error) {
+		return env.conn, nil
+	}, waitForDeadline(env.service.withRequestDocument, "source.ts"))
+
+	result, err := env.service.FindSymbol(deadlineContext(s.T()), env.aliasRequest(false))
+	s.Require().NoError(err)
+
+	s.Equal([]string{"neighbor.ts"}, foundFiles(result))
+	s.Equal([]string{".ts: 1 file is not searched: search stopped by timeout"}, result.Warnings)
+}
+
+// TestFindSymbolKeepsSymbolsWhenDeadlineStopsReexportScan checks that a deadline during the re-export scan keeps the
+// symbols of the shared search and counts the files whose re-exports were not scanned.
+func (s *fileFailureSuite) TestFindSymbolKeepsSymbolsWhenDeadlineStopsReexportScan() {
+	files := aliasFiles()
+	files["neighbor.ts"] = "export const shared = 1;\n"
+	env := s.newAdapterEnv(files, aliasAnswers(noFailedSymbols, nil, nil), nil)
+	// The shared search keeps its own document callback, so only the requests of the re-export scan wait.
+	env.service.withRequestDocument = waitForDeadline(env.service.withRequestDocument, "")
+
+	result, err := env.service.FindSymbol(deadlineContext(s.T()), env.aliasRequest(false))
+	s.Require().NoError(err)
+
+	s.Equal([]string{"neighbor.ts"}, foundFiles(result))
+	s.Equal([]string{".ts: 3 files are not searched: search stopped by timeout"}, result.Warnings)
+}
+
+// TestFindSymbolSkipsReexportScanWhenDeadlinePassesAfterSearch checks that a directory search whose last file
+// finishes after the deadline returns the symbols of the finished search without the re-export scan, also when the
+// scope can no longer be listed, and counts the files of the scope as not searched.
+func (s *fileFailureSuite) TestFindSymbolSkipsReexportScanWhenDeadlinePassesAfterSearch() {
+	env := s.newAdapterEnv(
+		map[string]string{"scope/neighbor.ts": "export const shared = 1;\n"},
+		aliasAnswers(noFailedSymbols, nil, nil),
+		nil,
+	)
+	scopeDir := filepath.Join(env.workspaceRoot, "scope")
+	withRequestDocument := env.service.withRequestDocument
+	env.service.Service = s.newSharedService(func(context.Context, string) (jsonrpc2.Conn, error) {
+		return env.conn, nil
+	}, func(ctx context.Context, conn jsonrpc2.Conn, absolutePath string, run func(context.Context) error) error {
+		err := withRequestDocument(ctx, conn, absolutePath, run)
+		s.Require().NoError(os.RemoveAll(scopeDir))
+		<-ctx.Done()
+
+		return err
+	})
+	request := env.aliasRequest(false)
+	request.Scope = "scope"
+
+	result, err := env.service.FindSymbol(deadlineContext(s.T()), request)
+	s.Require().NoError(err)
+
+	s.Equal([]string{"scope/neighbor.ts"}, foundFiles(result))
+	s.Equal([]string{".ts: 1 file is not searched: search stopped by timeout"}, result.Warnings)
+}
+
+// TestFindSymbolStopsReexportScanBeforeLaterFile checks that a deadline that passes while the re-export scan processes
+// one file keeps the aliases of this file, starts no later file, and counts the later files as not searched.
+func (s *fileFailureSuite) TestFindSymbolStopsReexportScanBeforeLaterFile() {
+	files := aliasFiles()
+	files["neighbor.ts"] = "export const shared = 1;\n"
+	env := s.newAdapterEnv(files, aliasAnswers(noFailedSymbols, nil, nil), nil)
+	// The first request of source.ts belongs to the shared search, and the second one resolves the alias of alias.ts,
+	// the first file of the re-export scan.
+	env.service.Service = s.newSharedService(func(context.Context, string) (jsonrpc2.Conn, error) {
+		return env.conn, nil
+	}, finishAfterDeadline(env.service.withRequestDocument, "source.ts", 2))
+
+	result, err := env.service.FindSymbol(deadlineContext(s.T()), env.aliasRequest(false))
+	s.Require().NoError(err)
+
+	s.Equal([]string{"alias.ts", "neighbor.ts"}, foundFiles(result))
+	s.Equal([]string{".ts: 2 files are not searched: search stopped by timeout"}, result.Warnings)
+}
+
+// TestFindSymbolStopsAliasResolutionAfterDeadline checks that a deadline that passes when one alias of a file is
+// resolved keeps this alias, starts no resolution of the next alias, and counts the file and the later files as not
+// searched.
+func (s *fileFailureSuite) TestFindSymbolStopsAliasResolutionAfterDeadline() {
+	env := s.newAdapterEnv(map[string]string{
+		"alias.ts":  "export { source as shared, source as sharedTwo } from './source';\n",
+		"source.ts": "export const source = 1;\n",
+	}, aliasAnswers(noFailedSymbols, nil, nil), nil)
+	var lateFiles []string
+	// The first document request of source.ts belongs to the shared search, and the second one resolves the first
+	// alias.
+	env.service.Service = s.newSharedService(func(context.Context, string) (jsonrpc2.Conn, error) {
+		return env.conn, nil
+	}, recordLateDocumentRequests(
+		finishAfterDeadline(env.service.withRequestDocument, "source.ts", 2),
+		&lateFiles,
+	))
+	env.service.withRequestDocument = recordLateDocumentRequests(env.service.withRequestDocument, &lateFiles)
+	request := env.aliasRequest(false)
+	request.SubstringMatching = true
+
+	result, err := env.service.FindSymbol(deadlineContext(s.T()), request)
+	s.Require().NoError(err)
+
+	paths := make([]string, 0, len(result.Symbols))
+	for _, symbol := range result.Symbols {
+		paths = append(paths, symbol.Path)
+	}
+	s.Equal([]string{"shared"}, paths)
+	s.Equal([]string{".ts: 2 files are not searched: search stopped by timeout"}, result.Warnings)
+	s.Empty(lateFiles, "the second alias must not be resolved")
+}
+
 // testAnswer answers one language server request of a test about the file at documentPath; call counts the
 // requests of this method for this file from 1.
 type testAnswer func(ctx context.Context, method string, documentPath string, call int) (any, error)
@@ -678,6 +901,65 @@ func withCloseError(
 
 		return err
 	}
+}
+
+// waitForDeadline wraps withRequestDocument so that each document request with the file fileName, or with any file
+// when fileName is empty, waits for the end of the request context and returns its error.
+func waitForDeadline(
+	withRequestDocument stdlsp.WithRequestDocumentFunc,
+	fileName string,
+) stdlsp.WithRequestDocumentFunc {
+	return func(ctx context.Context, conn jsonrpc2.Conn, absolutePath string, run func(context.Context) error) error {
+		if fileName != "" && filepath.Base(absolutePath) != fileName {
+			return withRequestDocument(ctx, conn, absolutePath, run)
+		}
+		<-ctx.Done()
+
+		return ctx.Err()
+	}
+}
+
+// finishAfterDeadline wraps withRequestDocument so that each document request runs, and the document request number
+// fileCall with the file fileName waits for the end of the request context after it runs.
+func finishAfterDeadline(
+	withRequestDocument stdlsp.WithRequestDocumentFunc,
+	fileName string,
+	fileCall int32,
+) stdlsp.WithRequestDocumentFunc {
+	var fileCalls atomic.Int32
+
+	return func(ctx context.Context, conn jsonrpc2.Conn, absolutePath string, run func(context.Context) error) error {
+		err := withRequestDocument(ctx, conn, absolutePath, run)
+		if filepath.Base(absolutePath) == fileName && fileCalls.Add(1) == fileCall {
+			<-ctx.Done()
+		}
+
+		return err
+	}
+}
+
+// recordLateDocumentRequests wraps withRequestDocument so that the base name of the file of each document request
+// that starts after the deadline of its request context is appended to lateFiles.
+func recordLateDocumentRequests(
+	withRequestDocument stdlsp.WithRequestDocumentFunc,
+	lateFiles *[]string,
+) stdlsp.WithRequestDocumentFunc {
+	return func(ctx context.Context, conn jsonrpc2.Conn, absolutePath string, run func(context.Context) error) error {
+		if domain.IsStoppedByTimeout(ctx) {
+			*lateFiles = append(*lateFiles, filepath.Base(absolutePath))
+		}
+
+		return withRequestDocument(ctx, conn, absolutePath, run)
+	}
+}
+
+// deadlineContext returns a request context of the test t whose deadline comes soon enough for the test to wait for
+// it and late enough for the in-memory document requests before the waiting one.
+func deadlineContext(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	t.Cleanup(cancel)
+
+	return ctx
 }
 
 // newAnswerConn builds an in-memory language server that accepts document notifications and answers each request
