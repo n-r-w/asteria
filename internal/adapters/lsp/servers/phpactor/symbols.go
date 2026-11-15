@@ -158,8 +158,8 @@ func addPHPConstants(
 	return result, nil
 }
 
-// FindReferencingSymbols keeps the target-directory PHP file set open for the whole shared workflow so
-// phpactor can resolve property and cross-file references before stdlsp groups the final result.
+// FindReferencingSymbols waits until the phpactor session has indexed the workspace, so that references of all files
+// are known, and keeps the target file open for the whole shared workflow before stdlsp groups the final result.
 // Warnings of the result name the files with references that could not be processed, and count the files not processed
 // because the search or the property reference fallback stopped at the request deadline.
 func (s *Service) FindReferencingSymbols(
@@ -177,19 +177,21 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
-	defer s.closeSessionAfterCanceledRequest(ctx, workspaceRoot)
+	// A request that ends while it waits for indexing sent phpactor no request, so the session keeps indexing for
+	// later requests.
+	endedDuringIndexing := false
+	defer func() {
+		if !endedDuringIndexing {
+			s.closeSessionAfterCanceledRequest(ctx, workspaceRoot)
+		}
+	}()
 	release, acquireErr := s.rt.AcquireSession(ctx, workspaceRoot)
 	if acquireErr != nil {
 		return domain.FindReferencingSymbolsResult{}, acquireErr
 	}
 	defer release()
 
-	referenceWorkflowFiles, err := helpers.CollectReferenceWorkflowFiles(
-		workspaceRoot,
-		request.File,
-		extensions,
-		shouldIgnoreDir,
-	)
+	targetFile, targetPath, err := helpers.ResolveDocumentPath(workspaceRoot, request.File)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
@@ -198,34 +200,29 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
+	if err = s.waitForIndexing(ctx, workspaceRoot); err != nil {
+		endedDuringIndexing = true
+
+		return domain.FindReferencingSymbolsResult{}, err
+	}
 
 	var (
 		result   domain.FindReferencingSymbolsResult
 		failures *stdlsp.FileFailures
 	)
-	skipped, err := helpers.RunWithReferenceWorkflowFiles(
-		ctx,
-		conn,
-		workspaceRoot,
-		referenceWorkflowFiles,
-		s.withRequestDocument,
-		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error {
-			var callErr error
-			result, failures, callErr = s.std.FindReferencingSymbolsWithFailures(callCtx, request)
+	err = s.withRequestDocument(ctx, conn, targetPath, func(callCtx context.Context) error {
+		var callErr error
+		result, failures, callErr = s.std.FindReferencingSymbolsWithFailures(callCtx, request)
 
-			return callErr
-		},
-	)
+		return callErr
+	})
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
-	if recordErr := failures.RecordSkippedFiles(ctx, skipped); recordErr != nil {
-		return domain.FindReferencingSymbolsResult{}, recordErr
-	}
 
 	// After the deadline, the search returns what it found, without the property reference fallback.
-	if !failures.StoppedByTimeout() && !failures.StopByTimeout(ctx, referenceWorkflowFiles) {
-		result, err = s.addPropertyReferences(ctx, workspaceRoot, request, result, referenceWorkflowFiles, failures)
+	if !failures.StoppedByTimeout() && !failures.StopByTimeout(ctx, []string{targetFile}) {
+		result, err = s.addPropertyReferences(ctx, workspaceRoot, request, result, targetFile, failures)
 		if err != nil {
 			return domain.FindReferencingSymbolsResult{}, err
 		}
@@ -238,13 +235,13 @@ func (s *Service) FindReferencingSymbols(
 // addPropertyReferences adds the property references that the phpactor CLI finds to the result of a finished
 // reference search, and records in failures the files that the fallback could not process. At the request deadline,
 // the fallback keeps the rows that it finished and records the files of its other rows as not processed; when it fails
-// after the deadline before its rows, referenceWorkflowFiles count as not processed.
+// after the deadline before its rows, targetFile counts as not processed.
 func (s *Service) addPropertyReferences(
 	ctx context.Context,
 	workspaceRoot string,
 	request *domain.FindReferencingSymbolsRequest,
 	result domain.FindReferencingSymbolsResult,
-	referenceWorkflowFiles []string,
+	targetFile string,
 	failures *stdlsp.FileFailures,
 ) (domain.FindReferencingSymbolsResult, error) {
 	augmentedResult, augmentErr := s.augmentPropertyReferenceResults(
@@ -263,7 +260,7 @@ func (s *Service) addPropertyReferences(
 		return augmentedResult, nil
 	}
 	// The result keeps the references of the finished search when the fallback failed after the deadline.
-	if failures.StopByTimeout(ctx, referenceWorkflowFiles) {
+	if failures.StopByTimeout(ctx, []string{targetFile}) {
 		return result, nil
 	}
 	if fatalErr := handleFallbackError(
@@ -280,8 +277,12 @@ func (s *Service) addPropertyReferences(
 }
 
 // patchInitializeParams keeps the deprecated startup workaround local to phpactor while disabling helper
-// integrations that add noise to symbolic-search startup and redirecting Phpactor state into the managed cache.
+// integrations that add noise to symbolic-search startup, redirecting Phpactor state into the managed cache, and making
+// reference searches wait for the indexing of the starting session.
 func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.InitializeParams) error {
+	// The runtime calls this hook before phpactor starts, so the new session cannot report the end of indexing earlier.
+	s.startIndexing(workspaceRoot)
+
 	indexPath, err := phpactorIndexerPath(s.cacheRoot, workspaceRoot)
 	if err != nil {
 		return err

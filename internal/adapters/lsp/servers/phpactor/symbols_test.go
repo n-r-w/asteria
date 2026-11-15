@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/samber/lo"
@@ -97,6 +98,8 @@ func TestPatchInitializeParams(t *testing.T) {
 		withRequestDocument:   nil,
 		runPropertyReferences: nil,
 		cacheRoot:             cacheRoot,
+		mu:                    sync.Mutex{},
+		indexing:              make(map[string]indexingDone),
 	}
 	err := service.patchInitializeParams(workspaceRoot, params)
 	require.NoError(t, err)

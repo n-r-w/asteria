@@ -31,21 +31,61 @@ const fallbackFixture = "<?php\n" +
 	"    public function read() { return $this->value; }\n" +
 	"}\n"
 
-// fallbackErrorSuite checks which errors of a phpactor fallback step end the request.
-type fallbackErrorSuite struct {
+// inMemorySearchSuite checks phpactor searches against an in-memory language server.
+type inMemorySearchSuite struct {
 	suite.Suite
 }
 
-// TestFallbackError runs the checks of fallback step errors.
-func TestFallbackError(t *testing.T) {
+// TestInMemorySearch runs the checks of phpactor searches against an in-memory language server.
+func TestInMemorySearch(t *testing.T) {
 	t.Parallel()
 
-	suite.Run(t, new(fallbackErrorSuite))
+	suite.Run(t, new(inMemorySearchSuite))
+}
+
+// TestReferenceSearchWaitsForEndOfIndexing checks that a reference search sends no request to the language server
+// before phpactor reports the end of indexing, ends with the deadline error, and runs after the report.
+func (s *inMemorySearchSuite) TestReferenceSearchWaitsForEndOfIndexing() {
+	var requests atomic.Int32
+	service, request, server := s.newServiceWithServer(
+		fixtureFiles(),
+		func(method string, documentPath string, call int) (any, error) {
+			requests.Add(1)
+
+			return fixtureAnswer(nil)(method, documentPath, call)
+		},
+		nil,
+		nil,
+	)
+	s.notifyShowMessage(server, "Indexing workspace")
+
+	_, err := service.FindReferencingSymbols(deadlineContext(s.T()), request)
+	s.Require().ErrorIs(err, context.DeadlineExceeded)
+	s.Zero(requests.Load())
+
+	s.notifyShowMessage(server, indexingDoneMessage)
+	result, err := service.FindReferencingSymbols(deadlineContext(s.T()), request)
+	s.Require().NoError(err)
+	s.Equal([]string{"Fixture/read"}, referencingPaths(result))
+}
+
+// TestNewSessionWaitsForItsOwnIndexing checks that the end of indexing reported by an earlier session does not let
+// a reference search of a new session of the same workspace start.
+func (s *inMemorySearchSuite) TestNewSessionWaitsForItsOwnIndexing() {
+	service, request := s.newService(fixtureFiles(), fixtureAnswer(nil), nil, nil)
+	_, err := service.FindReferencingSymbols(deadlineContext(s.T()), request)
+	s.Require().NoError(err)
+
+	// The runtime calls this hook before the initialize request of each new session.
+	s.Require().NoError(service.patchInitializeParams(request.WorkspaceRoot, &protocol.InitializeParams{}))
+
+	_, err = service.FindReferencingSymbols(deadlineContext(s.T()), request)
+	s.Require().ErrorIs(err, context.DeadlineExceeded)
 }
 
 // TestOtherErrorKeepsPrimaryResult checks that an ordinary error of the property reference fallback leaves the
 // references of the language server in the result.
-func (s *fallbackErrorSuite) TestOtherErrorKeepsPrimaryResult() {
+func (s *inMemorySearchSuite) TestOtherErrorKeepsPrimaryResult() {
 	service, request := s.newService(
 		fixtureFiles(),
 		fixtureAnswer(func() error { return errors.New("document symbols are not available") }),
@@ -62,7 +102,7 @@ func (s *fallbackErrorSuite) TestOtherErrorKeepsPrimaryResult() {
 }
 
 // TestEndedRequestContextEndsRequest checks that a fallback error after the request context ended ends the request.
-func (s *fallbackErrorSuite) TestEndedRequestContextEndsRequest() {
+func (s *inMemorySearchSuite) TestEndedRequestContextEndsRequest() {
 	ctx, cancel := context.WithCancel(s.T().Context())
 	service, request := s.newService(fixtureFiles(), fixtureAnswer(func() error {
 		cancel()
@@ -76,7 +116,7 @@ func (s *fallbackErrorSuite) TestEndedRequestContextEndsRequest() {
 }
 
 // TestUnavailableSessionEndsRequest checks that a fallback step without a language server session ends the request.
-func (s *fallbackErrorSuite) TestUnavailableSessionEndsRequest() {
+func (s *inMemorySearchSuite) TestUnavailableSessionEndsRequest() {
 	sessionErr := errors.New("server stopped")
 	service, request := s.newService(fixtureFiles(), fixtureAnswer(nil), sessionErr, nil)
 
@@ -86,7 +126,7 @@ func (s *fallbackErrorSuite) TestUnavailableSessionEndsRequest() {
 
 // TestTargetFileUsageFailureKeepsOtherFallbackReferences checks that a property usage in the target file that the
 // fallback cannot process names the target file in the warning, while the usages of other files stay.
-func (s *fallbackErrorSuite) TestTargetFileUsageFailureKeepsOtherFallbackReferences() {
+func (s *inMemorySearchSuite) TestTargetFileUsageFailureKeepsOtherFallbackReferences() {
 	files := fixtureFiles()
 	files["b.php"] = usageFixture("B")
 	files["c.php"] = usageFixture("C")
@@ -125,7 +165,7 @@ func (s *fallbackErrorSuite) TestTargetFileUsageFailureKeepsOtherFallbackReferen
 
 // TestDeadlineSkipsConstantFallback checks that a workspace search stopped by the deadline returns the symbols of the
 // files processed before the stop without the constant fallback, and counts the files that were not searched.
-func (s *fallbackErrorSuite) TestDeadlineSkipsConstantFallback() {
+func (s *inMemorySearchSuite) TestDeadlineSkipsConstantFallback() {
 	service, request := s.newConstantSearch(
 		func(withRequestDocument stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc {
 			return waitForDeadline(withRequestDocument, "b.php")
@@ -142,7 +182,7 @@ func (s *fallbackErrorSuite) TestDeadlineSkipsConstantFallback() {
 // TestDeadlineAfterSearchSkipsConstantFallback checks that a workspace search whose last file finishes after the
 // deadline returns the symbols of the finished search without the constant fallback, and counts the PHP files of the
 // scope as not searched because their constants are left out.
-func (s *fallbackErrorSuite) TestDeadlineAfterSearchSkipsConstantFallback() {
+func (s *inMemorySearchSuite) TestDeadlineAfterSearchSkipsConstantFallback() {
 	service, request := s.newConstantSearch(
 		func(withRequestDocument stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc {
 			return finishAfterDeadline(withRequestDocument, "c.php", 1, nil)
@@ -158,7 +198,7 @@ func (s *fallbackErrorSuite) TestDeadlineAfterSearchSkipsConstantFallback() {
 
 // TestDeadlineSkipsPropertyFallback checks that a reference search stopped by the deadline returns without the
 // property reference fallback and counts the file that it did not process.
-func (s *fallbackErrorSuite) TestDeadlineSkipsPropertyFallback() {
+func (s *inMemorySearchSuite) TestDeadlineSkipsPropertyFallback() {
 	files := fixtureFiles()
 	files["b.php"] = usageFixture("B")
 	service, request := s.newService(files, usageAnswer(), nil, nil)
@@ -185,7 +225,7 @@ func (s *fallbackErrorSuite) TestDeadlineSkipsPropertyFallback() {
 
 // TestConstantScanAfterDeadlineAddsNoConstants checks that a constant fallback of a workspace search that starts after
 // the deadline adds no constants and counts the files of the scan as not searched.
-func (s *fallbackErrorSuite) TestConstantScanAfterDeadlineAddsNoConstants() {
+func (s *inMemorySearchSuite) TestConstantScanAfterDeadlineAddsNoConstants() {
 	_, request := s.newConstantSearch(
 		func(withRequestDocument stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc {
 			return withRequestDocument
@@ -205,9 +245,9 @@ func (s *fallbackErrorSuite) TestConstantScanAfterDeadlineAddsNoConstants() {
 }
 
 // TestDeadlineAfterReferenceSearchSkipsPropertyFallback checks that a reference search that finishes after the
-// deadline returns its references without the property reference fallback, and counts the files of the reference
-// workflow as not processed.
-func (s *fallbackErrorSuite) TestDeadlineAfterReferenceSearchSkipsPropertyFallback() {
+// deadline returns its references without the property reference fallback, and counts the target file as not
+// processed.
+func (s *inMemorySearchSuite) TestDeadlineAfterReferenceSearchSkipsPropertyFallback() {
 	files := fixtureFiles()
 	files["b.php"] = usageFixture("B")
 	service, request := s.newService(files, usageAnswer(), nil, nil)
@@ -225,7 +265,7 @@ func (s *fallbackErrorSuite) TestDeadlineAfterReferenceSearchSkipsPropertyFallba
 
 	s.Require().Len(result.Symbols, 1)
 	s.Equal("B/useIt", result.Symbols[0].Path)
-	s.Equal([]string{".php: 2 files are not processed: search stopped by timeout"}, result.Warnings)
+	s.Equal([]string{".php: 1 file is not processed: search stopped by timeout"}, result.Warnings)
 	// The target symbol, the references, and the symbols of b.php take one request each.
 	s.Equal(int32(3), requests.Load(), "the fallback must not request documents")
 }
@@ -233,7 +273,7 @@ func (s *fallbackErrorSuite) TestDeadlineAfterReferenceSearchSkipsPropertyFallba
 // TestPropertyFallbackKeepsRowsBeforeFileStoppedByDeadline checks that a property reference fallback whose file
 // reaches the deadline keeps the fallback rows of the files before it and counts the files of the rest of its rows
 // as not processed.
-func (s *fallbackErrorSuite) TestPropertyFallbackKeepsRowsBeforeFileStoppedByDeadline() {
+func (s *inMemorySearchSuite) TestPropertyFallbackKeepsRowsBeforeFileStoppedByDeadline() {
 	files := fixtureFiles()
 	files["b.php"] = usageFixture("B")
 	files["c.php"] = usageFixture("C")
@@ -258,7 +298,7 @@ func (s *fallbackErrorSuite) TestPropertyFallbackKeepsRowsBeforeFileStoppedByDea
 // TestPropertyFallbackStopsBeforeNextRowOfLoadedFile checks that a property reference fallback whose deadline passes
 // when the symbols of a file have loaded keeps the row that needed them, skips the next row of the same file, and
 // counts the file as not processed.
-func (s *fallbackErrorSuite) TestPropertyFallbackStopsBeforeNextRowOfLoadedFile() {
+func (s *inMemorySearchSuite) TestPropertyFallbackStopsBeforeNextRowOfLoadedFile() {
 	files := fixtureFiles()
 	files["b.php"] = "<?php\n" +
 		"class B {\n" +
@@ -295,9 +335,9 @@ func (s *fallbackErrorSuite) TestPropertyFallbackStopsBeforeNextRowOfLoadedFile(
 }
 
 // TestPropertyFallbackErrorAfterDeadlineKeepsSearchResult checks that a property reference fallback that fails after
-// the deadline leaves the references of the finished search in the result and counts the files of the reference
-// workflow as not processed.
-func (s *fallbackErrorSuite) TestPropertyFallbackErrorAfterDeadlineKeepsSearchResult() {
+// the deadline leaves the references of the finished search in the result and counts the target file as not
+// processed.
+func (s *inMemorySearchSuite) TestPropertyFallbackErrorAfterDeadlineKeepsSearchResult() {
 	files := fixtureFiles()
 	files["b.php"] = usageFixture("B")
 	service, request := s.newService(files, fixtureAnswer(nil), nil, nil)
@@ -312,13 +352,13 @@ func (s *fallbackErrorSuite) TestPropertyFallbackErrorAfterDeadlineKeepsSearchRe
 
 	s.Require().Len(result.Symbols, 1)
 	s.Equal("Fixture/read", result.Symbols[0].Path)
-	s.Equal([]string{".php: 2 files are not processed: search stopped by timeout"}, result.Warnings)
+	s.Equal([]string{".php: 1 file is not processed: search stopped by timeout"}, result.Warnings)
 }
 
 // newConstantSearch writes a.php, b.php, and c.php with the constant STAMP into a new workspace and creates a phpactor
 // service whose language server returns this constant for each document, and whose shared search opens documents
 // through the callback that wrap builds from the default one. It returns the workspace search for STAMP.
-func (s *fallbackErrorSuite) newConstantSearch(
+func (s *inMemorySearchSuite) newConstantSearch(
 	wrap func(stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc,
 ) (*Service, *domain.FindSymbolRequest) {
 	constantFile := "<?php\nconst STAMP = 1;\n"
@@ -364,7 +404,7 @@ func (s *fallbackErrorSuite) newConstantSearch(
 
 // wrapSharedService replaces the shared search of service with one that opens documents through the callback that
 // wrap builds from the default one of service.
-func (s *fallbackErrorSuite) wrapSharedService(
+func (s *inMemorySearchSuite) wrapSharedService(
 	service *Service,
 	wrap func(stdlsp.WithRequestDocumentFunc) stdlsp.WithRequestDocumentFunc,
 ) {
@@ -433,29 +473,58 @@ func fixtureAnswer(fallbackSymbols func() error) testAnswer {
 	}
 }
 
+// indexingDoneMessage is the message with which phpactor reports the end of indexing.
+const indexingDoneMessage = "Done indexing (0.05s, 10mb), watching with lsp"
+
 // newService writes files into a new workspace and creates a phpactor service whose language server is an
-// in-memory peer that answers through answer, and whose member-reference command returns propertyRows.
-// sessionErr, when set, ends the session after the references request.
-func (s *fallbackErrorSuite) newService(
+// in-memory peer that answers through answer and has reported the end of indexing, and whose member-reference command
+// returns propertyRows. sessionErr, when set, ends the session after the references request.
+func (s *inMemorySearchSuite) newService(
 	files map[string]string,
 	answer testAnswer,
 	sessionErr error,
 	propertyRows []phpactorReferenceRow,
 ) (*Service, *domain.FindReferencingSymbolsRequest) {
+	service, request, server := s.newServiceWithServer(files, answer, sessionErr, propertyRows)
+	s.notifyShowMessage(server, indexingDoneMessage)
+
+	return service, request
+}
+
+// newServiceWithServer writes files into a new workspace and creates a phpactor service whose language server is an
+// in-memory peer that answers through answer, and whose member-reference command returns propertyRows. sessionErr,
+// when set, ends the session after the references request. It also returns the server side of the connection, whose
+// messages reach the server callback of the service.
+func (s *inMemorySearchSuite) newServiceWithServer(
+	files map[string]string,
+	answer testAnswer,
+	sessionErr error,
+	propertyRows []phpactorReferenceRow,
+) (*Service, *domain.FindReferencingSymbolsRequest, jsonrpc2.Conn) {
 	t := s.T()
-	workspaceRoot := t.TempDir()
+	// The runtime gives the server callback the workspace root without symbolic links.
+	workspaceRoot, err := filepath.EvalSymlinks(t.TempDir())
+	s.Require().NoError(err)
 	for name, content := range files {
 		s.Require().NoError(os.WriteFile(filepath.Join(workspaceRoot, name), []byte(content), 0o600))
 	}
 
-	var referenced atomic.Bool
-	conn := s.newConn(func(method string, documentPath string, call int) (any, error) {
-		if method == protocol.MethodTextDocumentReferences {
-			referenced.Store(true)
-		}
+	var (
+		referenced atomic.Bool
+		service    *Service
+	)
+	conn, server := s.newConn(
+		func(method string, documentPath string, call int) (any, error) {
+			if method == protocol.MethodTextDocumentReferences {
+				referenced.Store(true)
+			}
 
-		return answer(method, documentPath, call)
-	})
+			return answer(method, documentPath, call)
+		},
+		func(ctx context.Context, req *jsonrpc2.Request) (any, bool, error) {
+			return service.handleServerCallback(ctx, req, workspaceRoot)
+		},
+	)
 
 	rt, err := runtimelsp.New(&runtimelsp.RuntimeConfig{
 		Command:                 phpactorServerName,
@@ -498,7 +567,7 @@ func (s *fallbackErrorSuite) newService(
 	})
 	s.Require().NoError(err)
 
-	return &Service{
+	service = &Service{
 		rt:                  rt,
 		ensureConn:          ensureConn,
 		std:                 std,
@@ -507,18 +576,34 @@ func (s *fallbackErrorSuite) newService(
 			return propertyRows, nil
 		},
 		cacheRoot: t.TempDir(),
-	}, &domain.FindReferencingSymbolsRequest{
+		mu:        sync.Mutex{},
+		indexing:  make(map[string]indexingDone),
+	}
+
+	return service, &domain.FindReferencingSymbolsRequest{
 		Path:          "Fixture/value",
 		IncludeKinds:  nil,
 		ExcludeKinds:  nil,
 		WorkspaceRoot: workspaceRoot,
 		File:          "fixture.php",
-	}
+	}, server
+}
+
+// notifyShowMessage sends the window/showMessage notification with message from the in-memory language server.
+func (s *inMemorySearchSuite) notifyShowMessage(server jsonrpc2.Conn, message string) {
+	s.Require().NoError(server.Notify(s.T().Context(), protocol.MethodWindowShowMessage, &protocol.ShowMessageParams{
+		Type:    protocol.MessageTypeInfo,
+		Message: message,
+	}))
 }
 
 // newConn builds an in-memory language server that accepts document notifications and answers each request
-// through answer.
-func (s *fallbackErrorSuite) newConn(answer testAnswer) jsonrpc2.Conn {
+// through answer, and returns the client side, whose messages from the server go to callback first, and the server
+// side.
+func (s *inMemorySearchSuite) newConn(
+	answer testAnswer,
+	callback func(ctx context.Context, req *jsonrpc2.Request) (result any, handled bool, err error),
+) (client, server jsonrpc2.Conn) {
 	t := s.T()
 	var (
 		mu    sync.Mutex
@@ -549,7 +634,14 @@ func (s *fallbackErrorSuite) newConn(answer testAnswer) jsonrpc2.Conn {
 			return answer(method, documentPath, call)
 		}
 	})
-	clientConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)
+	clientConn.Go(t.Context(), func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
+		result, handled, err := callback(ctx, req)
+		if handled || err != nil {
+			return result, err
+		}
+
+		return jsonrpc2.MethodNotFoundHandler(ctx, req)
+	})
 	t.Cleanup(func() {
 		s.NoError(clientConn.Close())
 		s.NoError(serverConn.Close())
@@ -562,7 +654,7 @@ func (s *fallbackErrorSuite) newConn(answer testAnswer) jsonrpc2.Conn {
 		}
 	})
 
-	return clientConn
+	return clientConn, serverConn
 }
 
 // waitForDeadline wraps withRequestDocument so that each document request with the file fileName waits for the end of

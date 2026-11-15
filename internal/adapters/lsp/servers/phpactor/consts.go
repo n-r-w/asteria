@@ -20,6 +20,9 @@ const (
 	phpactorPHPStanEnabledKey    = "language_server_phpstan.enabled"
 	phpactorPsalmEnabledKey      = "language_server_psalm.enabled"
 	phpactorPHPCSFixerEnabledKey = "language_server_php_cs_fixer.enabled"
+	// phpactorIndexingDoneMessagePrefix starts the window/showMessage text with which phpactor reports the end of
+	// indexing.
+	phpactorIndexingDoneMessagePrefix = "Done indexing"
 )
 
 const (

@@ -198,6 +198,9 @@ mv phpactor.phar ~/.local/bin/phpactor
 
 Make sure `~/.local/bin` is in `PATH`.
 
+The first reference search in a project waits until `phpactor` indexes the project, which takes about a minute for 18 000 PHP files.
+Asteria keeps the index in its cache and reuses it, so later searches start at once.
+
 Source: <https://phpactor.readthedocs.io/en/master/usage/standalone.html>
 
 ### Rust

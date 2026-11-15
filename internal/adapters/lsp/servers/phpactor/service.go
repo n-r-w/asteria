@@ -2,9 +2,12 @@ package lspphpactor
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"go.lsp.dev/jsonrpc2"
@@ -34,6 +37,23 @@ type Service struct {
 		propertyName string,
 	) ([]phpactorReferenceRow, error)
 	cacheRoot string
+	// mu guards indexing.
+	mu sync.Mutex
+	// indexing holds the indexing signal of the current phpactor session of each workspace root.
+	indexing map[string]indexingDone
+}
+
+// indexingDone closes when a phpactor session reports the end of indexing, so reference searches can wait for it.
+type indexingDone chan struct{}
+
+// isClosed reports whether the session has reported the end of indexing.
+func (d indexingDone) isClosed() bool {
+	select {
+	case <-d:
+		return true
+	default:
+		return false
+	}
 }
 
 var (
@@ -57,6 +77,8 @@ func New(cacheRoot string, sessionIdleTimeout time.Duration) (*Service, error) {
 		withRequestDocument:   nil,
 		runPropertyReferences: runPHPActorPropertyReferences,
 		cacheRoot:             normalizedCacheRoot,
+		mu:                    sync.Mutex{},
+		indexing:              make(map[string]indexingDone),
 	}
 
 	rt, err := runtimelsp.New(&runtimelsp.RuntimeConfig{
@@ -71,7 +93,7 @@ func New(cacheRoot string, sessionIdleTimeout time.Duration) (*Service, error) {
 			IgnoreDir:    shouldIgnoreDir,
 		},
 		PatchInitializeParams: service.patchInitializeParams,
-		HandleServerCallback:  nil,
+		HandleServerCallback:  service.handleServerCallback,
 		AfterInitialized:      service.ensureIndexerPathReady,
 		WaitUntilReady:        nil,
 		BuildWorkspaceFolders: nil,
@@ -136,6 +158,77 @@ func shouldWatchPHPFile(relativePath string) bool {
 // ensureIndexerPathReady prepares the adapter-local Phpactor index directory before reference requests need it.
 func (s *Service) ensureIndexerPathReady(_ context.Context, _ jsonrpc2.Conn, workspaceRoot string) error {
 	return ensureIndexerPathExists(s.cacheRoot, workspaceRoot)
+}
+
+// handleServerCallback records the end of phpactor indexing for workspaceRoot and leaves each message to the default
+// handling of the runtime.
+func (s *Service) handleServerCallback(
+	_ context.Context,
+	req *jsonrpc2.Request,
+	workspaceRoot string,
+) (result any, handled bool, err error) {
+	if req.Method() != protocol.MethodWindowShowMessage {
+		return nil, false, nil
+	}
+
+	var params protocol.ShowMessageParams
+	if decodeErr := json.Unmarshal(req.Params(), &params); decodeErr != nil {
+		return nil, false, fmt.Errorf("decode phpactor window/showMessage: %w", decodeErr)
+	}
+	// phpactor reports indexing progress through window/showMessage because the client declares no work-done progress.
+	if strings.HasPrefix(params.Message, phpactorIndexingDoneMessagePrefix) {
+		s.finishIndexing(workspaceRoot)
+	}
+
+	return nil, false, nil
+}
+
+// startIndexing makes reference searches of workspaceRoot wait for the end of indexing of a new phpactor session; a
+// state that has not finished stays, so a search that still waits is released by the new session.
+func (s *Service) startIndexing(workspaceRoot string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if done, ok := s.indexing[workspaceRoot]; ok && done.isClosed() {
+		delete(s.indexing, workspaceRoot)
+	}
+}
+
+// finishIndexing releases the reference searches of workspaceRoot that wait for the end of indexing.
+func (s *Service) finishIndexing(workspaceRoot string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	done := s.indexingDoneLocked(workspaceRoot)
+	if !done.isClosed() {
+		close(done)
+	}
+}
+
+// waitForIndexing blocks until the phpactor session of workspaceRoot reports the end of indexing, and returns the
+// error of ctx when ctx ends first.
+func (s *Service) waitForIndexing(ctx context.Context, workspaceRoot string) error {
+	s.mu.Lock()
+	done := s.indexingDoneLocked(workspaceRoot)
+	s.mu.Unlock()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("wait for phpactor indexing: %w", ctx.Err())
+	}
+}
+
+// indexingDoneLocked returns the indexing signal of workspaceRoot, creating it on demand, while s.mu is held.
+func (s *Service) indexingDoneLocked(workspaceRoot string) indexingDone {
+	done, ok := s.indexing[workspaceRoot]
+	if !ok {
+		done = make(indexingDone)
+		s.indexing[workspaceRoot] = done
+	}
+
+	return done
 }
 
 // Extensions returns the list of file extensions supported by this LSP implementation.

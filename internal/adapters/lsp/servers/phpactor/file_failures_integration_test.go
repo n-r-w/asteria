@@ -68,9 +68,9 @@ func (s *phpactorFileFailureSuite) TestFindSymbolReturnsConstantsOfOtherFilesAnd
 	s.Contains(result.Warnings[0], "permission denied")
 }
 
-// TestFindReferencingSymbolsSkipsUnreadableFileOfTargetDirectory checks that an unreadable file next to the target
-// is skipped and named in the warning.
-func (s *phpactorFileFailureSuite) TestFindReferencingSymbolsSkipsUnreadableFileOfTargetDirectory() {
+// TestFindReferencingSymbolsIgnoresUnreadableFileOfTargetDirectory checks that an unreadable file next to the target
+// neither stops the reference search nor appears in a warning, because the search opens only the target file.
+func (s *phpactorFileFailureSuite) TestFindReferencingSymbolsIgnoresUnreadableFileOfTargetDirectory() {
 	t := s.T()
 	workspaceRoot := phpactorFixtureRoot(t)
 	service, ctx := newIntegrationService(t)
@@ -97,8 +97,5 @@ func (s *phpactorFileFailureSuite) TestFindReferencingSymbolsSkipsUnreadableFile
 		files[symbol.File] = struct{}{}
 	}
 	s.Contains(files, "references.php")
-	s.NotContains(files, "docblock.php")
-	s.Require().Len(result.Warnings, 1)
-	s.Contains(result.Warnings[0], "docblock.php: ")
-	s.Contains(result.Warnings[0], "permission denied")
+	s.Empty(result.Warnings)
 }
