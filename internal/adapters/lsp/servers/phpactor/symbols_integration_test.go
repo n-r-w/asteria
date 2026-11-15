@@ -54,8 +54,8 @@ func TestIntegrationServiceGetSymbolsOverviewReturnsFixtureSymbols(t *testing.T)
 	assertKindContainsExactPath(t, result.Symbols, int(protocol.SymbolKindFunction), "make_bucket")
 }
 
-// TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession proves that a canceled PHP reference tool
-// request does not leave its language-server process available for reuse after the request returns.
+// TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession proves that a PHP reference tool request
+// canceled during its search does not leave its language-server process available for reuse after the request returns.
 func TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession(t *testing.T) {
 	workspaceRoot := phpactorFixtureRoot(t)
 	service, ctx := newIntegrationService(t)
@@ -63,8 +63,20 @@ func TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession(t *tes
 	firstConn, err := service.rt.EnsureConn(ctx, workspaceRoot)
 	require.NoError(t, err)
 
+	// The request is canceled when the search opens the target file, after the wait for indexing.
 	requestCtx, cancel := context.WithCancel(ctx)
-	cancel()
+	defer cancel()
+	openDocument := service.withRequestDocument
+	service.withRequestDocument = func(
+		ctx context.Context,
+		conn jsonrpc2.Conn,
+		absolutePath string,
+		run func(context.Context) error,
+	) error {
+		cancel()
+
+		return openDocument(ctx, conn, absolutePath, run)
+	}
 	_, err = service.FindReferencingSymbols(requestCtx, &domain.FindReferencingSymbolsRequest{
 		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "make_bucket"},
 		WorkspaceRoot:                workspaceRoot,

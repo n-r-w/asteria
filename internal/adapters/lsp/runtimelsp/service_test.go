@@ -7,7 +7,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.lsp.dev/jsonrpc2"
@@ -119,15 +118,16 @@ func (s *backgroundCloseSuite) TestReturnsBeforeCloseAndStartsNewSession() {
 		root := t.TempDir()
 		oldSession, serverExited := newSessionThatExitsLater(t, runtime, root)
 
-		returned := make(chan error, 1)
+		acquired, err := runtime.AcquireClosableSession(t.Context(), root)
+		require.NoError(t, err)
+		acquired.Release()
+		returned := make(chan struct{})
 		go func() {
-			returned <- runtime.CloseSessionInBackground(t.Context(), root)
+			acquired.CloseInBackground(t.Context())
+			close(returned)
 		}()
 		synctest.Wait()
-		select {
-		case err := <-returned:
-			require.NoError(t, err)
-		default:
+		if !isClosed(returned) {
 			t.Fatal("close waited for the old session to shut down")
 		}
 
@@ -147,9 +147,7 @@ func (s *backgroundCloseSuite) TestRuntimeCloseWaitsForBackgroundClose() {
 		runtime := newTestRuntime(t, nil)
 		root := t.TempDir()
 		_, serverExited := newSessionThatExitsLater(t, runtime, root)
-		go func() {
-			assert.NoError(t, runtime.CloseSessionInBackground(t.Context(), root))
-		}()
+		closeAcquiredInBackground(t, runtime, root)
 		synctest.Wait()
 
 		closed := make(chan error, 1)
@@ -164,6 +162,38 @@ func (s *backgroundCloseSuite) TestRuntimeCloseWaitsForBackgroundClose() {
 	})
 }
 
+// TestLateCleanupKeepsReplacementSession proves that the cleanup of a request whose session was already detached
+// leaves the replacement session that another request uses registered.
+func (s *backgroundCloseSuite) TestLateCleanupKeepsReplacementSession() {
+	synctest.Test(s.T(), func(t *testing.T) {
+		runtime := newTestRuntime(t, nil)
+		root := t.TempDir()
+		_, oldExited := newSessionThatExitsLater(t, runtime, root)
+		requestA, err := runtime.AcquireClosableSession(t.Context(), root)
+		require.NoError(t, err)
+		requestB, err := runtime.AcquireClosableSession(t.Context(), root)
+		require.NoError(t, err)
+
+		requestA.Release()
+		requestA.CloseInBackground(t.Context())
+		releaseC, err := runtime.AcquireSession(t.Context(), root)
+		require.NoError(t, err)
+		replacement, err := runtime.getOrCreateSession(root)
+		require.NoError(t, err)
+
+		requestB.Release()
+		requestB.CloseInBackground(t.Context())
+
+		registered, err := runtime.getOrCreateSession(root)
+		require.NoError(t, err)
+		s.Same(replacement, registered)
+
+		releaseC()
+		close(oldExited)
+		require.NoError(t, runtime.Close(t.Context()))
+	})
+}
+
 // TestRuntimeCloseForcesBackgroundCloseToStop proves that runtime shutdown ends the graceful phase of a session that
 // closes in the background at once, waits until its server exits, and closes the live sessions too.
 // It runs in real time because the JSON-RPC connection reuses its call state across synctest bubbles.
@@ -175,7 +205,7 @@ func (s *backgroundCloseSuite) TestRuntimeCloseForcesBackgroundCloseToStop() {
 	detachedExited := newSessionThatIgnoresShutdown(t, runtime, detachedRoot)
 	liveSession, liveExited := newSessionThatExitsLater(t, runtime, t.TempDir())
 	close(liveExited)
-	s.Require().NoError(runtime.CloseSessionInBackground(t.Context(), detachedRoot))
+	closeAcquiredInBackground(t, runtime, detachedRoot)
 
 	start := time.Now()
 	s.Require().NoError(runtime.Close(t.Context()))
@@ -227,6 +257,17 @@ func isClosed(ch chan struct{}) bool {
 	default:
 		return false
 	}
+}
+
+// closeAcquiredInBackground acquires the session of root, releases it, and closes it in the background, as a request
+// that ended by its deadline does.
+func closeAcquiredInBackground(t *testing.T, runtime *Runtime, root string) {
+	t.Helper()
+
+	acquired, err := runtime.AcquireClosableSession(t.Context(), root)
+	require.NoError(t, err)
+	acquired.Release()
+	acquired.CloseInBackground(t.Context())
 }
 
 // newSessionThatExitsLater registers a session of root whose server process exits only when the returned channel

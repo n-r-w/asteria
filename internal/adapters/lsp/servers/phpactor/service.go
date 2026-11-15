@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -240,22 +239,14 @@ func (*Service) Extensions() []string {
 	return extensions
 }
 
-// closeSessionAfterCanceledRequest stops phpactor work that can no longer produce a tool response, without making the
-// tool response wait for the shutdown.
-func (s *Service) closeSessionAfterCanceledRequest(ctx context.Context, workspaceRoot string) {
+// closeSessionAfterCanceledRequest stops the phpactor work of a request that can no longer produce a tool response,
+// without making the tool response wait for the shutdown and without touching a session that replaced the acquired one.
+func (*Service) closeSessionAfterCanceledRequest(ctx context.Context, acquired *runtimelsp.AcquiredSession) {
 	if ctx.Err() == nil {
 		return
 	}
 
-	cleanupCtx := context.WithoutCancel(ctx)
-	if err := s.rt.CloseSessionInBackground(cleanupCtx, workspaceRoot); err != nil {
-		slog.WarnContext(
-			cleanupCtx,
-			"close phpactor session after canceled request",
-			"err", err,
-			"workspace_root", workspaceRoot,
-		)
-	}
+	acquired.CloseInBackground(ctx)
 }
 
 // Close shuts down the live phpactor session so process-level cleanup stays explicit.

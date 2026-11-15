@@ -170,7 +170,7 @@ func TestIntegrationRuntimeCloseSessionIsolatedByRoot(t *testing.T) {
 	secondConn, secondErr := runtime.EnsureConn(ctx, secondRoot)
 	require.NoError(t, secondErr)
 
-	require.NoError(t, runtime.CloseSessionInBackground(ctx, firstRoot))
+	closeAcquiredInBackground(t, runtime, firstRoot)
 	require.Eventually(t, func() bool {
 		return !sessionAlive(firstSession) && firstSession.connection() == nil
 	}, 10*time.Second, 10*time.Millisecond)
@@ -183,8 +183,6 @@ func TestIntegrationRuntimeCloseSessionIsolatedByRoot(t *testing.T) {
 	reusedSecondConn, reuseErr := runtime.EnsureConn(ctx, secondRoot)
 	require.NoError(t, reuseErr)
 	assert.Same(t, secondConn, reusedSecondConn)
-
-	require.NoError(t, runtime.CloseSessionInBackground(ctx, t.TempDir()))
 }
 
 // TestIntegrationRuntimeEnsureConnConcurrentSameRootReusesSingleSession proves that concurrent callers share one session for one root.

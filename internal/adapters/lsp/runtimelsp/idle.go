@@ -6,10 +6,41 @@ import (
 	"time"
 )
 
+// AcquiredSession is one acquisition of a workspace session, which the caller releases and may close in the
+// background.
+type AcquiredSession struct {
+	runtime *Runtime
+	root    string
+	managed *managedSession
+}
+
+// Release ends the acquisition; the caller calls it exactly once, after all requests and document cleanup finish.
+func (a *AcquiredSession) Release() {
+	a.runtime.releaseSession(a.root, a.managed)
+}
+
+// CloseInBackground detaches the acquired session, when it is still the session registered for its workspace root,
+// so that the next access starts a new session, and shuts it down in the background; Runtime.Close stops this
+// shutdown and waits for it.
+func (a *AcquiredSession) CloseInBackground(ctx context.Context) {
+	a.runtime.closeInBackground(ctx, a.root, a.managed)
+}
+
 // AcquireSession keeps a workspace session available for the complete caller workflow.
 // The caller must release it exactly once, after all requests and document cleanup finish.
 // Acquisition does not start the language server.
 func (r *Runtime) AcquireSession(ctx context.Context, workspaceRoot string) (func(), error) {
+	acquired, err := r.AcquireClosableSession(ctx, workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	return acquired.Release, nil
+}
+
+// AcquireClosableSession acquires a workspace session like AcquireSession and returns a handle that can also close
+// this session in the background.
+func (r *Runtime) AcquireClosableSession(ctx context.Context, workspaceRoot string) (*AcquiredSession, error) {
 	root, err := normalizeWorkspaceRoot(workspaceRoot)
 	if err != nil {
 		return nil, err
@@ -45,7 +76,11 @@ func (r *Runtime) AcquireSession(ctx context.Context, workspaceRoot string) (fun
 		r.active++
 		r.mu.Unlock()
 
-		return func() { r.releaseSession(root, managed) }, nil
+		return &AcquiredSession{
+			runtime: r,
+			root:    root,
+			managed: managed,
+		}, nil
 	}
 }
 

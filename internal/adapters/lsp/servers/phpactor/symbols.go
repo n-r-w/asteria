@@ -22,12 +22,12 @@ func (s *Service) GetSymbolsOverview(
 	request *domain.GetSymbolsOverviewRequest,
 ) (domain.GetSymbolsOverviewResult, error) {
 	if request != nil {
-		defer s.closeSessionAfterCanceledRequest(ctx, request.WorkspaceRoot)
-		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		acquired, acquireErr := s.rt.AcquireClosableSession(ctx, request.WorkspaceRoot)
 		if acquireErr != nil {
 			return domain.GetSymbolsOverviewResult{}, acquireErr
 		}
-		defer release()
+		defer s.closeSessionAfterCanceledRequest(ctx, acquired)
+		defer acquired.Release()
 	}
 
 	result, err := s.std.GetSymbolsOverview(ctx, request)
@@ -65,12 +65,12 @@ func (s *Service) FindSymbol(
 	request *domain.FindSymbolRequest,
 ) (domain.FindSymbolResult, error) {
 	if request != nil {
-		defer s.closeSessionAfterCanceledRequest(ctx, request.WorkspaceRoot)
-		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		acquired, acquireErr := s.rt.AcquireClosableSession(ctx, request.WorkspaceRoot)
 		if acquireErr != nil {
 			return domain.FindSymbolResult{}, acquireErr
 		}
-		defer release()
+		defer s.closeSessionAfterCanceledRequest(ctx, acquired)
+		defer acquired.Release()
 	}
 
 	result, failures, err := s.std.FindSymbolWithFailures(ctx, request)
@@ -177,19 +177,19 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
+	acquired, acquireErr := s.rt.AcquireClosableSession(ctx, workspaceRoot)
+	if acquireErr != nil {
+		return domain.FindReferencingSymbolsResult{}, acquireErr
+	}
 	// A request that ends while it waits for indexing sent phpactor no request, so the session keeps indexing for
 	// later requests.
 	endedDuringIndexing := false
 	defer func() {
 		if !endedDuringIndexing {
-			s.closeSessionAfterCanceledRequest(ctx, workspaceRoot)
+			s.closeSessionAfterCanceledRequest(ctx, acquired)
 		}
 	}()
-	release, acquireErr := s.rt.AcquireSession(ctx, workspaceRoot)
-	if acquireErr != nil {
-		return domain.FindReferencingSymbolsResult{}, acquireErr
-	}
-	defer release()
+	defer acquired.Release()
 
 	targetFile, targetPath, err := helpers.ResolveDocumentPath(workspaceRoot, request.File)
 	if err != nil {

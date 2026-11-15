@@ -193,28 +193,17 @@ func (r *Runtime) newSessionConfig(workspaceRoot string) (*sessionConfig, error)
 	}, nil
 }
 
-// CloseSessionInBackground detaches the session of one workspace root so that the next access starts a new session,
-// and Close stops the background shutdown of the detached one and waits for it.
-func (r *Runtime) CloseSessionInBackground(ctx context.Context, workspaceRoot string) error {
-	normalizedWorkspaceRoot, err := normalizeWorkspaceRoot(workspaceRoot)
-	if err != nil {
-		return err
-	}
-
+// closeInBackground detaches managed while it is the session registered for root, so that the next access starts a
+// new session, and Close stops the background shutdown of the detached one and waits for it.
+func (r *Runtime) closeInBackground(ctx context.Context, root string, managed *managedSession) {
 	r.mu.Lock()
-	if r.closing {
+	if r.closing || r.sessions[root] != managed {
 		r.mu.Unlock()
 
-		return nil
+		return
 	}
-	sessionToClose, ok := r.sessions[normalizedWorkspaceRoot]
-	if !ok {
-		r.mu.Unlock()
-
-		return nil
-	}
-	sessionToClose.stopIdleTimer()
-	delete(r.sessions, normalizedWorkspaceRoot)
+	managed.stopIdleTimer()
+	delete(r.sessions, root)
 	r.backgroundCloses.Add(1)
 	forceStop := r.forceBackgroundCloses
 	r.mu.Unlock()
@@ -224,13 +213,11 @@ func (r *Runtime) CloseSessionInBackground(ctx context.Context, workspaceRoot st
 		defer r.backgroundCloses.Done()
 
 		// The session owns a bounded shutdown budget, so the close needs no deadline of the request.
-		if closeErr := sessionToClose.session.closeUnlessForced(closeCtx, forceStop); closeErr != nil {
+		if closeErr := managed.session.closeUnlessForced(closeCtx, forceStop); closeErr != nil {
 			slog.WarnContext(closeCtx, "close LSP session in background",
-				"server_name", r.config.ServerName, "workspace_root", normalizedWorkspaceRoot, "err", closeErr)
+				"server_name", r.config.ServerName, "workspace_root", root, "err", closeErr)
 		}
 	}()
-
-	return nil
 }
 
 // Close shuts down all live sessions so process-level cleanup stays explicit to the caller.
