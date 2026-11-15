@@ -69,8 +69,8 @@ func (s *inMemorySearchSuite) TestReferenceSearchWaitsForEndOfIndexing() {
 	s.Equal([]string{"Fixture/read"}, referencingPaths(result))
 }
 
-// TestNewSessionWaitsForItsOwnIndexing checks that the end of indexing reported by an earlier session does not let
-// a reference search of a new session of the same workspace start.
+// TestNewSessionWaitsForItsOwnIndexing checks that a reference search of a new session waits for the end of indexing
+// of this session, even when an earlier session of the same workspace reported it.
 func (s *inMemorySearchSuite) TestNewSessionWaitsForItsOwnIndexing() {
 	service, request := s.newService(fixtureFiles(), fixtureAnswer(nil), nil, nil)
 	_, err := service.FindReferencingSymbols(deadlineContext(s.T()), request)
@@ -473,7 +473,7 @@ func fixtureAnswer(fallbackSymbols func() error) testAnswer {
 	}
 }
 
-// indexingDoneMessage is the message with which phpactor reports the end of indexing.
+// indexingDoneMessage is a sample of the message with which phpactor reports the end of indexing.
 const indexingDoneMessage = "Done indexing (0.05s, 10mb), watching with lsp"
 
 // newService writes files into a new workspace and creates a phpactor service whose language server is an
@@ -597,9 +597,9 @@ func (s *inMemorySearchSuite) notifyShowMessage(server jsonrpc2.Conn, message st
 	}))
 }
 
-// newConn builds an in-memory language server that accepts document notifications and answers each request
-// through answer, and returns the client side, whose messages from the server go to callback first, and the server
-// side.
+// newConn builds an in-memory language server that accepts document notifications and answers each request through
+// answer. It returns the client side of the connection and the server side. The client side passes each message from
+// the server to callback first.
 func (s *inMemorySearchSuite) newConn(
 	answer testAnswer,
 	callback func(ctx context.Context, req *jsonrpc2.Request) (result any, handled bool, err error),

@@ -109,7 +109,7 @@ func normalizeGracefulShutdownError(err error, forcedStop bool) error {
 		return nil
 	}
 
-	if forcedStop && errors.Is(err, context.DeadlineExceeded) {
+	if forcedStop && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)) {
 		return nil
 	}
 

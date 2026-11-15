@@ -158,8 +158,8 @@ func addPHPConstants(
 	return result, nil
 }
 
-// FindReferencingSymbols waits until the phpactor session has indexed the workspace, so that references of all files
-// are known, and keeps the target file open for the whole shared workflow before stdlsp groups the final result.
+// FindReferencingSymbols waits until the phpactor session finishes indexing the workspace, or returns the context error
+// at the deadline, and then returns the references of all indexed files.
 // Warnings of the result name the files with references that could not be processed, and count the files not processed
 // because the search or the property reference fallback stopped at the request deadline.
 func (s *Service) FindReferencingSymbols(
@@ -276,11 +276,11 @@ func (s *Service) addPropertyReferences(
 	return result, nil
 }
 
-// patchInitializeParams keeps the deprecated startup workaround local to phpactor while disabling helper
-// integrations that add noise to symbolic-search startup, keeping Phpactor state and configuration out of the
-// workspace, and making reference searches wait for the indexing of the starting session.
+// patchInitializeParams sets the phpactor options of a new session and makes reference searches wait for the
+// indexing of this session.
 func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.InitializeParams) error {
-	// The runtime calls this hook before phpactor starts, so the new session cannot report the end of indexing earlier.
+	// The runtime calls this hook before it sends the initialize request, so the new session cannot report the end of
+	// indexing before startIndexing runs.
 	s.startIndexing(workspaceRoot)
 
 	indexPath, err := phpactorIndexerPath(s.cacheRoot, workspaceRoot)

@@ -239,14 +239,25 @@ func (s *session) initializeParams(processID int32) (*protocol.InitializeParams,
 
 // close gracefully shuts down the language server before the process pipes are torn down.
 func (s *session) close(ctx context.Context) error {
+	return s.closeUnlessForced(ctx, nil)
+}
+
+// closeUnlessForced gracefully shuts down the language server and kills it at once when forceStop closes.
+func (s *session) closeUnlessForced(ctx context.Context, forceStop <-chan struct{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.closeLocked(ctx)
+	return s.closeLockedUnlessForced(ctx, forceStop)
 }
 
 // closeLocked gracefully shuts down the language server while the session lock is held.
 func (s *session) closeLocked(ctx context.Context) error {
+	return s.closeLockedUnlessForced(ctx, nil)
+}
+
+// closeLockedUnlessForced gracefully shuts down the language server while the session lock is held, and goes to the
+// forced stop at once when forceStop closes.
+func (s *session) closeLockedUnlessForced(ctx context.Context, forceStop <-chan struct{}) error {
 	if s.cmd == nil && s.conn == nil && s.fileWatcher == nil && s.done == nil {
 		return nil
 	}
@@ -265,6 +276,8 @@ func (s *session) closeLocked(ctx context.Context) error {
 
 	closeCtx, cancel := newShutdownContext(ctx, s.config.ShutdownTimeout)
 	defer cancel()
+	// Ending closeCtx stops the graceful shutdown request and the wait for exit, which leads to the kill.
+	go cancelOnForceStop(closeCtx, cancel, forceStop)
 	closeConnection := func() {
 		if s.conn == nil {
 			return
@@ -330,6 +343,15 @@ func (s *session) closeLocked(ctx context.Context) error {
 	s.resetLocked()
 
 	return closeErr
+}
+
+// cancelOnForceStop calls cancel when forceStop closes before ctx ends; a nil forceStop never closes.
+func cancelOnForceStop(ctx context.Context, cancel context.CancelFunc, forceStop <-chan struct{}) {
+	select {
+	case <-forceStop:
+		cancel()
+	case <-ctx.Done():
+	}
 }
 
 // resetLocked forgets process-bound resources so the same session wrapper can be started again.

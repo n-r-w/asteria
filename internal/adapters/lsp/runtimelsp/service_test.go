@@ -2,6 +2,7 @@ package runtimelsp
 
 import (
 	"context"
+	"net"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )
 
@@ -160,6 +162,71 @@ func (s *backgroundCloseSuite) TestRuntimeCloseWaitsForBackgroundClose() {
 		close(serverExited)
 		require.NoError(t, <-closed)
 	})
+}
+
+// TestRuntimeCloseForcesBackgroundCloseToStop proves that runtime shutdown ends the graceful phase of a session that
+// closes in the background at once, waits until its server exits, and closes the live sessions too.
+// It runs in real time because the JSON-RPC connection reuses its call state across synctest bubbles.
+func (s *backgroundCloseSuite) TestRuntimeCloseForcesBackgroundCloseToStop() {
+	t := s.T()
+	const shutdownTimeout = 5 * time.Second
+	runtime := newTestRuntime(t, func(config *LSPConfig) { config.ShutdownTimeout = shutdownTimeout })
+	detachedRoot := t.TempDir()
+	detachedExited := newSessionThatIgnoresShutdown(t, runtime, detachedRoot)
+	liveSession, liveExited := newSessionThatExitsLater(t, runtime, t.TempDir())
+	close(liveExited)
+	s.Require().NoError(runtime.CloseSessionInBackground(t.Context(), detachedRoot))
+
+	start := time.Now()
+	s.Require().NoError(runtime.Close(t.Context()))
+
+	s.Less(time.Since(start), time.Second)
+	s.True(isClosed(detachedExited))
+	s.Zero(runtime.sessionCount())
+	s.Nil(liveSession.done)
+}
+
+// newSessionThatIgnoresShutdown registers a session of root whose server never answers the shutdown request and
+// exits when the session closes its side of the connection; the returned channel closes when the server exits.
+func newSessionThatIgnoresShutdown(t *testing.T, runtime *Runtime, root string) chan struct{} {
+	t.Helper()
+
+	detachedSession, err := runtime.getOrCreateSession(root)
+	require.NoError(t, err)
+	serverSide, clientSide := net.Pipe()
+	serverConn := jsonrpc2.NewConn(jsonrpc2.NewStream(serverSide))
+	clientConn := jsonrpc2.NewConn(jsonrpc2.NewStream(clientSide))
+	// The server keeps reading its input while the shutdown request waits for an answer that never comes.
+	serverConn.Go(t.Context(), jsonrpc2.AsyncHandler(func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
+		if !req.IsCall() {
+			//nolint:nilnil // A notification gets no reply.
+			return nil, nil
+		}
+		<-ctx.Done()
+
+		return nil, ctx.Err()
+	}))
+	clientConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)
+	exited := make(chan struct{})
+	go func() {
+		<-clientConn.Done()
+		close(exited)
+	}()
+	detachedSession.conn = clientConn
+	detachedSession.done = exited
+	t.Cleanup(func() { _ = serverConn.Close() })
+
+	return exited
+}
+
+// isClosed reports whether ch is closed.
+func isClosed(ch chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
 }
 
 // newSessionThatExitsLater registers a session of root whose server process exits only when the returned channel

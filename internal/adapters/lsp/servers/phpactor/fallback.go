@@ -463,7 +463,7 @@ func smallestContainingSymbol(
 	return symbols[bestIndex], true
 }
 
-// runPHPActorPropertyReferences executes phpactor's official member-reference command for one property target over
+// runPHPActorPropertyReferences executes phpactor's member-reference command for one property target over
 // the index at indexPath and parses its table output into file/line pairs.
 func runPHPActorPropertyReferences(
 	ctx context.Context,

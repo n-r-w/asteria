@@ -198,10 +198,12 @@ mv phpactor.phar ~/.local/bin/phpactor
 
 Make sure `~/.local/bin` is in `PATH`.
 
-The first reference search in a project waits until `phpactor` indexes the project, which takes about a minute for 18 000 PHP files.
-Asteria keeps the index in its cache and reuses it, so later searches start at once.
-
 Source: <https://phpactor.readthedocs.io/en/master/usage/standalone.html>
+
+The first `find_referencing_symbols` call in a project waits until `phpactor` indexes the project. On a project of 18,000 PHP files, this wait took about a minute.
+Asteria keeps the index under `ASTERIAMCP_CACHE_ROOT` and reuses it in later sessions, where the wait takes less than a second.
+When indexing takes longer than `ASTERIAMCP_TOOL_TIMEOUT`, the call fails with a timeout error and `phpactor` keeps indexing, so repeat the call.
+`find_referencing_symbols` for PHP finds no references in files that `phpactor` does not index: tests of packages under `vendor` (`vendor/**/tests`, `vendor/**/Tests`), `vendor/composer`, the Rector stubs in `vendor/rector/rector/stubs-rector`, and files larger than 1,000,000 bytes.
 
 ### Rust
 

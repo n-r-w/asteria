@@ -45,7 +45,8 @@ type Service struct {
 	indexing map[string]indexingDone
 }
 
-// indexingDone closes when a phpactor session reports the end of indexing, so reference searches can wait for it.
+// indexingDone is a channel that finishIndexing closes when a phpactor session reports the end of indexing, and
+// reference searches wait on it.
 type indexingDone chan struct{}
 
 // isClosed reports whether the session has reported the end of indexing.
@@ -162,8 +163,8 @@ func (s *Service) ensureIndexerPathReady(_ context.Context, _ jsonrpc2.Conn, wor
 	return ensureIndexerPathExists(s.cacheRoot, workspaceRoot)
 }
 
-// handleServerCallback records the end of phpactor indexing for workspaceRoot and leaves each message to the default
-// handling of the runtime.
+// handleServerCallback records the end of phpactor indexing for workspaceRoot and leaves each message, except a
+// window/showMessage that it cannot decode, to the default handling of the runtime.
 func (s *Service) handleServerCallback(
 	_ context.Context,
 	req *jsonrpc2.Request,
@@ -185,8 +186,8 @@ func (s *Service) handleServerCallback(
 	return nil, false, nil
 }
 
-// startIndexing makes reference searches of workspaceRoot wait for the end of indexing of a new phpactor session; a
-// state that has not finished stays, so a search that still waits is released by the new session.
+// startIndexing makes reference searches of workspaceRoot wait for the end of indexing of a new phpactor session, and
+// keeps an unclosed signal so that the new session releases the searches that already wait on it.
 func (s *Service) startIndexing(workspaceRoot string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -222,7 +223,8 @@ func (s *Service) waitForIndexing(ctx context.Context, workspaceRoot string) err
 	}
 }
 
-// indexingDoneLocked returns the indexing signal of workspaceRoot, creating it on demand, while s.mu is held.
+// indexingDoneLocked returns the indexing signal of workspaceRoot and creates it when absent; the caller must hold
+// s.mu.
 func (s *Service) indexingDoneLocked(workspaceRoot string) indexingDone {
 	done, ok := s.indexing[workspaceRoot]
 	if !ok {

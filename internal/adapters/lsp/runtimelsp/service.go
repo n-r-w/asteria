@@ -26,6 +26,8 @@ type Runtime struct {
 	active   int
 	// backgroundCloses counts the sessions that shut down in the background, so Close can wait for them.
 	backgroundCloses sync.WaitGroup
+	// forceBackgroundCloses closes when Close starts, so the sessions that shut down in the background stop at once.
+	forceBackgroundCloses chan struct{}
 }
 
 // New validates runtime configuration, normalizes defaults in place, and prepares lazy session storage.
@@ -68,6 +70,8 @@ func New(config *RuntimeConfig) (*Runtime, error) {
 		closing:          false,
 		active:           0,
 		backgroundCloses: sync.WaitGroup{},
+
+		forceBackgroundCloses: make(chan struct{}),
 	}
 
 	return runtime, nil
@@ -189,9 +193,8 @@ func (r *Runtime) newSessionConfig(workspaceRoot string) (*sessionConfig, error)
 	}, nil
 }
 
-// CloseSessionInBackground detaches the session of one workspace root, so the next access to this root starts a new
-// session at once, and shuts the detached session down in the background without affecting other live sessions;
-// Close waits until this shutdown ends.
+// CloseSessionInBackground detaches the session of one workspace root so that the next access starts a new session,
+// and Close stops the background shutdown of the detached one and waits for it.
 func (r *Runtime) CloseSessionInBackground(ctx context.Context, workspaceRoot string) error {
 	normalizedWorkspaceRoot, err := normalizeWorkspaceRoot(workspaceRoot)
 	if err != nil {
@@ -213,6 +216,7 @@ func (r *Runtime) CloseSessionInBackground(ctx context.Context, workspaceRoot st
 	sessionToClose.stopIdleTimer()
 	delete(r.sessions, normalizedWorkspaceRoot)
 	r.backgroundCloses.Add(1)
+	forceStop := r.forceBackgroundCloses
 	r.mu.Unlock()
 
 	closeCtx := context.WithoutCancel(ctx)
@@ -220,7 +224,7 @@ func (r *Runtime) CloseSessionInBackground(ctx context.Context, workspaceRoot st
 		defer r.backgroundCloses.Done()
 
 		// The session owns a bounded shutdown budget, so the close needs no deadline of the request.
-		if closeErr := sessionToClose.session.close(closeCtx); closeErr != nil {
+		if closeErr := sessionToClose.session.closeUnlessForced(closeCtx, forceStop); closeErr != nil {
 			slog.WarnContext(closeCtx, "close LSP session in background",
 				"server_name", r.config.ServerName, "workspace_root", normalizedWorkspaceRoot, "err", closeErr)
 		}
@@ -237,18 +241,18 @@ func (r *Runtime) Close(ctx context.Context) error {
 		return errRuntimeClosing
 	}
 	r.closing = true
+	close(r.forceBackgroundCloses)
 	r.mu.Unlock()
 
-	// No background close starts while the runtime is closing, and each one ends within its shutdown budget.
+	// No background close starts while the runtime is closing, and each one stops at once and waits for its server to
+	// exit within its post-kill budget.
 	r.backgroundCloses.Wait()
 
 	closeCtx, cancel := newShutdownContext(ctx, r.config.ShutdownTimeout)
 	defer cancel()
 
 	if waitErr := r.waitForActiveRequests(closeCtx); waitErr != nil {
-		r.mu.Lock()
-		r.closing = false
-		r.mu.Unlock()
+		r.endClosing()
 
 		return waitErr
 	}
@@ -267,11 +271,18 @@ func (r *Runtime) Close(ctx context.Context) error {
 		closeErr = errors.Join(closeErr, session.close(ctx))
 	}
 
-	r.mu.Lock()
-	r.closing = false
-	r.mu.Unlock()
+	r.endClosing()
 
 	return closeErr
+}
+
+// endClosing lets the runtime serve requests again and gives later background closes a new force signal.
+func (r *Runtime) endClosing() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.closing = false
+	r.forceBackgroundCloses = make(chan struct{})
 }
 
 // isClosing reports whether runtime shutdown has started.
