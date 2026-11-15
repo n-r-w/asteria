@@ -1,10 +1,12 @@
 package lspphpactor
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/protocol"
@@ -29,13 +31,13 @@ func TestBuildClientCapabilities(t *testing.T) {
 	assert.Equal(t, baseline.Workspace, capabilities.Workspace)
 	assert.Equal(t, baseline.TextDocument.Definition, capabilities.TextDocument.Definition)
 	assert.Equal(t, baseline.TextDocument.DocumentSymbol, capabilities.TextDocument.DocumentSymbol)
-	assert.True(t, capabilities.TextDocument.Hover.DynamicRegistration)
+	assert.True(t, lo.FromPtr(capabilities.TextDocument.Hover.DynamicRegistration))
 	assert.Equal(
 		t,
-		[]protocol.MarkupKind{protocol.Markdown, protocol.PlainText},
+		[]protocol.MarkupKind{protocol.MarkupKindMarkdown, protocol.MarkupKindPlainText},
 		capabilities.TextDocument.Hover.ContentFormat,
 	)
-	assert.True(t, capabilities.TextDocument.References.DynamicRegistration)
+	assert.True(t, lo.FromPtr(capabilities.TextDocument.References.DynamicRegistration))
 }
 
 // TestShouldWatchPHPFile proves that runtime-managed watcher notifications stay scoped to PHP files only.
@@ -78,11 +80,15 @@ func TestPatchInitializeParams(t *testing.T) {
 	cacheRoot := t.TempDir()
 	workspaceRoot := t.TempDir()
 
-	workspaceFolders := []protocol.WorkspaceFolder{{URI: string(uri.File(workspaceRoot)), Name: "workspace"}}
+	workspaceFolders := protocol.NewNullable(
+		[]protocol.WorkspaceFolder{{URI: uri.File(workspaceRoot), Name: "workspace"}},
+	)
 	// protocol.InitializeParams has many optional SDK fields that this unit test does not
 	// exercise.
 	//nolint:exhaustruct_v5 // See the preceding comment.
-	params := &protocol.InitializeParams{WorkspaceFolders: workspaceFolders}
+	params := &protocol.InitializeParams{
+		WorkspaceFolders: workspaceFolders,
+	}
 
 	service := &Service{
 		rt:                  nil,
@@ -97,9 +103,9 @@ func TestPatchInitializeParams(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, workspaceFolders, params.WorkspaceFolders)
-	assert.Empty(t, params.RootPath)
-	assert.Equal(t, uri.File(workspaceRoot), params.RootURI)
-	assert.Equal(t, map[string]any{
+	assert.True(t, params.RootPath.IsZero())
+	assert.Equal(t, new(uri.File(workspaceRoot)), params.RootURI)
+	expectedOptions, err := json.Marshal(map[string]any{
 		phpactorIndexerPathKey:                  filepath.Join(expectedCacheDir, phpactorIndexerDirName),
 		"indexer.enabled_watchers":              []string{"lsp"},
 		phpactorPHPStanEnabledKey:               false,
@@ -108,7 +114,9 @@ func TestPatchInitializeParams(t *testing.T) {
 		"language_server.diagnostics_on_open":   false,
 		"language_server.diagnostics_on_update": false,
 		"language_server.diagnostics_on_save":   false,
-	}, params.InitializationOptions)
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, string(expectedOptions), string(params.InitializationOptions))
 }
 
 // TestEnsureIndexerPathExists proves that phpactor startup prepares its managed cache directory without writing

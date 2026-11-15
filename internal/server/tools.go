@@ -208,6 +208,15 @@ func runWithToolTimeout[T any](
 	timeoutCtx, cancel := context.WithTimeoutCause(ctx, s.cfg.ToolTimeout, timeoutErr)
 	defer cancel()
 
+	// A stopping server ends the call at once, because the MCP SDK waits for running calls before it stops.
+	go func() {
+		select {
+		case <-s.stopping:
+			cancel()
+		case <-timeoutCtx.Done():
+		}
+	}()
+
 	result, err := run(timeoutCtx)
 	if err != nil {
 		if errors.Is(context.Cause(timeoutCtx), timeoutErr) {

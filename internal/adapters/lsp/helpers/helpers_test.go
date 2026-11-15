@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -278,30 +279,32 @@ func newLifecycleRecorderConn(t *testing.T) (jsonrpc2.Conn, *lifecycleRecorder) 
 	clientConn := jsonrpc2.NewConn(jsonrpc2.NewStream(clientSide))
 	recorder := &lifecycleRecorder{}
 
-	serverConn.Go(t.Context(), func(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	serverConn.Go(t.Context(), func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
 		switch req.Method() {
 		case protocol.MethodTextDocumentDidOpen:
 			var params protocol.DidOpenTextDocumentParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
-			recorder.addEvent(documentLifecycleEvent{Method: req.Method(), URI: params.TextDocument.URI})
+			recorder.addEvent(documentLifecycleEvent{Method: strings.Clone(req.Method()), URI: params.TextDocument.URI})
 
-			return nil
+			//nolint:nilnil // Notifications get no reply, so the handler returns no result.
+			return nil, nil
 		case protocol.MethodTextDocumentDidClose:
 			var params protocol.DidCloseTextDocumentParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
-			recorder.addEvent(documentLifecycleEvent{Method: req.Method(), URI: params.TextDocument.URI})
+			recorder.addEvent(documentLifecycleEvent{Method: strings.Clone(req.Method()), URI: params.TextDocument.URI})
 
-			return nil
+			//nolint:nilnil // Notifications get no reply, so the handler returns no result.
+			return nil, nil
 		default:
-			return jsonrpc2.MethodNotFoundHandler(ctx, reply, req)
+			return jsonrpc2.MethodNotFoundHandler(ctx, req)
 		}
 	})
 	clientConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)

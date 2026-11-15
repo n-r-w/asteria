@@ -595,9 +595,9 @@ func testDocumentSymbolConn(t *testing.T, expectedURI uri.URI) (jsonrpc2.Conn, *
 	clientConn := jsonrpc2.NewConn(jsonrpc2.NewStream(clientSide))
 	var documentSymbolCalls atomic.Int32
 
-	serverConn.Go(t.Context(), func(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	serverConn.Go(t.Context(), func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
 		if req.Method() != protocol.MethodTextDocumentDocumentSymbol {
-			return jsonrpc2.MethodNotFoundHandler(ctx, reply, req)
+			return jsonrpc2.MethodNotFoundHandler(ctx, req)
 		}
 
 		documentSymbolCalls.Add(1)
@@ -606,11 +606,11 @@ func testDocumentSymbolConn(t *testing.T, expectedURI uri.URI) (jsonrpc2.Conn, *
 		err := json.Unmarshal(req.Params(), &params)
 		if err != nil {
 			t.Error(err)
-			return err
+			return nil, err
 		}
 		assert.Equal(t, expectedURI, params.TextDocument.URI)
 
-		return reply(ctx, []map[string]any{{"name": "fixtureSymbol"}}, nil)
+		return []map[string]any{{"name": "fixtureSymbol"}}, nil
 	})
 	clientConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)
 
@@ -641,47 +641,49 @@ func testReferenceWorkflowConn(
 	var openCalls atomic.Int32
 	var closeCalls atomic.Int32
 
-	serverConn.Go(t.Context(), func(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	serverConn.Go(t.Context(), func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
 		switch req.Method() {
 		case protocol.MethodTextDocumentDidOpen:
-			recorder.add(req.Method())
+			recorder.add(strings.Clone(req.Method()))
 			openCalls.Add(1)
 
 			var params protocol.DidOpenTextDocumentParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
 			assert.Equal(t, expectedURI, params.TextDocument.URI)
 
-			return nil
+			//nolint:nilnil // Notifications get no reply, so the handler returns no result.
+			return nil, nil
 		case protocol.MethodTextDocumentDidClose:
-			recorder.add(req.Method())
+			recorder.add(strings.Clone(req.Method()))
 			closeCalls.Add(1)
 
 			var params protocol.DidCloseTextDocumentParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
 			assert.Equal(t, expectedURI, params.TextDocument.URI)
 
-			return nil
+			//nolint:nilnil // Notifications get no reply, so the handler returns no result.
+			return nil, nil
 		case protocol.MethodTextDocumentDocumentSymbol:
-			recorder.add(req.Method())
+			recorder.add(strings.Clone(req.Method()))
 			documentSymbolCalls.Add(1)
 
 			var params protocol.DocumentSymbolParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
 			assert.Equal(t, expectedURI, params.TextDocument.URI)
 
-			return reply(ctx, []map[string]any{{
+			return []map[string]any{{
 				"name": "makeBucket",
 				"kind": int(protocol.SymbolKindFunction),
 				"range": map[string]any{
@@ -693,22 +695,22 @@ func testReferenceWorkflowConn(
 					"end":   map[string]any{"line": 0, "character": 26},
 				},
 				"children": []any{},
-			}}, nil)
+			}}, nil
 		case protocol.MethodTextDocumentReferences:
-			recorder.add(req.Method())
+			recorder.add(strings.Clone(req.Method()))
 			referenceCalls.Add(1)
 
 			var params protocol.ReferenceParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
 			assert.Equal(t, expectedURI, params.TextDocument.URI)
 
-			return reply(ctx, []map[string]any{}, nil)
+			return []map[string]any{}, nil
 		default:
-			return jsonrpc2.MethodNotFoundHandler(ctx, reply, req)
+			return jsonrpc2.MethodNotFoundHandler(ctx, req)
 		}
 	})
 	clientConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)
@@ -731,19 +733,19 @@ func testReferenceFallbackConn(t *testing.T, targetURI uri.URI, referenceURI uri
 	serverConn := jsonrpc2.NewConn(jsonrpc2.NewStream(serverSide))
 	clientConn := jsonrpc2.NewConn(jsonrpc2.NewStream(clientSide))
 
-	serverConn.Go(t.Context(), func(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	serverConn.Go(t.Context(), func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
 		switch req.Method() {
 		case protocol.MethodTextDocumentDocumentSymbol:
 			var params protocol.DocumentSymbolParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
 
-			switch filepath.Base(params.TextDocument.URI.Filename()) {
-			case filepath.Base(targetURI.Filename()):
-				return reply(ctx, []map[string]any{{
+			switch filepath.Base(params.TextDocument.URI.FsPath()) {
+			case filepath.Base(targetURI.FsPath()):
+				return []map[string]any{{
 					"name": "makeBucket",
 					"kind": int(protocol.SymbolKindFunction),
 					"range": map[string]any{
@@ -755,30 +757,30 @@ func testReferenceFallbackConn(t *testing.T, targetURI uri.URI, referenceURI uri
 						"end":   map[string]any{"line": 0, "character": 26},
 					},
 					"children": []any{},
-				}}, nil)
-			case filepath.Base(referenceURI.Filename()):
-				return reply(ctx, []map[string]any{}, nil)
+				}}, nil
+			case filepath.Base(referenceURI.FsPath()):
+				return []map[string]any{}, nil
 			default:
-				return jsonrpc2.MethodNotFoundHandler(ctx, reply, req)
+				return jsonrpc2.MethodNotFoundHandler(ctx, req)
 			}
 		case protocol.MethodTextDocumentReferences:
 			var params protocol.ReferenceParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
-			assert.Equal(t, filepath.Base(targetURI.Filename()), filepath.Base(params.TextDocument.URI.Filename()))
+			assert.Equal(t, filepath.Base(targetURI.FsPath()), filepath.Base(params.TextDocument.URI.FsPath()))
 
-			return reply(ctx, []map[string]any{{
+			return []map[string]any{{
 				"uri": string(referenceURI),
 				"range": map[string]any{
 					"start": map[string]any{"line": 0, "character": 9},
 					"end":   map[string]any{"line": 0, "character": 19},
 				},
-			}}, nil)
+			}}, nil
 		default:
-			return jsonrpc2.MethodNotFoundHandler(ctx, reply, req)
+			return jsonrpc2.MethodNotFoundHandler(ctx, req)
 		}
 	})
 	clientConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)

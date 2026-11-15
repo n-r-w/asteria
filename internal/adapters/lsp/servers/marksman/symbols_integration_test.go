@@ -59,6 +59,24 @@ func TestIntegrationServiceFindSymbolResolvesNestedHeading(t *testing.T) {
 	assert.Equal(t, "guide.markdown", symbol.File)
 }
 
+// TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8 proves that workspace-wide Markdown search
+// reads a legacy file whose text holds bytes that are not valid UTF-8.
+func TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8(t *testing.T) {
+	workspaceRoot := prepareMarksmanWorkspace(t)
+	service := newIntegrationService(t)
+
+	result, err := service.FindSymbol(t.Context(), &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "Binary Metadata"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            "",
+	})
+	require.NoError(t, err)
+
+	symbol, ok := findFoundSymbol(result.Symbols, "Binary Metadata")
+	require.True(t, ok, "expected whole-workspace match, got %#v", result.Symbols)
+	assert.Equal(t, "binary_metadata.md", symbol.File)
+}
+
 type marksmanSearchSuite struct {
 	suite.Suite
 }

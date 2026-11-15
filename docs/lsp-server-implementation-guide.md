@@ -32,6 +32,8 @@ Keep the adapter thin. Reuse shared packages when the server fits the standard w
 - `internal/adapters/lsp/stdlsp` — shared implementation for standard LSP symbol workflows
 - `internal/adapters/lsp/helpers` — shared utilities for document lifecycle, workspace root validation, document path resolution, and directory file collection
 
+When the adapter runs an external process other than the LSP server, for example a CLI fallback, create it with `runtimelsp.NewCommand` and run it with its `Run`, `Output`, or `CombinedOutput` method, or with its `Start` and `Wait` methods. With these methods, the process and each descendant that stays in its Unix process group or Windows job end when the context passed to `NewCommand` is canceled or when Asteria ends. A descendant that is still running when the process exits ends when `Wait` returns.
+
 Multi-workspace rules:
 
 - every tool request must include `workspace_root`

@@ -99,12 +99,12 @@ func buildClientCapabilities() protocol.ClientCapabilities {
 	if capabilities.TextDocument == nil {
 		capabilities.TextDocument = &protocol.TextDocumentClientCapabilities{}
 	}
-	capabilities.TextDocument.Hover = &protocol.HoverTextDocumentClientCapabilities{
-		DynamicRegistration: true,
-		ContentFormat:       []protocol.MarkupKind{protocol.Markdown, protocol.PlainText},
+	capabilities.TextDocument.Hover = &protocol.HoverClientCapabilities{
+		DynamicRegistration: new(true),
+		ContentFormat:       []protocol.MarkupKind{protocol.MarkupKindMarkdown, protocol.MarkupKindPlainText},
 	}
-	capabilities.TextDocument.References = &protocol.ReferencesTextDocumentClientCapabilities{
-		DynamicRegistration: true,
+	capabilities.TextDocument.References = &protocol.ReferenceClientCapabilities{
+		DynamicRegistration: new(true),
 	}
 
 	return capabilities

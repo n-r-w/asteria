@@ -7,6 +7,6 @@ const (
 	symbolTreeArtifactKind = "symbol_tree"
 	cacheSchemaVersion     = 1
 	cacheFileExtension     = ".json"
-	cacheDirPermissions    = 0o755
+	cacheDirPermissions    = 0o750
 	cacheFilePermissions   = 0o600
 )

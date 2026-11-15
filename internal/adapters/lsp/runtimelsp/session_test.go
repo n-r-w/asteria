@@ -2,15 +2,16 @@ package runtimelsp
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"
 )
@@ -31,21 +32,26 @@ func TestInitializeParamsUseRuntimeBaseline(t *testing.T) {
 	initializeParams, err := session.initializeParams(42)
 	require.NoError(t, err)
 
-	assert.Empty(t, initializeParams.RootPath)
-	assert.Empty(t, initializeParams.RootURI)
-	assert.Equal(t, int32(42), initializeParams.ProcessID)
-	assert.Equal(t, protocol.TraceOff, initializeParams.Trace)
-	assert.Equal(t, "en", initializeParams.Locale)
-	require.Len(t, initializeParams.WorkspaceFolders, 1)
-	assert.Equal(t, string(uri.File(normalizedWorkspaceRoot)), initializeParams.WorkspaceFolders[0].URI)
-	assert.Equal(t, filepath.Base(normalizedWorkspaceRoot), initializeParams.WorkspaceFolders[0].Name)
+	assert.True(t, initializeParams.RootPath.IsZero())
+	assert.Nil(t, initializeParams.RootURI)
+	assert.Equal(t, new(int32(42)), initializeParams.ProcessID)
+	assert.Equal(t, protocol.TraceValueOff, initializeParams.Trace)
+	assert.Equal(t, new("en"), initializeParams.Locale)
+	workspaceFolders, ok := initializeParams.WorkspaceFolders.Get()
+	require.True(t, ok)
+	require.Len(t, workspaceFolders, 1)
+	assert.Equal(t, uri.File(normalizedWorkspaceRoot), workspaceFolders[0].URI)
+	assert.Equal(t, filepath.Base(normalizedWorkspaceRoot), workspaceFolders[0].Name)
 
 	require.NotNil(t, initializeParams.Capabilities.Workspace)
-	assert.True(t, initializeParams.Capabilities.Workspace.WorkspaceFolders)
-	assert.True(t, initializeParams.Capabilities.Workspace.Configuration)
+	assert.True(t, lo.FromPtr(initializeParams.Capabilities.Workspace.WorkspaceFolders))
+	assert.True(t, lo.FromPtr(initializeParams.Capabilities.Workspace.Configuration))
 	require.NotNil(t, initializeParams.Capabilities.TextDocument)
 	require.NotNil(t, initializeParams.Capabilities.TextDocument.DocumentSymbol)
-	assert.True(t, initializeParams.Capabilities.TextDocument.DocumentSymbol.HierarchicalDocumentSymbolSupport)
+	assert.True(
+		t,
+		lo.FromPtr(initializeParams.Capabilities.TextDocument.DocumentSymbol.HierarchicalDocumentSymbolSupport),
+	)
 }
 
 // TestInitializeParamsUseCustomClientCapabilities proves that RuntimeConfig has a real per-adapter override path
@@ -60,10 +66,11 @@ func TestInitializeParamsUseCustomClientCapabilities(t *testing.T) {
 			customBuilderCalls++
 
 			return protocol.ClientCapabilities{
-				Workspace:    nil,
-				TextDocument: nil,
+				Workspace:        nil,
+				TextDocument:     nil,
+				NotebookDocument: nil,
 				Window: &protocol.WindowClientCapabilities{
-					WorkDoneProgress: true,
+					WorkDoneProgress: new(true),
 					ShowMessage:      nil,
 					ShowDocument:     nil,
 				},
@@ -83,7 +90,7 @@ func TestInitializeParamsUseCustomClientCapabilities(t *testing.T) {
 	assert.Nil(t, initializeParams.Capabilities.Workspace)
 	assert.Nil(t, initializeParams.Capabilities.TextDocument)
 	require.NotNil(t, initializeParams.Capabilities.Window)
-	assert.True(t, initializeParams.Capabilities.Window.WorkDoneProgress)
+	assert.True(t, lo.FromPtr(initializeParams.Capabilities.Window.WorkDoneProgress))
 }
 
 // TestInitializeParamsApplyAdapterPatch proves that one adapter can enrich the shared initialize payload
@@ -97,9 +104,9 @@ func TestInitializeParamsApplyAdapterPatch(t *testing.T) {
 	runtime := newTestRuntime(t, func(cfg *LSPConfig) {
 		cfg.PatchInitializeParams = func(root string, params *protocol.InitializeParams) error {
 			require.Equal(t, normalizedWorkspaceRoot, root)
-			params.RootPath = root
-			params.RootURI = uri.File(root)
-			params.InitializationOptions = map[string]any{"probe": true}
+			params.RootPath = protocol.NewNullable(root)
+			params.RootURI = new(uri.File(root))
+			params.InitializationOptions = protocol.LSPAny(`{"probe":true}`)
 
 			return nil
 		}
@@ -111,12 +118,9 @@ func TestInitializeParamsApplyAdapterPatch(t *testing.T) {
 	initializeParams, err := session.initializeParams(11)
 	require.NoError(t, err)
 
-	assert.Equal(t, normalizedWorkspaceRoot, initializeParams.RootPath)
-	assert.Equal(t, uri.File(normalizedWorkspaceRoot), initializeParams.RootURI)
-	require.NotNil(t, initializeParams.InitializationOptions)
-	optionsJSON, marshalErr := json.Marshal(initializeParams.InitializationOptions)
-	require.NoError(t, marshalErr)
-	assert.JSONEq(t, `{"probe":true}`, string(optionsJSON))
+	assert.Equal(t, protocol.NewNullable(normalizedWorkspaceRoot), initializeParams.RootPath)
+	assert.Equal(t, new(uri.File(normalizedWorkspaceRoot)), initializeParams.RootURI)
+	assert.JSONEq(t, `{"probe":true}`, string(initializeParams.InitializationOptions))
 }
 
 // TestInitializeParamsAdvertiseWatchedFiles proves that sessions with runtime-managed file watching
@@ -140,7 +144,7 @@ func TestInitializeParamsAdvertiseWatchedFiles(t *testing.T) {
 
 	require.NotNil(t, initializeParams.Capabilities.Workspace)
 	require.NotNil(t, initializeParams.Capabilities.Workspace.DidChangeWatchedFiles)
-	assert.True(t, initializeParams.Capabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration)
+	assert.True(t, lo.FromPtr(initializeParams.Capabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration))
 }
 
 // TestGetOrCreateSessionReusesNormalizedRoot proves that equivalent root paths reuse one session key.
@@ -202,7 +206,7 @@ func TestSessionCloseTimesOutWhenWaitNeverFinishes(t *testing.T) {
 		WorkspaceRoot:           workspaceRoot,
 		WorkspaceFolders:        defaultWorkspaceFolders(workspaceRoot),
 	})
-	session.cmd = &exec.Cmd{}
+	session.cmd = NewCommand(t.Context(), "gopls")
 	session.done = make(chan struct{})
 	session.waitResult = make(chan error, 1)
 
@@ -215,6 +219,50 @@ func TestSessionCloseTimesOutWhenWaitNeverFinishes(t *testing.T) {
 	assert.Less(t, duration, 5*shutdownTimeout)
 	assert.Nil(t, session.done)
 	assert.Nil(t, session.waitResult)
+}
+
+// sessionCloseSuite checks how a session ends after its language server process has exited.
+type sessionCloseSuite struct {
+	suite.Suite
+}
+
+// TestSessionCloseSuite runs the checks of how a session ends after its language server exited.
+func TestSessionCloseSuite(t *testing.T) {
+	t.Parallel()
+	suite.Run(t, new(sessionCloseSuite))
+}
+
+// TestAcceptsServerExitWithHeldOutput proves that a server which exited while its descendant still held its stderr
+// counts as a normal end, so close, and the restart that calls it, do not fail.
+func (s *sessionCloseSuite) TestAcceptsServerExitWithHeldOutput() {
+	t := s.T()
+	workspaceRoot := t.TempDir()
+	session := newSession(&sessionConfig{
+		Command:                 "gopls",
+		Args:                    nil,
+		ServerName:              "gopls",
+		ShutdownTimeout:         0,
+		ReplyConfiguration:      nil,
+		BuildClientCapabilities: runtimeClientCapabilities,
+		FileWatch:               nil,
+		PatchInitializeParams:   nil,
+		HandleServerCallback:    nil,
+		AfterInitialized:        nil,
+		WaitUntilReady:          nil,
+		WorkspaceRoot:           workspaceRoot,
+		WorkspaceFolders:        defaultWorkspaceFolders(workspaceRoot),
+	})
+	session.cmd = NewCommand(t.Context(), "gopls")
+	done := make(chan struct{})
+	waitResult := make(chan error, 1)
+	waitResult <- exec.ErrWaitDelay
+	close(waitResult)
+	close(done)
+	session.done = done
+	session.waitResult = waitResult
+
+	s.Require().NoError(session.close(t.Context()))
+	s.Nil(session.done)
 }
 
 // newTestRuntime keeps the session tests focused on the behavior under test instead of repeated runtime setup.

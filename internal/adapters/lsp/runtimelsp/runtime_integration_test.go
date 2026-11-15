@@ -3,7 +3,6 @@
 package runtimelsp
 
 import (
-	"os/exec"
 	"sync"
 	"testing"
 
@@ -101,7 +100,7 @@ func TestIntegrationRuntimeEnsureConnRecoversFromStaleState(t *testing.T) {
 	require.NoError(t, rootErr)
 	runtime.sessions[normalizedWorkspaceRoot] = &managedSession{session: &session{
 		config:     staleConfig,
-		cmd:        &exec.Cmd{},
+		cmd:        NewCommand(ctx, "gopls"),
 		conn:       nil,
 		done:       nil,
 		waitResult: nil,

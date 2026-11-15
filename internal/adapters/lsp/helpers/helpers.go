@@ -66,7 +66,7 @@ func WithRequestDocument(languageID func(ext string) string) func(
 			openErr := conn.Notify(ctx, protocol.MethodTextDocumentDidOpen, &protocol.DidOpenTextDocumentParams{
 				TextDocument: protocol.TextDocumentItem{
 					URI:        documentURI,
-					LanguageID: protocol.LanguageIdentifier(languageID(filepath.Ext(cleanAbsolutePath))),
+					LanguageID: protocol.LanguageKind(languageID(filepath.Ext(cleanAbsolutePath))),
 					Version:    0,
 					Text:       string(content),
 				},

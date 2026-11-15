@@ -19,17 +19,7 @@ func TestRunReturnsNilOnContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	svc := &Service{ //nolint:exhaustruct_v5 // only mcpServer is relevant for context cancellation behavior
-		mcpServer: mcp.NewServer(
-			&mcp.Implementation{ //nolint:exhaustruct_v5 // optional SDK fields are irrelevant for shutdown test
-				Name:    "test-server",
-				Version: "v0.0.0",
-			},
-			nil,
-		),
-	}
-
-	require.NoError(t, svc.Run(ctx))
+	require.NoError(t, newSchemaTestService().Run(ctx))
 }
 
 // TestNewRegistersWorkspaceRootAsRequired proves that the published MCP schema requires workspace_root for all tools.
@@ -95,7 +85,7 @@ func TestGetSymbolsOverviewToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 
 	clientSession := newTestClientSession(t, newSchemaTestService())
 
-	_, err := clientSession.CallTool(
+	result, err := clientSession.CallTool(
 		t.Context(),
 		&mcp.CallToolParams{ //nolint:exhaustruct_v5 // only tool name and arguments matter for the test
 			Name: "get_symbols_overview",
@@ -104,8 +94,8 @@ func TestGetSymbolsOverviewToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 			},
 		},
 	)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "workspace_root")
+	require.NoError(t, err)
+	requireToolErrorMentions(t, result, "workspace_root")
 }
 
 // TestFindSymbolToolRejectsOmittedWorkspaceRoot proves that the public MCP boundary rejects find_symbol calls
@@ -115,7 +105,7 @@ func TestFindSymbolToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 
 	clientSession := newTestClientSession(t, newSchemaTestService())
 
-	_, err := clientSession.CallTool(
+	result, err := clientSession.CallTool(
 		t.Context(),
 		&mcp.CallToolParams{ //nolint:exhaustruct_v5 // only tool name and arguments matter for the test
 			Name: "find_symbol",
@@ -124,8 +114,8 @@ func TestFindSymbolToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 			},
 		},
 	)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "workspace_root")
+	require.NoError(t, err)
+	requireToolErrorMentions(t, result, "workspace_root")
 }
 
 // TestFindReferencingSymbolsToolRejectsOmittedWorkspaceRoot proves that the public MCP boundary rejects
@@ -135,7 +125,7 @@ func TestFindReferencingSymbolsToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 
 	clientSession := newTestClientSession(t, newSchemaTestService())
 
-	_, err := clientSession.CallTool(
+	result, err := clientSession.CallTool(
 		t.Context(),
 		&mcp.CallToolParams{ //nolint:exhaustruct_v5 // only tool name and arguments matter for the test
 			Name: "find_referencing_symbols",
@@ -145,8 +135,20 @@ func TestFindReferencingSymbolsToolRejectsOmittedWorkspaceRoot(t *testing.T) {
 			},
 		},
 	)
-	require.Error(t, err)
-	require.ErrorContains(t, err, "workspace_root")
+	require.NoError(t, err)
+	requireToolErrorMentions(t, result, "workspace_root")
+}
+
+// requireToolErrorMentions checks that a tool call ended with a tool error whose text names the given argument.
+func requireToolErrorMentions(t *testing.T, result *mcp.CallToolResult, argument string) {
+	t.Helper()
+
+	require.NotNil(t, result)
+	require.True(t, result.IsError)
+	require.Len(t, result.Content, 1)
+	textContent, ok := result.Content[0].(*mcp.TextContent)
+	require.True(t, ok)
+	require.Contains(t, textContent.Text, argument)
 }
 
 // newSchemaTestService keeps schema and boundary tests focused on MCP behavior instead of repeated config literals.

@@ -519,7 +519,7 @@ func summarizeRawReferenceLocations(
 
 	occurrences := make([]rawReferenceOccurrence, 0, len(locations))
 	for _, location := range locations {
-		relativePath, err := filepath.Rel(workspaceRoot, location.URI.Filename())
+		relativePath, err := filepath.Rel(workspaceRoot, location.URI.FsPath())
 		require.NoError(t, err)
 		occurrences = append(occurrences, rawReferenceOccurrence{
 			File:      filepath.ToSlash(relativePath),

@@ -20,6 +20,8 @@ type Service struct {
 	mcpServer *mcp.Server
 	// search executes symbolic search use-cases for tool handlers.
 	search ILSP
+	// stopping is closed when the lifecycle context of Run ends, so that running tool calls end at once.
+	stopping chan struct{}
 }
 
 // New constructs MCP server.
@@ -37,6 +39,7 @@ func New(serverVersion string, search ILSP, cfg *config.Config) *Service {
 		mcpServer: mcpServer,
 		search:    search,
 		cfg:       cfg,
+		stopping:  make(chan struct{}),
 	}
 
 	svc.register()
@@ -44,11 +47,20 @@ func New(serverVersion string, search ILSP, cfg *config.Config) *Service {
 	return svc
 }
 
-// Run starts the MCP server with stdio transport.
+// Run serves the MCP client over stdio until ctx ends or the client closes stdin.
 // Parameters:
 //   - ctx: server lifecycle context.
 func (s *Service) Run(ctx context.Context) error {
-	if err := s.mcpServer.Run(ctx, &mcp.StdioTransport{}); err != nil {
+	return s.serve(ctx, &mcp.StdioTransport{})
+}
+
+// serve runs the MCP server over the given client transport until ctx ends or the client input ends.
+func (s *Service) serve(ctx context.Context, transport mcp.Transport) error {
+	// The SDK cancels running tool calls when the client input ends, but waits for them when ctx ends.
+	stopToolCalls := context.AfterFunc(ctx, func() { close(s.stopping) })
+	defer stopToolCalls()
+
+	if err := s.mcpServer.Run(ctx, transport); err != nil {
 		if errors.Is(err, context.Canceled) {
 			return nil
 		}

@@ -19,10 +19,18 @@ type LSPConfig struct {
 	BuildClientCapabilities func() protocol.ClientCapabilities
 	FileWatch               *FileWatchConfig
 	PatchInitializeParams   func(workspaceRoot string, params *protocol.InitializeParams) error
-	HandleServerCallback    func(context.Context, jsonrpc2.Replier, jsonrpc2.Request, string) (bool, error)
+	HandleServerCallback    ServerCallbackHandler
 	AfterInitialized        func(context.Context, jsonrpc2.Conn, string) error
 	WaitUntilReady          func(context.Context, jsonrpc2.Conn, string) error
 }
+
+// ServerCallbackHandler answers one server-to-client message for a workspace before the runtime's generic handling;
+// handled reports whether result and err form the answer.
+type ServerCallbackHandler func(
+	ctx context.Context,
+	req *jsonrpc2.Request,
+	workspaceRoot string,
+) (result any, handled bool, err error)
 
 // FileWatchConfig describes runtime-managed workspace file watching for one LSP session.
 type FileWatchConfig struct {

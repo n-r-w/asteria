@@ -636,7 +636,7 @@ func (s *Service) requestSyntheticHoverInfo(
 		return "", fmt.Errorf("request hover for %q: %w", relativePath, err)
 	}
 
-	return strings.TrimSpace(hover.Contents.Value), nil
+	return helpers.HoverText(hover.Contents)
 }
 
 // parseReexportAliases extracts top-level `export { ... } from` and
@@ -1044,7 +1044,7 @@ func readSyntheticSymbolBody(
 // relativePathFromDefinitionURI converts one definition URI into a
 // workspace-relative path rooted at the active request workspace.
 func relativePathFromDefinitionURI(workspaceRoot string, fileURI uri.URI) (string, error) {
-	absolutePath := filepath.Clean(fileURI.Filename())
+	absolutePath := filepath.Clean(fileURI.FsPath())
 	normalizedAbsolutePath, err := filepath.EvalSymlinks(absolutePath)
 	if err == nil {
 		absolutePath = normalizedAbsolutePath

@@ -40,8 +40,8 @@ func (s *configurationSuite) TestDiagnosticSettingsPreserveBuildConfiguration() 
 			s.Require().NotNil(reply)
 			result, err := reply("workspace", protocol.ConfigurationParams{
 				Items: []protocol.ConfigurationItem{
-					{Section: "gopls", ScopeURI: ""},
-					{Section: "unrelated", ScopeURI: ""},
+					{Section: new("gopls"), ScopeURI: nil},
+					{Section: new("unrelated"), ScopeURI: nil},
 				},
 			})
 			s.Require().NoError(err)

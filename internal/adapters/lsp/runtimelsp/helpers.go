@@ -23,13 +23,13 @@ func newShutdownContext(ctx context.Context, shutdownTimeout time.Duration) (con
 	return context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 }
 
-// killProcess force-stops the language server only when graceful shutdown missed the deadline.
-func killProcess(cmd *exec.Cmd) error {
-	if cmd == nil || cmd.Process == nil {
+// killProcess force-stops the language server and its descendants only when graceful shutdown missed the deadline.
+func killProcess(cmd *Command) error {
+	if cmd == nil {
 		return nil
 	}
 
-	if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+	if err := cmd.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		return err
 	}
 
@@ -66,6 +66,11 @@ func normalizeWaitErrorOnShutdown(err error) error {
 	}
 
 	if _, ok := errors.AsType[*exec.ExitError](err); ok {
+		return nil
+	}
+
+	// The server exited on its own while a descendant held its stderr; Wait has released the tree, so the descendant ends.
+	if errors.Is(err, exec.ErrWaitDelay) {
 		return nil
 	}
 

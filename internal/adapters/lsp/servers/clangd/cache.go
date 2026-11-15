@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"go.lsp.dev/protocol"
 	"gopkg.in/yaml.v3"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
@@ -102,7 +103,8 @@ func (s *Service) buildSymbolTreeCacheMetadata(
 	if err != nil {
 		return nil, err
 	}
-	if sessionInfo == nil || sessionInfo.InitializeResult == nil || sessionInfo.InitializeResult.ServerInfo == nil {
+	if sessionInfo == nil || sessionInfo.InitializeResult == nil ||
+		sessionInfo.InitializeResult.ServerInfo == (protocol.ServerInfo{}) {
 		metadata.DisabledReason = cacheDisabledMissingServerInfo
 
 		return metadata, nil
@@ -114,7 +116,8 @@ func (s *Service) buildSymbolTreeCacheMetadata(
 
 		return metadata, nil
 	}
-	serverVersion := strings.TrimSpace(sessionInfo.InitializeResult.ServerInfo.Version)
+	rawServerVersion, _ := sessionInfo.InitializeResult.ServerInfo.Version.Get()
+	serverVersion := strings.TrimSpace(rawServerVersion)
 	if serverVersion == "" {
 		metadata.DisabledReason = cacheDisabledEmptyServerVersion
 

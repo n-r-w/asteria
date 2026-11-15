@@ -38,7 +38,7 @@ const (
 	clangdAdapterName                = "clangd"
 	clangdSymbolTreeProfileID        = "std"
 	clangdSymbolTreeBehaviorVersion  = "clangd-symbol-tree-v1"
-	clangdCacheDirPermissions        = 0o755
+	clangdCacheDirPermissions        = 0o750
 	clangdManagedFilePermissions     = 0o600
 )
 

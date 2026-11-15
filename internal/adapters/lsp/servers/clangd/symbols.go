@@ -149,9 +149,13 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 		return nil
 	}
 
-	params.InitializationOptions = map[string]any{
+	initializationOptions, err := helpers.MarshalLSPAny(map[string]any{
 		clangdCompilationDatabasePathKey: cacheDir,
+	})
+	if err != nil {
+		return err
 	}
+	params.InitializationOptions = initializationOptions
 
 	return nil
 }

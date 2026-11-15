@@ -85,15 +85,19 @@ func patchInitializeParams(
 	params *protocol.InitializeParams,
 ) error {
 	//nolint:staticcheck // Supported typescript-language-server versions require RootURI to find workspace TypeScript.
-	params.RootURI = uri.File(workspaceRoot)
+	params.RootURI = new(uri.File(workspaceRoot))
 	serverOptions := map[string]any{tsserverUseSyntaxServerKey: "never"}
 	if config.TSServerFallbackPath != "" {
 		serverOptions[tsserverFallbackPathKey] = config.TSServerFallbackPath
 	}
-	params.InitializationOptions = map[string]any{
+	initializationOptions, err := helpers.MarshalLSPAny(map[string]any{
 		maxTsServerMemoryKey: config.MaxTSServerMemory,
 		tsserverOptionsKey:   serverOptions,
+	})
+	if err != nil {
+		return err
 	}
+	params.InitializationOptions = initializationOptions
 
 	return nil
 }

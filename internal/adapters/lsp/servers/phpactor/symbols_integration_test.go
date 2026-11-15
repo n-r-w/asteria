@@ -425,6 +425,22 @@ func TestIntegrationRouterFindSymbolUsesDirectoryFilterWithPersistedIndex(t *tes
 	)
 }
 
+// TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8 proves that workspace-wide PHP search
+// reads a file whose string literal holds bytes that are not valid UTF-8, as generated protobuf metadata does.
+func TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8(t *testing.T) {
+	workspaceRoot := phpactorFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	result, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "BinaryMetadata/descriptor"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            "",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"binary_metadata.php"}, collectFoundSymbolFiles(result.Symbols))
+}
+
 // TestIntegrationServiceFindReferencingSymbolsGroupsReferences proves that live reference lookup groups PHP
 // usages by the smallest containing symbol exposed in the referencing file.
 func TestIntegrationServiceFindReferencingSymbolsGroupsReferences(t *testing.T) {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -17,6 +16,7 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
@@ -402,8 +402,7 @@ func runPHPActorPropertyReferences(
 	stdout := bytes.Buffer{}
 	stderr := bytes.Buffer{}
 
-	//nolint:gosec // Command and arguments are adapter-owned constants plus validated symbol names.
-	cmd := exec.CommandContext(
+	cmd := runtimelsp.NewCommand(
 		ctx,
 		phpactorServerName,
 		"--no-interaction",
@@ -432,7 +431,7 @@ func runPHPActorPropertyReferences(
 func buildPHPActorIndex(ctx context.Context, workspaceRoot string) error {
 	stderr := bytes.Buffer{}
 
-	cmd := exec.CommandContext(
+	cmd := runtimelsp.NewCommand(
 		ctx,
 		phpactorServerName,
 		"--no-interaction",

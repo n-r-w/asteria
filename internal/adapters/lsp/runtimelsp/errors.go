@@ -9,6 +9,13 @@ import (
 
 var errRuntimeClosing = errors.New("runtime is closing")
 
+var (
+	// errStdoutAlreadySet repeats the exec.Cmd error for a caller that set Stdout before an output method.
+	errStdoutAlreadySet = errors.New("exec: Stdout already set")
+	// errStderrAlreadySet repeats the exec.Cmd error for a caller that set Stderr before CombinedOutput.
+	errStderrAlreadySet = errors.New("exec: Stderr already set")
+)
+
 // wrapShutdownError keeps shutdown cleanup readable when some steps legitimately return nil.
 func wrapShutdownError(operation string, err error) error {
 	if err == nil {

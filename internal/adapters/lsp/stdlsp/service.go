@@ -575,7 +575,7 @@ func (s *Service) requestHoverInfo(
 		return "", fmt.Errorf("request hover for %q: %w", relativePath, callErr)
 	}
 
-	return strings.TrimSpace(hover.Contents.Value), nil
+	return helpers.HoverText(hover.Contents)
 }
 
 // buildFoundSymbol materializes body and hover metadata for one symbol row on demand.
@@ -653,7 +653,7 @@ func (s *Service) buildFoundSymbol(
 
 // relativePathFromURI converts one file URI into a safe workspace-relative path.
 func (s *Service) relativePathFromURI(workspaceRoot string, fileURI uri.URI) (string, error) {
-	absolutePath := filepath.Clean(fileURI.Filename())
+	absolutePath := filepath.Clean(fileURI.FsPath())
 	normalizedAbsolutePath, err := filepath.EvalSymlinks(absolutePath)
 	if err == nil {
 		absolutePath = normalizedAbsolutePath

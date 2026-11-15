@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sync"
 
 	"go.lsp.dev/jsonrpc2"
@@ -19,7 +18,7 @@ type session struct {
 	config *sessionConfig
 	mu     sync.Mutex
 
-	cmd         *exec.Cmd
+	cmd         *Command
 	conn        jsonrpc2.Conn
 	fileWatcher *workspaceFileWatcher
 	info        *SessionInfo
@@ -60,10 +59,6 @@ func (s *session) infoSnapshot() *SessionInfo {
 	}
 
 	initializeResultCopy := *s.info.InitializeResult
-	if s.info.InitializeResult.ServerInfo != nil {
-		serverInfoCopy := *s.info.InitializeResult.ServerInfo
-		initializeResultCopy.ServerInfo = &serverInfoCopy
-	}
 
 	return &SessionInfo{InitializeResult: &initializeResultCopy}
 }
@@ -110,8 +105,7 @@ func (s *session) startLocked(ctx context.Context) error {
 	}
 
 	var stderr bytes.Buffer
-	//nolint:gosec // RuntimeConfig is built in code for known language servers, not from user input.
-	cmd := exec.CommandContext(startupCtx, s.config.Command, s.config.Args...)
+	cmd := NewCommand(startupCtx, s.config.Command, s.config.Args...)
 	cmd.Dir = s.config.WorkspaceRoot
 	cmd.Stderr = &stderr
 
@@ -131,7 +125,10 @@ func (s *session) startLocked(ctx context.Context) error {
 
 	// Persist the process state before the handshake so cleanup can unwind partial startup.
 	s.cmd = cmd
-	s.conn = jsonrpc2.NewConn(jsonrpc2.NewStream(&stdioConn{reader: stdout, writer: stdin}))
+	s.conn = jsonrpc2.NewConn(
+		jsonrpc2.NewStream(&stdioConn{reader: stdout, writer: stdin}),
+		jsonrpc2.WithCodec(lspCodec{}),
+	)
 	done := make(chan struct{})
 	waitResult := make(chan error, 1)
 	s.done = done
@@ -216,16 +213,16 @@ func (s *session) initializeParams(processID int32) (*protocol.InitializeParams,
 	//nolint:exhaustruct_v5 // The literal intentionally omits deprecated RootPath and RootURI.
 	params := &protocol.InitializeParams{
 		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
-		ProcessID:              processID,
-		ClientInfo: &protocol.ClientInfo{
+		WorkspaceFolders:       protocol.NewNullable(s.config.WorkspaceFolders),
+		ProcessID:              &processID,
+		ClientInfo: protocol.ClientInfo{
 			Name:    domain.ServerName,
-			Version: "",
+			Version: protocol.Optional[string]{},
 		},
-		Locale:                "en",
+		Locale:                new("en"),
 		InitializationOptions: nil,
 		Capabilities:          s.config.BuildClientCapabilities(),
-		Trace:                 protocol.TraceOff,
-		WorkspaceFolders:      s.config.WorkspaceFolders,
+		Trace:                 protocol.TraceValueOff,
 	}
 	if s.config.FileWatch != nil && s.config.FileWatch.RelevantFile != nil {
 		params.Capabilities = enableDidChangeWatchedFilesCapability(params.Capabilities)

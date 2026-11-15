@@ -599,5 +599,6 @@ func newToolTestService(search ILSP) *Service {
 		},
 		mcpServer: nil,
 		search:    search,
+		stopping:  make(chan struct{}),
 	}
 }

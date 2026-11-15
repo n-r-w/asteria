@@ -18,7 +18,7 @@ import (
 
 // watchEffect describes how one filesystem event changes the runtime-managed watch state and the LSP view.
 type watchEffect struct {
-	fileEvents []*protocol.FileEvent
+	fileEvents []protocol.FileEvent
 	addDirs    []string
 }
 
@@ -260,7 +260,7 @@ func translateWatchEvent(
 	if !ok {
 		return effect, nil
 	}
-	effect.fileEvents = []*protocol.FileEvent{{
+	effect.fileEvents = []protocol.FileEvent{{
 		Type: changeType,
 		URI:  uri.File(absolutePath),
 	}}
