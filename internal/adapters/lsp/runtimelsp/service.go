@@ -26,7 +26,8 @@ type Runtime struct {
 	active   int
 	// backgroundCloses counts the sessions that shut down in the background, so Close can wait for them.
 	backgroundCloses sync.WaitGroup
-	// forceBackgroundCloses closes when Close starts, so the sessions that shut down in the background stop at once.
+	// forceBackgroundCloses closes when Close starts, so the background closes skip the graceful shutdown and kill their
+	// servers at once.
 	forceBackgroundCloses chan struct{}
 }
 
@@ -193,8 +194,8 @@ func (r *Runtime) newSessionConfig(workspaceRoot string) (*sessionConfig, error)
 	}, nil
 }
 
-// closeInBackground detaches managed while it is the session registered for root, so that the next access starts a
-// new session, and Close stops the background shutdown of the detached one and waits for it.
+// closeInBackground removes managed from the sessions of root and shuts it down in a goroutine that Close forces to
+// stop and waits for; it does nothing when managed is no longer registered for root or the runtime is closing.
 func (r *Runtime) closeInBackground(ctx context.Context, root string, managed *managedSession) {
 	r.mu.Lock()
 	if r.closing || r.sessions[root] != managed {
@@ -220,7 +221,8 @@ func (r *Runtime) closeInBackground(ctx context.Context, root string, managed *m
 	}()
 }
 
-// Close shuts down all live sessions so process-level cleanup stays explicit to the caller.
+// Close shuts down all live sessions and the sessions that close in the background, so process-level cleanup stays
+// explicit to the caller.
 func (r *Runtime) Close(ctx context.Context) error {
 	r.mu.Lock()
 	if r.closing {
@@ -231,8 +233,8 @@ func (r *Runtime) Close(ctx context.Context) error {
 	close(r.forceBackgroundCloses)
 	r.mu.Unlock()
 
-	// No background close starts while the runtime is closing, and each one stops at once and waits for its server to
-	// exit within its post-kill budget.
+	// No background close starts while the runtime is closing; each running one kills its server at once and waits for
+	// its exit up to ShutdownTimeout.
 	r.backgroundCloses.Wait()
 
 	closeCtx, cancel := newShutdownContext(ctx, r.config.ShutdownTimeout)

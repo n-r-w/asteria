@@ -6,11 +6,14 @@ import (
 	"time"
 )
 
-// AcquiredSession is one acquisition of a workspace session, which the caller releases and may close in the
-// background.
+// AcquiredSession is one acquisition of a workspace session; the caller releases the acquisition and may close the
+// session in the background.
 type AcquiredSession struct {
+	// runtime owns the acquired session.
 	runtime *Runtime
-	root    string
+	// root is the normalized workspace root of the session.
+	root string
+	// managed is the acquired session.
 	managed *managedSession
 }
 
@@ -19,11 +22,13 @@ func (a *AcquiredSession) Release() {
 	a.runtime.releaseSession(a.root, a.managed)
 }
 
-// CloseInBackground detaches the acquired session, when it is still the session registered for its workspace root,
-// so that the next access starts a new session, and shuts it down in the background; Runtime.Close stops this
-// shutdown and waits for it.
-func (a *AcquiredSession) CloseInBackground(ctx context.Context) {
+// ReleaseAndCloseInBackground shuts down the acquired session without waiting, so that the next access to its
+// workspace root starts a new session, and then ends the acquisition like Release; the close does nothing when a
+// newer session serves this root or the runtime is closing.
+func (a *AcquiredSession) ReleaseAndCloseInBackground(ctx context.Context) {
+	// The acquisition holds the session during the close, so the release cannot schedule an idle close for it.
 	a.runtime.closeInBackground(ctx, a.root, a.managed)
+	a.Release()
 }
 
 // AcquireSession keeps a workspace session available for the complete caller workflow.

@@ -26,8 +26,7 @@ func (s *Service) GetSymbolsOverview(
 		if acquireErr != nil {
 			return domain.GetSymbolsOverviewResult{}, acquireErr
 		}
-		defer s.closeSessionAfterCanceledRequest(ctx, acquired)
-		defer acquired.Release()
+		defer releaseSessionAfterRequest(ctx, acquired)
 	}
 
 	result, err := s.std.GetSymbolsOverview(ctx, request)
@@ -69,8 +68,7 @@ func (s *Service) FindSymbol(
 		if acquireErr != nil {
 			return domain.FindSymbolResult{}, acquireErr
 		}
-		defer s.closeSessionAfterCanceledRequest(ctx, acquired)
-		defer acquired.Release()
+		defer releaseSessionAfterRequest(ctx, acquired)
 	}
 
 	result, failures, err := s.std.FindSymbolWithFailures(ctx, request)
@@ -158,8 +156,8 @@ func addPHPConstants(
 	return result, nil
 }
 
-// FindReferencingSymbols waits until the phpactor session finishes indexing the workspace, or returns the context error
-// at the deadline, and then returns the references of all indexed files.
+// FindReferencingSymbols waits until the phpactor session finishes indexing the workspace and then returns the
+// references from all indexed files; when ctx ends during the wait, it returns the error of ctx.
 // Warnings of the result name the files with references that could not be processed, and count the files not processed
 // because the search or the property reference fallback stopped at the request deadline.
 func (s *Service) FindReferencingSymbols(
@@ -181,15 +179,17 @@ func (s *Service) FindReferencingSymbols(
 	if acquireErr != nil {
 		return domain.FindReferencingSymbolsResult{}, acquireErr
 	}
-	// A request that ends while it waits for indexing sent phpactor no request, so the session keeps indexing for
-	// later requests.
+	// A request that ends while it waits for indexing has sent phpactor no search request, so the session stays open
+	// and keeps indexing for later requests.
 	endedDuringIndexing := false
 	defer func() {
-		if !endedDuringIndexing {
-			s.closeSessionAfterCanceledRequest(ctx, acquired)
+		if endedDuringIndexing {
+			acquired.Release()
+
+			return
 		}
+		releaseSessionAfterRequest(ctx, acquired)
 	}()
-	defer acquired.Release()
 
 	targetFile, targetPath, err := helpers.ResolveDocumentPath(workspaceRoot, request.File)
 	if err != nil {

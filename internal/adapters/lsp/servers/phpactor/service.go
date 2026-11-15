@@ -44,8 +44,7 @@ type Service struct {
 	indexing map[string]indexingDone
 }
 
-// indexingDone is a channel that finishIndexing closes when a phpactor session reports the end of indexing, and
-// reference searches wait on it.
+// indexingDone closes when a phpactor session reports the end of indexing of its workspace root.
 type indexingDone chan struct{}
 
 // isClosed reports whether the session has reported the end of indexing.
@@ -239,14 +238,16 @@ func (*Service) Extensions() []string {
 	return extensions
 }
 
-// closeSessionAfterCanceledRequest stops the phpactor work of a request that can no longer produce a tool response,
-// without making the tool response wait for the shutdown and without touching a session that replaced the acquired one.
-func (*Service) closeSessionAfterCanceledRequest(ctx context.Context, acquired *runtimelsp.AcquiredSession) {
+// releaseSessionAfterRequest releases the acquired session and, when ctx has ended, shuts it down in the background, so
+// that phpactor stops work that no tool response can use.
+func releaseSessionAfterRequest(ctx context.Context, acquired *runtimelsp.AcquiredSession) {
 	if ctx.Err() == nil {
+		acquired.Release()
+
 		return
 	}
 
-	acquired.CloseInBackground(ctx)
+	acquired.ReleaseAndCloseInBackground(ctx)
 }
 
 // Close shuts down the live phpactor session so process-level cleanup stays explicit.

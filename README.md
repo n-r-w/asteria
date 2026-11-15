@@ -200,10 +200,15 @@ Make sure `~/.local/bin` is in `PATH`.
 
 Source: <https://phpactor.readthedocs.io/en/master/usage/standalone.html>
 
-The first `find_referencing_symbols` call in a project waits until `phpactor` indexes the project. On a project of 18,000 PHP files, this wait took about a minute.
-Asteria keeps the index under `ASTERIAMCP_CACHE_ROOT` and reuses it in later sessions, where the wait takes less than a second.
-When indexing takes longer than `ASTERIAMCP_TOOL_TIMEOUT`, the call fails with a timeout error and `phpactor` keeps indexing, so repeat the call.
-`find_referencing_symbols` for PHP finds no references in files that `phpactor` does not index: tests of packages under `vendor` (`vendor/**/tests`, `vendor/**/Tests`), `vendor/composer`, the Rector stubs in `vendor/rector/rector/stubs-rector`, and files larger than 1,000,000 bytes.
+`find_referencing_symbols` waits until `phpactor` finishes indexing the project in each new session. On a project of 17,596 PHP files with an empty cache, the wait took 52.5 seconds.
+Asteria keeps the `phpactor` index under `ASTERIAMCP_CACHE_ROOT`, and later sessions reuse it. With this index, the wait on the same project took 0.5 seconds.
+When `ASTERIAMCP_TOOL_TIMEOUT` ends during the wait, the call returns a timeout error and `phpactor` continues indexing. A later call waits only for the rest of the indexing. For a large project, increase `ASTERIAMCP_TOOL_TIMEOUT` so that the first call can finish.
+
+By default, `phpactor` 2026.06.23.0 does not index files that match its default exclude patterns or exceed its file size limit, and `find_referencing_symbols` returns no references from them:
+- tests of packages under `vendor`: `vendor/**/tests` and `vendor/**/Tests`;
+- `vendor/composer`;
+- the Rector stubs in `vendor/rector/rector/stubs-rector`;
+- files larger than 1,000,000 bytes.
 
 ### Rust
 

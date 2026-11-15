@@ -120,10 +120,9 @@ func (s *backgroundCloseSuite) TestReturnsBeforeCloseAndStartsNewSession() {
 
 		acquired, err := runtime.AcquireClosableSession(t.Context(), root)
 		require.NoError(t, err)
-		acquired.Release()
 		returned := make(chan struct{})
 		go func() {
-			acquired.CloseInBackground(t.Context())
+			acquired.ReleaseAndCloseInBackground(t.Context())
 			close(returned)
 		}()
 		synctest.Wait()
@@ -162,8 +161,8 @@ func (s *backgroundCloseSuite) TestRuntimeCloseWaitsForBackgroundClose() {
 	})
 }
 
-// TestLateCleanupKeepsReplacementSession proves that the cleanup of a request whose session was already detached
-// leaves the replacement session that another request uses registered.
+// TestLateCleanupKeepsReplacementSession checks that a background close by a request whose session was already closed
+// keeps the replacement session registered.
 func (s *backgroundCloseSuite) TestLateCleanupKeepsReplacementSession() {
 	synctest.Test(s.T(), func(t *testing.T) {
 		runtime := newTestRuntime(t, nil)
@@ -174,15 +173,13 @@ func (s *backgroundCloseSuite) TestLateCleanupKeepsReplacementSession() {
 		requestB, err := runtime.AcquireClosableSession(t.Context(), root)
 		require.NoError(t, err)
 
-		requestA.Release()
-		requestA.CloseInBackground(t.Context())
+		requestA.ReleaseAndCloseInBackground(t.Context())
 		releaseC, err := runtime.AcquireSession(t.Context(), root)
 		require.NoError(t, err)
 		replacement, err := runtime.getOrCreateSession(root)
 		require.NoError(t, err)
 
-		requestB.Release()
-		requestB.CloseInBackground(t.Context())
+		requestB.ReleaseAndCloseInBackground(t.Context())
 
 		registered, err := runtime.getOrCreateSession(root)
 		require.NoError(t, err)
@@ -194,9 +191,30 @@ func (s *backgroundCloseSuite) TestLateCleanupKeepsReplacementSession() {
 	})
 }
 
+// TestCleanupClosesBeforeRelease checks that the cleanup of a request whose context ended detaches its session while
+// the acquisition still holds it, so the release schedules no idle close that could race with the background close.
+func (s *backgroundCloseSuite) TestCleanupClosesBeforeRelease() {
+	synctest.Test(s.T(), func(t *testing.T) {
+		runtime := newTestRuntime(t, nil)
+		root := t.TempDir()
+		_, serverExited := newSessionThatExitsLater(t, runtime, root)
+		acquired, err := runtime.AcquireClosableSession(t.Context(), root)
+		require.NoError(t, err)
+
+		acquired.ReleaseAndCloseInBackground(t.Context())
+
+		s.True(acquired.managed.idleDeadline.IsZero(), "the release scheduled an idle close")
+
+		close(serverExited)
+		require.NoError(t, runtime.Close(t.Context()))
+	})
+}
+
 // TestRuntimeCloseForcesBackgroundCloseToStop proves that runtime shutdown ends the graceful phase of a session that
 // closes in the background at once, waits until its server exits, and closes the live sessions too.
-// It runs in real time because the JSON-RPC connection reuses its call state across synctest bubbles.
+// It runs in real time: go.lsp.dev/jsonrpc2 keeps call waiters with their ready channels in the package-level
+// waiterPool sync.Pool, so a waiter from one synctest bubble is reused in another and fails with "select on synctest
+// channel from outside bubble".
 func (s *backgroundCloseSuite) TestRuntimeCloseForcesBackgroundCloseToStop() {
 	t := s.T()
 	const shutdownTimeout = 5 * time.Second
@@ -259,15 +277,14 @@ func isClosed(ch chan struct{}) bool {
 	}
 }
 
-// closeAcquiredInBackground acquires the session of root, releases it, and closes it in the background, as a request
-// that ended by its deadline does.
+// closeAcquiredInBackground acquires the session of root and closes it in the background with the release, as a
+// request that ended by its deadline does.
 func closeAcquiredInBackground(t *testing.T, runtime *Runtime, root string) {
 	t.Helper()
 
 	acquired, err := runtime.AcquireClosableSession(t.Context(), root)
 	require.NoError(t, err)
-	acquired.Release()
-	acquired.CloseInBackground(t.Context())
+	acquired.ReleaseAndCloseInBackground(t.Context())
 }
 
 // newSessionThatExitsLater registers a session of root whose server process exits only when the returned channel

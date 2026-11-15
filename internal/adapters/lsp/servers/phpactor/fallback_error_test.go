@@ -43,8 +43,9 @@ func TestInMemorySearch(t *testing.T) {
 	suite.Run(t, new(inMemorySearchSuite))
 }
 
-// TestReferenceSearchWaitsForEndOfIndexing checks that a reference search sends no request to the language server
-// before phpactor reports the end of indexing, ends with the deadline error, and runs after the report.
+// TestReferenceSearchWaitsForEndOfIndexing checks that a reference search before phpactor reports the end of indexing
+// sends no request to the language server and ends with the deadline error, and that a search after the report returns
+// references.
 func (s *inMemorySearchSuite) TestReferenceSearchWaitsForEndOfIndexing() {
 	var requests atomic.Int32
 	service, request, server := s.newServiceWithServer(
