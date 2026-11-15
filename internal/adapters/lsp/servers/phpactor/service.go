@@ -21,10 +21,19 @@ const phpactorShutdownTimeout = 15 * time.Second
 
 // Service implements phpactor-specific symbolic search logic.
 type Service struct {
-	rt                  *runtimelsp.Runtime
+	rt *runtimelsp.Runtime
+	// ensureConn returns the live connection of the workspace session for adapter-specific requests.
+	ensureConn          stdlsp.EnsureConnFunc
 	std                 *stdlsp.Service
 	withRequestDocument stdlsp.WithRequestDocumentFunc
-	cacheRoot           string
+	// runPropertyReferences returns the property usages that phpactor's member-reference command finds.
+	runPropertyReferences func(
+		ctx context.Context,
+		workspaceRoot string,
+		referenceTarget string,
+		propertyName string,
+	) ([]phpactorReferenceRow, error)
+	cacheRoot string
 }
 
 var (
@@ -42,10 +51,12 @@ func New(cacheRoot string, sessionIdleTimeout time.Duration) (*Service, error) {
 
 	withRequestDocument := helpers.WithRequestDocument(func(_ string) string { return phpLanguageID })
 	service := &Service{
-		rt:                  nil,
-		std:                 nil,
-		withRequestDocument: nil,
-		cacheRoot:           normalizedCacheRoot,
+		rt:                    nil,
+		ensureConn:            nil,
+		std:                   nil,
+		withRequestDocument:   nil,
+		runPropertyReferences: runPHPActorPropertyReferences,
+		cacheRoot:             normalizedCacheRoot,
 	}
 
 	rt, err := runtimelsp.New(&runtimelsp.RuntimeConfig{
@@ -86,6 +97,7 @@ func New(cacheRoot string, sessionIdleTimeout time.Duration) (*Service, error) {
 	}
 
 	service.rt = rt
+	service.ensureConn = rt.EnsureConn
 	service.std = std
 	service.withRequestDocument = withRequestDocument
 

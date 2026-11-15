@@ -26,6 +26,7 @@ import (
 func newTestService(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig) *Service {
 	return &Service{
 		rt:                         nil,
+		ensureConn:                 nil,
 		std:                        nil,
 		stdReferences:              nil,
 		withRequestDocument:        nil,

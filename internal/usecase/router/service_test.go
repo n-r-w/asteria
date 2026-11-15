@@ -541,17 +541,23 @@ func TestServiceFindSymbol(t *testing.T) {
 			StartLine: 11,
 			EndLine:   18,
 		}
+		goWarning := ".go: 1 file is not searched: broken.go: permission denied"
 		goLSP.EXPECT().FindSymbol(t.Context(), lspRequest).
-			Return(domain.FindSymbolResult{Symbols: []domain.FoundSymbol{goSymbol}, Warnings: nil}, nil)
+			Return(domain.FindSymbolResult{Symbols: []domain.FoundSymbol{goSymbol}, Warnings: []string{goWarning}}, nil)
 		tsLSP.EXPECT().FindSymbol(t.Context(), lspRequest).
 			Return(domain.FindSymbolResult{}, domain.NewToolError("initialize typescript-language-server", errors.New("boom")))
 
 		result, findErr := svc.FindSymbol(t.Context(), request)
 		require.NoError(t, findErr)
 		assert.Equal(t, []domain.FoundSymbol{goSymbol}, result.Symbols)
-		require.Len(t, result.Warnings, 1)
-		assert.True(t, strings.HasPrefix(result.Warnings[0], ".js files are not searched: "), result.Warnings[0])
-		assert.Contains(t, result.Warnings[0], "initialize typescript-language-server: boom")
+		require.Len(t, result.Warnings, 2)
+		assert.Contains(t, result.Warnings, goWarning)
+		tsWarning := result.Warnings[0]
+		if tsWarning == goWarning {
+			tsWarning = result.Warnings[1]
+		}
+		assert.True(t, strings.HasPrefix(tsWarning, ".js files are not searched: "), tsWarning)
+		assert.Contains(t, tsWarning, "initialize typescript-language-server: boom")
 	})
 
 	t.Run("missing scope path names the argument", func(t *testing.T) {
@@ -673,6 +679,7 @@ func TestServiceFindReferencingSymbols(t *testing.T) {
 			Content:          "GetSymbolsOverview",
 		}},
 		Incomplete: false,
+		Warnings:   nil,
 	}
 
 	goLSP.EXPECT().FindReferencingSymbols(t.Context(), lspRequest).Return(expected, nil)
@@ -858,6 +865,7 @@ func TestServiceFindReferencingSymbolsUsesExplicitWorkspaceRoot(t *testing.T) {
 			Content:          "Service()",
 		}},
 		Incomplete: false,
+		Warnings:   nil,
 	}
 
 	goLSP.EXPECT().FindReferencingSymbols(t.Context(), lspRequest).Return(expected, nil)

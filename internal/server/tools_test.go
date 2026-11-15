@@ -186,6 +186,7 @@ func TestFindReferencingSymbolsOutputJSONKeepsEmptyFilesArray(t *testing.T) {
 		findReferencingSymbolsOutput{
 			Files:           toReferencingFileDTOs(nil),
 			Incomplete:      false,
+			Warnings:        nil,
 			ReturnedPercent: 0,
 		},
 	)
@@ -209,6 +210,7 @@ func TestFindReferencingSymbolsOutputJSONKeepsFlatReferenceFields(t *testing.T) 
 			}},
 		}},
 		Incomplete:      false,
+		Warnings:        nil,
 		ReturnedPercent: 0,
 	})
 	require.NoError(t, err)
@@ -228,6 +230,7 @@ func TestFindReferencingSymbolsOutputJSONIncludesIncompleteWhenSet(t *testing.T)
 		findReferencingSymbolsOutput{
 			Files:           toReferencingFileDTOs(nil),
 			Incomplete:      true,
+			Warnings:        nil,
 			ReturnedPercent: 0,
 		},
 	)
@@ -516,7 +519,8 @@ func TestFindReferencingSymbolsToolMapsWorkspaceRoot(t *testing.T) {
 		WorkspaceRoot: "/tmp/workspace",
 		File:          "fixture.go",
 	}
-	expectedResult := domain.FindReferencingSymbolsResult{Symbols: nil, Incomplete: true}
+	warning := ".go: 1 file is not processed: a.go: permission denied"
+	expectedResult := domain.FindReferencingSymbolsResult{Symbols: nil, Incomplete: true, Warnings: []string{warning}}
 
 	search.EXPECT().FindReferencingSymbols(gomock.Any(), expectedRequest).Return(expectedResult, nil)
 
@@ -524,6 +528,7 @@ func TestFindReferencingSymbolsToolMapsWorkspaceRoot(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, output.Files)
 	assert.True(t, output.Incomplete)
+	assert.Equal(t, []string{warning}, output.Warnings)
 }
 
 // TestFindReferencingSymbolsToolReturnsPublicTimeoutError proves that heavy tool calls stop

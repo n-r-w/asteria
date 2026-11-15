@@ -19,7 +19,9 @@ import (
 // Service implements TypeScript-specific symbolic search logic.
 type Service struct {
 	*stdlsp.Service
-	rt                  *runtimelsp.Runtime
+	rt *runtimelsp.Runtime
+	// ensureConn returns the live connection of the workspace session for adapter-specific requests.
+	ensureConn          stdlsp.EnsureConnFunc
 	withRequestDocument stdlsp.WithRequestDocumentFunc
 }
 
@@ -75,6 +77,7 @@ func New(config cfgadapters.TSLSConfig, sessionIdleTimeout time.Duration) (*Serv
 	return &Service{
 		Service:             std,
 		rt:                  rt,
+		ensureConn:          rt.EnsureConn,
 		withRequestDocument: withRequestDocument,
 	}, nil
 }

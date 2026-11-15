@@ -20,6 +20,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 )
 
 var rawReferenceScenarioFiles = []string{"fixture.js", "fixture.ts", "references.ts"}
@@ -385,7 +386,7 @@ func runWithOpenFiles(
 ) error {
 	t.Helper()
 
-	return runWithOpenReferenceWorkflowFiles(
+	return runWithOpenAbsoluteFiles(
 		ctx,
 		conn,
 		absolutePaths,
@@ -572,4 +573,32 @@ func findRawDocumentSymbol(symbols []protocol.DocumentSymbol, name string) (prot
 	}
 
 	return protocol.DocumentSymbol{}, false
+}
+
+// runWithOpenAbsoluteFiles keeps every given file open until the wrapped call finishes and fails on any open error.
+func runWithOpenAbsoluteFiles(
+	ctx context.Context,
+	conn jsonrpc2.Conn,
+	absolutePaths []string,
+	withRequestDocument stdlsp.WithRequestDocumentFunc,
+	run func(context.Context) error,
+) error {
+	if len(absolutePaths) == 0 {
+		return run(ctx)
+	}
+
+	return withRequestDocument(ctx, conn, absolutePaths[0], func(callCtx context.Context) error {
+		return runWithOpenAbsoluteFiles(callCtx, conn, absolutePaths[1:], withRequestDocument, run)
+	})
+}
+
+// warmRequestDocuments sends the warm-up request for each given file and fails on the first error.
+func warmRequestDocuments(ctx context.Context, conn jsonrpc2.Conn, absolutePaths []string) error {
+	for _, absolutePath := range absolutePaths {
+		if err := warmRequestDocument(ctx, conn, absolutePath); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

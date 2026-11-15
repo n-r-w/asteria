@@ -131,7 +131,7 @@ func (r *FindSymbolRequest) Validate() error {
 type FindSymbolResult struct {
 	// Symbols contains the matched symbol locations.
 	Symbols []FoundSymbol
-	// Warnings names files that the search skipped because their language server failed.
+	// Warnings names files that the search skipped because their language server failed or they could not be processed.
 	Warnings []string
 }
 
@@ -228,6 +228,8 @@ type FindReferencingSymbolsResult struct {
 	Symbols []ReferencingSymbol
 	// Incomplete reports that the backing language server may not have indexed the whole workspace yet.
 	Incomplete bool
+	// Warnings names files with references that the search could not process, with the reasons.
+	Warnings []string
 }
 
 // validateLSPKind checks if the provided symbol kind is a valid LSP SymbolKind.

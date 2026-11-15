@@ -63,9 +63,18 @@ func New(config *Config) (*Service, error) {
 		return nil, fmt.Errorf("invalid stdlsp config: %w", err)
 	}
 
+	ensureConn := config.EnsureConn
+
 	return &Service{config: &Config{
-		Extensions:                   config.Extensions,
-		EnsureConn:                   config.EnsureConn,
+		Extensions: config.Extensions,
+		EnsureConn: func(ctx context.Context, workspaceRoot string) (jsonrpc2.Conn, error) {
+			conn, ensureErr := ensureConn(ctx, workspaceRoot)
+			if ensureErr != nil {
+				return nil, helpers.NewSessionError(ensureErr)
+			}
+
+			return conn, nil
+		},
 		WithRequestDocument:          config.WithRequestDocument,
 		OpenFileForDocumentSymbol:    config.OpenFileForDocumentSymbol,
 		OpenFileForReferenceWorkflow: config.OpenFileForReferenceWorkflow,
@@ -99,16 +108,32 @@ func (s *Service) GetSymbolsOverview(
 }
 
 // FindSymbol resolves normalized name-path queries by walking standard-LSP symbol trees.
+// Warnings of the result name the files of a directory or workspace search that could not be processed.
 func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
 ) (domain.FindSymbolResult, error) {
-	if err := request.Validate(); err != nil {
+	result, failures, err := s.FindSymbolWithFailures(ctx, request)
+	if err != nil {
 		return domain.FindSymbolResult{}, err
+	}
+	failures.CompleteSymbolResult(&result)
+
+	return result, nil
+}
+
+// FindSymbolWithFailures works as FindSymbol but returns the failed files separately from the result,
+// so that an adapter can add the failures of its own per-file processing before it builds the warnings.
+func (s *Service) FindSymbolWithFailures(
+	ctx context.Context,
+	request *domain.FindSymbolRequest,
+) (domain.FindSymbolResult, *FileFailures, error) {
+	if err := request.Validate(); err != nil {
+		return domain.FindSymbolResult{}, nil, err
 	}
 	workspaceRoot, err := helpers.ResolveWorkspaceRoot(request.WorkspaceRoot)
 	if err != nil {
-		return domain.FindSymbolResult{}, err
+		return domain.FindSymbolResult{}, nil, err
 	}
 
 	trimmedPath := strings.TrimSpace(request.Path)
@@ -116,23 +141,28 @@ func (s *Service) FindSymbol(
 
 	scope, err := resolveSearchScope(workspaceRoot, trimmedScope)
 	if err != nil {
-		return domain.FindSymbolResult{}, err
+		return domain.FindSymbolResult{}, nil, err
 	}
 
 	searchFiles, err := collectScopeFiles(workspaceRoot, scope, s.config.Extensions, s.config.IgnoreDir)
 	if err != nil {
-		return domain.FindSymbolResult{}, err
+		return domain.FindSymbolResult{}, nil, err
 	}
 
 	matcher := newNamePathMatcher(trimmedPath, request.SubstringMatching)
 	fileCache := make(map[string]string)
 	hoverInfoByKey := make(map[string]string)
 	result := domain.FindSymbolResult{Symbols: make([]domain.FoundSymbol, 0), Warnings: nil}
+	failures := NewFileFailures(workspaceRoot, !scope.IsDir)
 
 	for _, relativePath := range searchFiles {
 		_, symbolTree, treeErr := s.loadSymbolTree(ctx, workspaceRoot, relativePath)
 		if treeErr != nil {
-			return domain.FindSymbolResult{}, treeErr
+			if recordErr := failures.Record(ctx, relativePath, treeErr); recordErr != nil {
+				return domain.FindSymbolResult{}, nil, recordErr
+			}
+
+			continue
 		}
 
 		matchedNodes := collectMatchedNodesForRequest(
@@ -143,37 +173,73 @@ func (s *Service) FindSymbol(
 			request.ExcludeKinds,
 		)
 		for _, matchedNode := range matchedNodes {
-			foundSymbol := s.buildFoundSymbol(ctx, workspaceRoot, matchedNode, request, fileCache, hoverInfoByKey)
+			foundSymbol, buildErr := s.buildFoundSymbol(
+				ctx,
+				workspaceRoot,
+				matchedNode,
+				request,
+				fileCache,
+				hoverInfoByKey,
+			)
+			if buildErr != nil {
+				return domain.FindSymbolResult{}, nil, buildErr
+			}
 			result.Symbols = append(result.Symbols, foundSymbol)
 		}
 	}
 
 	sortFoundSymbols(result.Symbols)
 
-	return result, nil
+	return result, failures, nil
 }
 
 // FindReferencingSymbols resolves the target symbol, requests references,
 // and shapes the grouped result through one shared workflow.
+// Warnings of the result name the files with references that could not be processed.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
 ) (domain.FindReferencingSymbolsResult, error) {
-	if err := request.Validate(); err != nil {
+	result, failures, err := s.FindReferencingSymbolsWithFailures(ctx, request)
+	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
+	}
+	failures.CompleteReferenceResult(&result)
+
+	return result, nil
+}
+
+// FindReferencingSymbolsWithFailures works as FindReferencingSymbols but returns the failed files separately
+// from the result, so that an adapter can add the failures of its own per-file processing before it builds
+// the warnings.
+func (s *Service) FindReferencingSymbolsWithFailures(
+	ctx context.Context,
+	request *domain.FindReferencingSymbolsRequest,
+) (domain.FindReferencingSymbolsResult, *FileFailures, error) {
+	if err := request.Validate(); err != nil {
+		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
 	workspaceRoot, err := helpers.ResolveWorkspaceRoot(request.WorkspaceRoot)
 	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
+		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
 
 	trimmedFile := strings.TrimSpace(request.File)
 	trimmedPath := strings.TrimSpace(request.Path)
-	var result domain.FindReferencingSymbolsResult
+	var (
+		result   domain.FindReferencingSymbolsResult
+		failures *FileFailures
+	)
 
 	runReferenceWorkflow := func(callCtx context.Context) error {
 		var callErr error
-		result, callErr = s.findReferencingSymbolsResult(callCtx, workspaceRoot, trimmedFile, trimmedPath, request)
+		result, failures, callErr = s.findReferencingSymbolsResult(
+			callCtx,
+			workspaceRoot,
+			trimmedFile,
+			trimmedPath,
+			request,
+		)
 
 		return callErr
 	}
@@ -181,38 +247,52 @@ func (s *Service) FindReferencingSymbols(
 	if !s.config.OpenFileForReferenceWorkflow {
 		err = runReferenceWorkflow(ctx)
 		if err != nil {
-			return domain.FindReferencingSymbolsResult{}, err
+			return domain.FindReferencingSymbolsResult{}, nil, err
 		}
 
-		return result, nil
+		return result, failures, nil
 	}
 
-	_, targetAbsolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, trimmedFile)
+	targetRelativePath, targetAbsolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, trimmedFile)
 	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
+		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
 
 	conn, err := s.config.EnsureConn(ctx, workspaceRoot)
 	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
+		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
 
-	err = s.runRequestWithDocumentContext(ctx, conn, targetAbsolutePath, runReferenceWorkflow)
+	// workflowFinished separates an error of closing the target after the workflow from an error of the workflow.
+	workflowFinished := false
+	err = s.runRequestWithDocumentContext(ctx, conn, targetAbsolutePath, func(callCtx context.Context) error {
+		workflowErr := runReferenceWorkflow(callCtx)
+		workflowFinished = workflowErr == nil
+
+		return workflowErr
+	})
 	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
+		if !workflowFinished || helpers.IsRequestError(ctx, err) {
+			return domain.FindReferencingSymbolsResult{}, nil, err
+		}
+		// Only closing the target failed, so the target is a failed file like any other referencing file.
+		if recordErr := failures.Record(ctx, targetRelativePath, err); recordErr != nil {
+			return domain.FindReferencingSymbolsResult{}, nil, recordErr
+		}
 	}
 
-	return result, nil
+	return result, failures, nil
 }
 
-// findReferencingSymbolsResult runs the shared references workflow and returns the grouped result.
+// findReferencingSymbolsResult runs the shared references workflow and returns the grouped result
+// with the referencing files that could not be processed.
 func (s *Service) findReferencingSymbolsResult(
 	ctx context.Context,
 	workspaceRoot string,
 	trimmedFile string,
 	trimmedPath string,
 	request *domain.FindReferencingSymbolsRequest,
-) (domain.FindReferencingSymbolsResult, error) {
+) (domain.FindReferencingSymbolsResult, *FileFailures, error) {
 	targetRelativePath, targetTree, targetSymbol, err := s.resolveTargetSymbol(
 		ctx,
 		workspaceRoot,
@@ -220,7 +300,7 @@ func (s *Service) findReferencingSymbolsResult(
 		trimmedPath,
 	)
 	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
+		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
 
 	fileCache := make(map[string]string)
@@ -233,9 +313,10 @@ func (s *Service) findReferencingSymbolsResult(
 		referencePosition,
 	)
 	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
+		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
 
+	failures := NewFileFailures(workspaceRoot, false)
 	referenceMatches, err := s.collectReferenceMatches(
 		ctx,
 		workspaceRoot,
@@ -244,12 +325,17 @@ func (s *Service) findReferencingSymbolsResult(
 		targetTree,
 		request,
 		fileCache,
+		failures,
 	)
 	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
+		return domain.FindReferencingSymbolsResult{}, nil, err
 	}
 
-	return domain.FindReferencingSymbolsResult{Symbols: groupReferenceMatches(referenceMatches), Incomplete: false}, nil
+	return domain.FindReferencingSymbolsResult{
+		Symbols:    groupReferenceMatches(referenceMatches),
+		Incomplete: false,
+		Warnings:   nil,
+	}, failures, nil
 }
 
 // loadSymbolTree loads one file's symbols and maps them into the normalized stdlsp tree.
@@ -326,6 +412,8 @@ func (s *Service) resolveTargetSymbol(
 }
 
 // collectReferenceMatches resolves raw reference locations into flat rows before final grouping.
+// A referencing file that cannot be processed goes to failures without its rows; the target file too, because its
+// symbol is already resolved.
 func (s *Service) collectReferenceMatches(
 	ctx context.Context,
 	workspaceRoot string,
@@ -334,21 +422,39 @@ func (s *Service) collectReferenceMatches(
 	targetTree []*node,
 	request *domain.FindReferencingSymbolsRequest,
 	fileCache map[string]string,
+	failures *FileFailures,
 ) ([]referenceMatch, error) {
 	referenceMatches := make([]referenceMatch, 0, len(referenceLocations))
 	containerTreeCache := map[string][]*node{targetRelativePath: targetTree}
 
 	for _, location := range referenceLocations {
+		referenceRelativePath, err := s.relativePathFromURI(workspaceRoot, location.URI)
+		if err != nil {
+			if recordErr := failures.Record(ctx, location.URI.FsPath(), err); recordErr != nil {
+				return nil, recordErr
+			}
+
+			continue
+		}
+		if failures.contains(referenceRelativePath) {
+			continue
+		}
+
 		resolvedMatch, ok, err := s.referenceMatchFromLocation(
 			ctx,
 			workspaceRoot,
-			location,
+			referenceRelativePath,
+			location.Range,
 			request,
 			fileCache,
 			containerTreeCache,
 		)
 		if err != nil {
-			return nil, err
+			if recordErr := failures.Record(ctx, referenceRelativePath, err); recordErr != nil {
+				return nil, recordErr
+			}
+
+			continue
 		}
 		if ok {
 			referenceMatches = append(referenceMatches, resolvedMatch)
@@ -358,20 +464,16 @@ func (s *Service) collectReferenceMatches(
 	return referenceMatches, nil
 }
 
-// referenceMatchFromLocation resolves one raw LSP location into one grouped reference row.
+// referenceMatchFromLocation resolves one raw LSP reference range into one grouped reference row.
 func (s *Service) referenceMatchFromLocation(
 	ctx context.Context,
 	workspaceRoot string,
-	location protocol.Location,
+	referenceRelativePath string,
+	referenceRange protocol.Range,
 	request *domain.FindReferencingSymbolsRequest,
 	fileCache map[string]string,
 	containerTreeCache map[string][]*node,
 ) (referenceMatch, bool, error) {
-	referenceRelativePath, err := s.relativePathFromURI(workspaceRoot, location.URI)
-	if err != nil {
-		return referenceMatch{}, false, err
-	}
-
 	containerTree, err := s.symbolTreeForReferencePath(ctx, workspaceRoot, referenceRelativePath, containerTreeCache)
 	if err != nil {
 		return referenceMatch{}, false, err
@@ -380,14 +482,14 @@ func (s *Service) referenceMatchFromLocation(
 	evidence, err := referenceEvidenceCandidateFromRange(
 		workspaceRoot,
 		referenceRelativePath,
-		location.Range,
+		referenceRange,
 		fileCache,
 	)
 	if err != nil {
 		return referenceMatch{}, false, err
 	}
 
-	container, ok := findContainingNode(containerTree, location.Range.Start)
+	container, ok := findContainingNode(containerTree, referenceRange.Start)
 	if ok {
 		if !matchesKindFilters(container.Kind, request.IncludeKinds, request.ExcludeKinds) {
 			return referenceMatch{}, false, nil
@@ -579,6 +681,7 @@ func (s *Service) requestHoverInfo(
 }
 
 // buildFoundSymbol materializes body and hover metadata for one symbol row on demand.
+// It returns an error only when the error ends the whole request; other body and hover failures leave them empty.
 func (s *Service) buildFoundSymbol(
 	ctx context.Context,
 	workspaceRoot string,
@@ -586,7 +689,7 @@ func (s *Service) buildFoundSymbol(
 	request *domain.FindSymbolRequest,
 	fileCache map[string]string,
 	hoverInfoByKey map[string]string,
-) domain.FoundSymbol {
+) (domain.FoundSymbol, error) {
 	startLine, endLine := inclusiveLineBounds(node.Range)
 	foundSymbol := domain.FoundSymbol{
 		Kind:      node.Kind,
@@ -609,14 +712,14 @@ func (s *Service) buildFoundSymbol(
 				"symbol_path", node.NamePath,
 			)
 
-			return foundSymbol
+			return foundSymbol, nil
 		}
 		foundSymbol.Body = body
 
-		return foundSymbol
+		return foundSymbol, nil
 	}
 	if !request.IncludeInfo {
-		return foundSymbol
+		return foundSymbol, nil
 	}
 
 	hoverKey := fmt.Sprintf(
@@ -628,11 +731,14 @@ func (s *Service) buildFoundSymbol(
 	if cachedInfo, ok := hoverInfoByKey[hoverKey]; ok {
 		foundSymbol.Info = cachedInfo
 
-		return foundSymbol
+		return foundSymbol, nil
 	}
 
 	hoverInfo, err := s.requestHoverInfo(ctx, workspaceRoot, node.RelativePath, node.SelectionRange.Start)
 	if err != nil {
+		if helpers.IsRequestError(ctx, err) {
+			return domain.FoundSymbol{}, err
+		}
 		// Hover metadata is optional. One hover failure must not hide an otherwise valid symbol match.
 		slog.WarnContext(
 			ctx,
@@ -643,12 +749,12 @@ func (s *Service) buildFoundSymbol(
 		)
 		hoverInfoByKey[hoverKey] = ""
 
-		return foundSymbol
+		return foundSymbol, nil
 	}
 	hoverInfoByKey[hoverKey] = hoverInfo
 	foundSymbol.Info = hoverInfo
 
-	return foundSymbol
+	return foundSymbol, nil
 }
 
 // relativePathFromURI converts one file URI into a safe workspace-relative path.

@@ -35,16 +35,32 @@ func newWithRequestDocument() stdlsp.WithRequestDocumentFunc {
 	}
 }
 
-// warmRequestDocuments revisits the full open-file set after every participant is open so tsls can resolve
-// cross-file imports against a fully materialized in-memory project view.
-func warmRequestDocuments(ctx context.Context, conn jsonrpc2.Conn, absolutePaths []string) error {
-	for _, absolutePath := range absolutePaths {
+// warmReferenceWorkflowFiles revisits the open reference workflow files so tsls can resolve cross-file imports
+// against a fully materialized in-memory project view, and returns the files that answered. A neighbor file that
+// fails is returned as skipped; a failure of the target file, which comes last, or an error that ends the whole
+// request is returned as error.
+func warmReferenceWorkflowFiles(
+	ctx context.Context,
+	conn jsonrpc2.Conn,
+	workspaceRoot string,
+	relativePaths []string,
+) ([]string, []helpers.SkippedFile, error) {
+	warmedPaths := make([]string, 0, len(relativePaths))
+	var skipped []helpers.SkippedFile
+	for index, relativePath := range relativePaths {
+		absolutePath := filepath.Join(workspaceRoot, filepath.FromSlash(relativePath))
 		if err := warmRequestDocument(ctx, conn, absolutePath); err != nil {
-			return err
+			if index == len(relativePaths)-1 || helpers.IsRequestError(ctx, err) {
+				return nil, nil, err
+			}
+			skipped = append(skipped, helpers.SkippedFile{RelativePath: relativePath, Err: err})
+
+			continue
 		}
+		warmedPaths = append(warmedPaths, relativePath)
 	}
 
-	return nil
+	return warmedPaths, skipped, nil
 }
 
 // warmRequestDocument forces tsls to acknowledge one opened file through documentSymbol before the

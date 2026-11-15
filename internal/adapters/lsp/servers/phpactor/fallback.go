@@ -38,6 +38,27 @@ type phpConstantSymbol struct {
 	Declaration string
 }
 
+// foundSymbol converts the constant into one find_symbol result with the body and info that the request asks for.
+func (c *phpConstantSymbol) foundSymbol(request *domain.FindSymbolRequest) domain.FoundSymbol {
+	foundSymbol := domain.FoundSymbol{
+		Kind:      int(protocol.SymbolKindConstant),
+		Body:      "",
+		Info:      "",
+		Path:      c.Name,
+		File:      c.File,
+		StartLine: c.StartLine,
+		EndLine:   c.EndLine,
+	}
+	if request.IncludeBody {
+		foundSymbol.Body = c.Declaration
+	}
+	if request.IncludeInfo {
+		foundSymbol.Info = c.Declaration
+	}
+
+	return foundSymbol
+}
+
 // phpactorReferenceRow stores one parsed phpactor CLI reference line before it is grouped by container symbol.
 type phpactorReferenceRow struct {
 	File string
@@ -97,10 +118,12 @@ func augmentOverviewWithPHPConstants(
 
 // augmentFindSymbolWithPHPConstants supplements standard find_symbol results with top-level constants when the
 // requested scope includes PHP files that phpactor's document-symbol response does not cover.
+// recordFileFailure takes the error of one file and returns it back only when the error must end the search.
 func augmentFindSymbolWithPHPConstants(
 	workspaceRoot string,
 	request *domain.FindSymbolRequest,
 	result domain.FindSymbolResult,
+	recordFileFailure func(relativePath string, err error) error,
 ) (domain.FindSymbolResult, error) {
 	if !phpConstantRequestCanMatch(request.Path) ||
 		!phpMatchesKindFilters(int(protocol.SymbolKindConstant), request.IncludeKinds, request.ExcludeKinds) {
@@ -120,7 +143,11 @@ func augmentFindSymbolWithPHPConstants(
 	for _, relativePath := range searchFiles {
 		constantSymbols, collectErr := collectPHPFileConstants(workspaceRoot, relativePath)
 		if collectErr != nil {
-			return domain.FindSymbolResult{}, collectErr
+			if recordErr := recordFileFailure(relativePath, collectErr); recordErr != nil {
+				return domain.FindSymbolResult{}, recordErr
+			}
+
+			continue
 		}
 
 		for _, constantSymbol := range constantSymbols {
@@ -128,22 +155,7 @@ func augmentFindSymbolWithPHPConstants(
 				continue
 			}
 
-			foundSymbol := domain.FoundSymbol{
-				Kind:      int(protocol.SymbolKindConstant),
-				Body:      "",
-				Info:      "",
-				Path:      constantSymbol.Name,
-				File:      constantSymbol.File,
-				StartLine: constantSymbol.StartLine,
-				EndLine:   constantSymbol.EndLine,
-			}
-			if request.IncludeBody {
-				foundSymbol.Body = constantSymbol.Declaration
-			}
-			if request.IncludeInfo {
-				foundSymbol.Info = constantSymbol.Declaration
-			}
-
+			foundSymbol := constantSymbol.foundSymbol(request)
 			if _, exists := existingSymbols[phpFoundSymbolKey(&foundSymbol)]; exists {
 				continue
 			}
@@ -173,11 +185,14 @@ func augmentFindSymbolWithPHPConstants(
 
 // augmentPropertyReferenceResults supplements the LSP reference result with phpactor's member-reference CLI
 // output for PHP properties, which closes cases where the LSP transport returns no field usages.
+// recordFileFailure takes the error of one referencing file and returns it back only when the error must end
+// the search.
 func (s *Service) augmentPropertyReferenceResults(
 	ctx context.Context,
 	workspaceRoot string,
 	request *domain.FindReferencingSymbolsRequest,
 	result domain.FindReferencingSymbolsResult,
+	recordFileFailure func(relativePath string, err error) error,
 ) (domain.FindReferencingSymbolsResult, error) {
 	targetSymbol, ok, err := s.findFallbackPropertyTarget(ctx, request)
 	if err != nil || !ok {
@@ -189,7 +204,7 @@ func (s *Service) augmentPropertyReferenceResults(
 		return result, nil
 	}
 
-	referenceRows, err := runPHPActorPropertyReferences(ctx, workspaceRoot, referenceTarget, propertyName)
+	referenceRows, err := s.runPropertyReferences(ctx, workspaceRoot, referenceTarget, propertyName)
 	if err != nil {
 		return result, err
 	}
@@ -209,6 +224,7 @@ func (s *Service) augmentPropertyReferenceResults(
 		&targetSymbol,
 		referenceRows,
 		existingSymbols,
+		recordFileFailure,
 	)
 	if err != nil {
 		return result, err
@@ -235,7 +251,8 @@ func (s *Service) augmentPropertyReferenceResults(
 }
 
 // collectAugmentedPropertyReferences resolves CLI property-reference rows into grouped Asteria results and skips
-// declaration lines that should not appear in the final reference response.
+// declaration lines that should not appear in the final reference response. A referencing file that cannot be
+// processed goes to recordFileFailure without its rows; the target file too, because its property is already resolved.
 func (s *Service) collectAugmentedPropertyReferences(
 	ctx context.Context,
 	workspaceRoot string,
@@ -243,11 +260,16 @@ func (s *Service) collectAugmentedPropertyReferences(
 	targetSymbol *domain.FoundSymbol,
 	referenceRows []phpactorReferenceRow,
 	existingSymbols map[string]struct{},
+	recordFileFailure func(relativePath string, err error) error,
 ) ([]domain.ReferencingSymbol, error) {
 	overviewCache := make(map[string][]domain.SymbolLocation)
+	failedFiles := make(map[string]struct{})
 	augmentedSymbols := make([]domain.ReferencingSymbol, 0)
 	for _, referenceRow := range referenceRows {
 		if referenceRow.File == targetSymbol.File && referenceRow.Line == targetSymbol.StartLine {
+			continue
+		}
+		if _, failed := failedFiles[referenceRow.File]; failed {
 			continue
 		}
 
@@ -259,7 +281,12 @@ func (s *Service) collectAugmentedPropertyReferences(
 			overviewCache,
 		)
 		if err != nil {
-			return nil, err
+			if recordErr := recordFileFailure(referenceRow.File, err); recordErr != nil {
+				return nil, recordErr
+			}
+			failedFiles[referenceRow.File] = struct{}{}
+
+			continue
 		}
 		if !foundContainer {
 			continue
@@ -674,9 +701,16 @@ func phpReferencingSymbolKey(symbol domain.ReferencingSymbol) string {
 	return fmt.Sprintf("%s\x00%s", symbol.File, symbol.Path)
 }
 
-// logFallbackWarning keeps optional fallback failures visible in logs without turning them into user-facing
-// errors when the primary LSP result is still usable.
-func logFallbackWarning(ctx context.Context, message string, err error, attrs ...any) {
+// handleFallbackError returns a fallback error that ends the whole request, and otherwise keeps the optional
+// fallback failure visible in logs without turning it into a user-facing error, because the primary LSP result
+// is still usable.
+func handleFallbackError(ctx context.Context, message string, err error, attrs ...any) error {
+	if helpers.IsRequestError(ctx, err) {
+		return err
+	}
+
 	logAttrs := append([]any{"err", err}, attrs...)
 	slog.WarnContext(ctx, message, logAttrs...)
+
+	return nil
 }

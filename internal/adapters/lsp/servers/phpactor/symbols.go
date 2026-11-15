@@ -12,6 +12,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
@@ -41,7 +42,14 @@ func (s *Service) GetSymbolsOverview(
 
 	augmentedResult, augmentErr := augmentOverviewWithPHPConstants(workspaceRoot, request, result)
 	if augmentErr != nil {
-		logFallbackWarning(ctx, "skip phpactor overview constant fallback", augmentErr, "file_path", request.File)
+		if fatalErr := handleFallbackError(
+			ctx,
+			"skip phpactor overview constant fallback",
+			augmentErr,
+			"file_path", request.File,
+		); fatalErr != nil {
+			return domain.GetSymbolsOverviewResult{}, fatalErr
+		}
 
 		return result, nil
 	}
@@ -50,6 +58,7 @@ func (s *Service) GetSymbolsOverview(
 }
 
 // FindSymbol delegates canonical path matching to the shared standard-LSP search flow.
+// Warnings of the result name the files of a directory or workspace search that could not be processed.
 func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
@@ -63,7 +72,7 @@ func (s *Service) FindSymbol(
 		defer release()
 	}
 
-	result, err := s.std.FindSymbol(ctx, request)
+	result, failures, err := s.std.FindSymbolWithFailures(ctx, request)
 	if err != nil || request == nil {
 		return result, err
 	}
@@ -77,18 +86,24 @@ func (s *Service) FindSymbol(
 		workspaceRoot,
 		request,
 		result,
+		func(relativePath string, fileErr error) error {
+			return failures.Record(ctx, relativePath, fileErr)
+		},
 	)
 	if augmentErr != nil {
-		logFallbackWarning(
+		if fatalErr := handleFallbackError(
 			ctx,
 			"skip phpactor find_symbol constant fallback",
 			augmentErr,
 			"scope_path", request.Scope,
 			"symbol_path", request.Path,
-		)
+		); fatalErr != nil {
+			return domain.FindSymbolResult{}, fatalErr
+		}
 	} else {
 		result = augmentedResult
 	}
+	failures.CompleteSymbolResult(&result)
 	if !request.IncludeInfo || len(result.Symbols) == 0 {
 		return result, nil
 	}
@@ -115,6 +130,7 @@ func (s *Service) FindSymbol(
 
 // FindReferencingSymbols keeps the target-directory PHP file set open for the whole shared workflow so
 // phpactor can resolve property and cross-file references before stdlsp groups the final result.
+// Warnings of the result name the files with references that could not be processed.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
@@ -147,21 +163,24 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
-	conn, err := s.rt.EnsureConn(ctx, workspaceRoot)
+	conn, err := s.ensureConn(ctx, workspaceRoot)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
-	var result domain.FindReferencingSymbolsResult
-	err = helpers.RunWithReferenceWorkflowFiles(
+	var (
+		result   domain.FindReferencingSymbolsResult
+		failures *stdlsp.FileFailures
+	)
+	skipped, err := helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		referenceWorkflowFiles,
 		s.withRequestDocument,
-		func(callCtx context.Context) error {
+		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error {
 			var callErr error
-			result, callErr = s.std.FindReferencingSymbols(callCtx, request)
+			result, failures, callErr = s.std.FindReferencingSymbolsWithFailures(callCtx, request)
 
 			return callErr
 		},
@@ -169,26 +188,35 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
+	if recordErr := failures.RecordSkippedFiles(ctx, skipped); recordErr != nil {
+		return domain.FindReferencingSymbolsResult{}, recordErr
+	}
 
 	augmentedResult, augmentErr := s.augmentPropertyReferenceResults(
 		ctx,
 		workspaceRoot,
 		request,
 		result,
+		func(relativePath string, fileErr error) error {
+			return failures.Record(ctx, relativePath, fileErr)
+		},
 	)
 	if augmentErr != nil {
-		logFallbackWarning(
+		if fatalErr := handleFallbackError(
 			ctx,
 			"skip phpactor property reference fallback",
 			augmentErr,
 			"file_path", request.File,
 			"symbol_path", request.Path,
-		)
-
-		return result, nil
+		); fatalErr != nil {
+			return domain.FindReferencingSymbolsResult{}, fatalErr
+		}
+	} else {
+		result = augmentedResult
 	}
+	failures.CompleteReferenceResult(&result)
 
-	return augmentedResult, nil
+	return result, nil
 }
 
 // patchInitializeParams keeps the deprecated startup workaround local to phpactor while disabling helper

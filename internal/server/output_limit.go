@@ -80,12 +80,14 @@ func (s *Service) limitFindReferencingSymbolsOutput(
 		findReferencingSymbolsOutput{
 			Files:           make([]referencingFileDTO, 0),
 			Incomplete:      output.Incomplete,
+			Warnings:        output.Warnings,
 			ReturnedPercent: 0,
 		},
 		func(count int) findReferencingSymbolsOutput {
 			return findReferencingSymbolsOutput{
 				Files:           trimReferencingEntries(output.Files, count),
 				Incomplete:      output.Incomplete,
+				Warnings:        output.Warnings,
 				ReturnedPercent: 0,
 			}
 		},

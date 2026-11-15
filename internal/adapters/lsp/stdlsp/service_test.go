@@ -444,7 +444,7 @@ func TestBuildFoundSymbolSkipsOptionalHoverFailure(t *testing.T) {
 		Scope:             "fixture.go",
 	}
 
-	foundSymbol := service.buildFoundSymbol(
+	foundSymbol, err := service.buildFoundSymbol(
 		t.Context(),
 		workspaceRoot,
 		node,
@@ -452,6 +452,7 @@ func TestBuildFoundSymbolSkipsOptionalHoverFailure(t *testing.T) {
 		map[string]string{},
 		map[string]string{},
 	)
+	require.NoError(t, err)
 	assert.Equal(t, domain.FoundSymbol{
 		Kind:      int(protocol.SymbolKindFunction),
 		Body:      "",
@@ -506,7 +507,7 @@ func TestBuildFoundSymbolSkipsOptionalBodyFailure(t *testing.T) {
 		Scope:             "missing.go",
 	}
 
-	foundSymbol := service.buildFoundSymbol(
+	foundSymbol, err := service.buildFoundSymbol(
 		t.Context(),
 		workspaceRoot,
 		node,
@@ -514,6 +515,7 @@ func TestBuildFoundSymbolSkipsOptionalBodyFailure(t *testing.T) {
 		map[string]string{},
 		map[string]string{},
 	)
+	require.NoError(t, err)
 	assert.Equal(t, domain.FoundSymbol{
 		Kind:      int(protocol.SymbolKindFunction),
 		Body:      "",
@@ -572,7 +574,7 @@ func TestBuildFoundSymbolUsesRequestWorkspaceRoot(t *testing.T) {
 		Children: nil,
 	}
 
-	foundSymbol := service.buildFoundSymbol(
+	foundSymbol, err := service.buildFoundSymbol(
 		t.Context(),
 		workspaceRoot,
 		node,
@@ -580,6 +582,7 @@ func TestBuildFoundSymbolUsesRequestWorkspaceRoot(t *testing.T) {
 		map[string]string{},
 		map[string]string{},
 	)
+	require.NoError(t, err)
 
 	assert.Contains(t, foundSymbol.Body, "func MakeBucket() string")
 	assert.Equal(t, workspaceRoot, request.WorkspaceRoot)

@@ -115,13 +115,13 @@ func TestRunWithReferenceWorkflowFilesReusesSharedLifecycle(t *testing.T) {
 	fixturePath := filepath.Join(workspaceRoot, "fixture.ts")
 	withRequestDocument := helpers.WithRequestDocument(languageIDForExtension)
 
-	err := runWithReferenceWorkflowFiles(
+	_, err := runWithReferenceWorkflowFiles(
 		t.Context(),
 		conn,
 		workspaceRoot,
 		[]string{"fixture.ts"},
 		withRequestDocument,
-		func(callCtx context.Context) error {
+		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error {
 			return withRequestDocument(callCtx, conn, fixturePath, func(context.Context) error {
 				return nil
 			})
@@ -149,13 +149,13 @@ func TestRunWithReferenceWorkflowFilesClosesOpenedFilesAfterRunError(t *testing.
 	withRequestDocument := helpers.WithRequestDocument(languageIDForExtension)
 	expectedErr := errors.New("shared workflow failed")
 
-	err := runWithReferenceWorkflowFiles(
+	_, err := runWithReferenceWorkflowFiles(
 		t.Context(),
 		conn,
 		workspaceRoot,
 		[]string{"helper.ts", "fixture.ts"},
 		withRequestDocument,
-		func(context.Context) error {
+		func(context.Context, []string, []helpers.SkippedFile) error {
 			return expectedErr
 		},
 	)
@@ -181,13 +181,13 @@ func TestRunWithReferenceWorkflowFilesClosesOpenedFilesAfterOpenFailure(t *testi
 	firstPath := filepath.Join(workspaceRoot, "helper.ts")
 	withRequestDocument := helpers.WithRequestDocument(languageIDForExtension)
 
-	err := runWithReferenceWorkflowFiles(
+	_, err := runWithReferenceWorkflowFiles(
 		t.Context(),
 		conn,
 		workspaceRoot,
 		[]string{"helper.ts", "missing.ts"},
 		withRequestDocument,
-		func(context.Context) error {
+		func(context.Context, []string, []helpers.SkippedFile) error {
 			return nil
 		},
 	)
@@ -242,7 +242,7 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 				ContentStartLine: 0,
 				ContentEndLine:   0,
 				Content:          "",
-			}}, Incomplete: false},
+			}}, Incomplete: false, Warnings: nil},
 			expected: true,
 		},
 		{
@@ -259,7 +259,7 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 				ContentStartLine: 0,
 				ContentEndLine:   0,
 				Content:          "",
-			}}, Incomplete: false},
+			}}, Incomplete: false, Warnings: nil},
 			expected: false,
 		},
 	}
@@ -376,6 +376,13 @@ func waitForConnDone(t *testing.T, name string, done <-chan struct{}) {
 	}
 }
 
+const (
+	// brokenWarmUpFilePrefix starts the names of files whose documentSymbol request fails in newLifecycleRecorderConn.
+	brokenWarmUpFilePrefix = "broken"
+	// lateBrokenWarmUpFilePrefix starts the names of files whose documentSymbol request fails from the second call.
+	lateBrokenWarmUpFilePrefix = "late"
+)
+
 // newLifecycleRecorderConn builds an in-memory JSON-RPC peer that records didOpen, documentSymbol, and didClose calls.
 func newLifecycleRecorderConn(t *testing.T) (jsonrpc2.Conn, *lifecycleRecorder) {
 	t.Helper()
@@ -417,6 +424,19 @@ func newLifecycleRecorderConn(t *testing.T) (jsonrpc2.Conn, *lifecycleRecorder) 
 				return nil, err
 			}
 			recorder.addEvent(documentLifecycleEvent{Method: strings.Clone(req.Method()), URI: params.TextDocument.URI})
+			baseName := filepath.Base(params.TextDocument.URI.FsPath())
+			if strings.HasPrefix(baseName, brokenWarmUpFilePrefix) {
+				return nil, errors.New("document symbols are not available")
+			}
+			documentSymbolCalls := 0
+			for _, method := range recorder.methodsForURI(params.TextDocument.URI) {
+				if method == protocol.MethodTextDocumentDocumentSymbol {
+					documentSymbolCalls++
+				}
+			}
+			if strings.HasPrefix(baseName, lateBrokenWarmUpFilePrefix) && documentSymbolCalls > 1 {
+				return nil, errors.New("document symbols are not available any more")
+			}
 
 			return []json.RawMessage{}, nil
 		default:

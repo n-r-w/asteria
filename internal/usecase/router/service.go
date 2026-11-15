@@ -142,11 +142,13 @@ func (s *Service) FindSymbol(
 	// adapter owns its own traversal rules such as ignored directories and language-specific search semantics.
 	// One failed adapter, for example a TypeScript server without TypeScript for one script in a Go repository,
 	// must not hide symbols of other adapters, so its error becomes a warning unless every adapter fails.
+	// Warnings of adapters that succeeded name their files that could not be processed and reach the client too.
 	matchedExtensions := s.collectMatchedExtensions(fileNames)
 	lsps := s.selectLSPsByExtensions(matchedExtensions)
 	var (
-		warnings []string
-		firstErr error
+		warnings    []string
+		firstErr    error
+		failedCount int
 	)
 	for _, lsp := range lsps {
 		searchRequest := &domain.FindSymbolRequest{
@@ -162,6 +164,7 @@ func (s *Service) FindSymbol(
 			if firstErr == nil {
 				firstErr = lspErr
 			}
+			failedCount++
 			warnings = append(warnings, fmt.Sprintf(
 				"%s files are not searched: %s",
 				strings.Join(s.matchedExtensionsOf(lsp, matchedExtensions), ", "),
@@ -172,8 +175,9 @@ func (s *Service) FindSymbol(
 		}
 
 		results = mergeFoundSymbols(results, result.Symbols)
+		warnings = append(warnings, result.Warnings...)
 	}
-	if firstErr != nil && len(warnings) == len(lsps) {
+	if firstErr != nil && failedCount == len(lsps) {
 		return domain.FindSymbolResult{}, firstErr
 	}
 

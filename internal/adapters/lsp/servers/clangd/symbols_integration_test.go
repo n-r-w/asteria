@@ -1034,13 +1034,13 @@ func overviewSymbolsInWorkflow(
 		return result.Symbols
 	}
 
-	err = helpers.RunWithReferenceWorkflowFiles(
+	_, err = helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		workflowFiles,
 		service.withRequestDocument,
-		runOverview,
+		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error { return runOverview(callCtx) },
 	)
 	require.NoError(t, err)
 
@@ -1099,13 +1099,15 @@ func rawDocumentSymbolJSONInWorkflow(
 		return mustMarshalRawMessages(t, payload)
 	}
 
-	err = helpers.RunWithReferenceWorkflowFiles(
+	_, err = helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		workflowFilesWithoutTarget(workflowFiles, relativePath),
 		service.withRequestDocument,
-		openTargetAndRequest,
+		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error {
+			return openTargetAndRequest(callCtx)
+		},
 	)
 	require.NoError(t, err)
 

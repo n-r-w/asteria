@@ -28,7 +28,9 @@ type startupReadinessState struct {
 
 // Service implements rust-analyzer-specific symbolic search logic.
 type Service struct {
-	rt                  *runtimelsp.Runtime
+	rt *runtimelsp.Runtime
+	// ensureConn returns the live connection of the workspace session for adapter-specific requests.
+	ensureConn          stdlsp.EnsureConnFunc
 	std                 *stdlsp.Service
 	stdReferences       *stdlsp.Service
 	withRequestDocument stdlsp.WithRequestDocumentFunc
@@ -55,6 +57,7 @@ func New(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig, sessionIdleTimeou
 
 	service := &Service{
 		rt:                         nil,
+		ensureConn:                 nil,
 		std:                        nil,
 		stdReferences:              nil,
 		withRequestDocument:        nil,
@@ -117,6 +120,7 @@ func New(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig, sessionIdleTimeou
 	}
 
 	service.rt = rt
+	service.ensureConn = rt.EnsureConn
 	service.std = std
 	service.stdReferences = stdReferences
 	service.withRequestDocument = withRequestDocument

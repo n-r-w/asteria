@@ -118,13 +118,13 @@ func rawRustReferencesForTextScenario(
 
 	targetAbsolutePath := filepath.Join(workspaceRoot, filepath.FromSlash(targetRelativePath))
 	var occurrences []rawReferenceOccurrence
-	err = helpers.RunWithReferenceWorkflowFiles(
+	_, err = helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		referenceWorkflowFiles,
 		service.withRequestDocument,
-		func(callCtx context.Context) error {
+		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error {
 			position := rawSelectionStartForUniqueText(t, targetAbsolutePath, targetText)
 			locations := rawRustReferences(t, callCtx, conn, &protocol.ReferenceParams{
 				TextDocumentPositionParams: protocol.TextDocumentPositionParams{

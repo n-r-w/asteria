@@ -91,10 +91,12 @@ func TestPatchInitializeParams(t *testing.T) {
 	}
 
 	service := &Service{
-		rt:                  nil,
-		std:                 nil,
-		withRequestDocument: nil,
-		cacheRoot:           cacheRoot,
+		rt:                    nil,
+		ensureConn:            nil,
+		std:                   nil,
+		withRequestDocument:   nil,
+		runPropertyReferences: nil,
+		cacheRoot:             cacheRoot,
 	}
 	err := service.patchInitializeParams(workspaceRoot, params)
 	require.NoError(t, err)
