@@ -204,10 +204,10 @@ Source: <https://phpactor.readthedocs.io/en/master/usage/standalone.html>
 Asteria keeps the `phpactor` index under `ASTERIAMCP_CACHE_ROOT`, and later sessions reuse it. With this index, the wait on the same project took 0.5 seconds.
 When `ASTERIAMCP_TOOL_TIMEOUT` ends during the wait, the call returns a timeout error and `phpactor` continues indexing. A later call waits only for the rest of the indexing. For a large project, increase `ASTERIAMCP_TOOL_TIMEOUT` so that the first call can finish.
 
-By default, `phpactor` 2026.06.23.0 does not index files that match its default exclude patterns or exceed its file size limit, and `find_referencing_symbols` returns no references from them:
-- tests of packages under `vendor`: `vendor/**/tests` and `vendor/**/Tests`;
-- `vendor/composer`;
-- the Rector stubs in `vendor/rector/rector/stubs-rector`;
+By default, `phpactor` 2026.06.23.0 skips the following files when it indexes a project, so `find_referencing_symbols` omits references from them:
+- tests of packages under `vendor`: `/vendor/**/tests/**/*` and `/vendor/**/Tests/**/*`;
+- `/vendor/composer/**/*`;
+- the Rector stubs: `/vendor/rector/rector/stubs-rector`;
 - files larger than 1,000,000 bytes.
 
 ### Rust

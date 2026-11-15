@@ -26,7 +26,7 @@ func (a *AcquiredSession) Release() {
 // workspace root starts a new session, and then ends the acquisition like Release; the close does nothing when a
 // newer session serves this root or the runtime is closing.
 func (a *AcquiredSession) ReleaseAndCloseInBackground(ctx context.Context) {
-	// The acquisition holds the session during the close, so the release cannot schedule an idle close for it.
+	// The close unregisters the session before the release, so the release schedules no idle close for it.
 	a.runtime.closeInBackground(ctx, a.root, a.managed)
 	a.Release()
 }

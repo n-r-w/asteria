@@ -128,7 +128,8 @@ func (r *Runtime) startedSession(ctx context.Context, workspaceRoot string) (*se
 		if !r.isRegistered(root, acquired.managed) {
 			return nil, errSessionClosed
 		}
-		// A background close that starts after this check retires the session, so the server cannot outlive it.
+		// A background close that starts after this check marks the session retired, so ensureStarted either fails or
+		// starts a server that this close then stops.
 		if startErr := acquired.managed.session.ensureStarted(ctx); startErr != nil {
 			return nil, startErr
 		}

@@ -477,9 +477,9 @@ func fixtureAnswer(fallbackSymbols func() error) testAnswer {
 // indexingDoneMessage is a sample of the message with which phpactor reports the end of indexing.
 const indexingDoneMessage = "Done indexing (0.05s, 10mb), watching with lsp"
 
-// newService writes files into a new workspace and creates a phpactor service whose language server is an
-// in-memory peer that answers through answer and has reported the end of indexing, and whose member-reference command
-// returns propertyRows. sessionErr, when set, ends the session after the references request.
+// newService writes files into a new workspace and creates a phpactor service whose in-memory language server answers
+// through answer and has reported the end of indexing, whose member-reference command returns propertyRows, and whose
+// session ends after the references request when sessionErr is set.
 func (s *inMemorySearchSuite) newService(
 	files map[string]string,
 	answer testAnswer,
@@ -492,10 +492,8 @@ func (s *inMemorySearchSuite) newService(
 	return service, request
 }
 
-// newServiceWithServer writes files into a new workspace and creates a phpactor service whose language server is an
-// in-memory peer that answers through answer, and whose member-reference command returns propertyRows. sessionErr,
-// when set, ends the session after the references request. It also returns the server side of the connection, whose
-// messages reach the server callback of the service.
+// newServiceWithServer creates the service of newService before the report of the end of indexing and also returns
+// the server side of the connection, whose messages reach the server callback of the service.
 func (s *inMemorySearchSuite) newServiceWithServer(
 	files map[string]string,
 	answer testAnswer,
@@ -599,8 +597,8 @@ func (s *inMemorySearchSuite) notifyShowMessage(server jsonrpc2.Conn, message st
 }
 
 // newConn builds an in-memory language server that accepts document notifications and answers each request through
-// answer. It returns the client side of the connection and the server side. The client side passes each message from
-// the server to callback first.
+// answer, and returns the client side, which passes each message from the server to callback first, and the server
+// side.
 func (s *inMemorySearchSuite) newConn(
 	answer testAnswer,
 	callback func(ctx context.Context, req *jsonrpc2.Request) (result any, handled bool, err error),

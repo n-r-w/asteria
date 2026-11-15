@@ -161,10 +161,9 @@ func addPHPConstants(
 	return result, nil
 }
 
-// FindReferencingSymbols waits until the phpactor session finishes indexing the workspace and then returns the
-// references from all indexed files; when ctx ends during the wait, it returns the error of ctx.
-// Warnings of the result name the files with references that could not be processed, and count the files not processed
-// because the search or the property reference fallback stopped at the request deadline.
+// FindReferencingSymbols returns the references from all indexed files after the phpactor session finishes indexing
+// the workspace, with warnings that name the files it could not process or count the files left at the request
+// deadline; when ctx ends during the wait for indexing, it returns the error of ctx.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
@@ -241,9 +240,7 @@ func (s *Service) FindReferencingSymbols(
 }
 
 // addPropertyReferences adds the property references that the phpactor CLI finds to the result of a finished
-// reference search, and records in failures the files that the fallback could not process. At the request deadline,
-// the fallback keeps the rows that it finished and records the files of its other rows as not processed; when it fails
-// after the deadline before its rows, targetFile counts as not processed.
+// reference search and records in failures the files that the fallback could not process.
 func (s *Service) addPropertyReferences(
 	ctx context.Context,
 	workspaceRoot string,
@@ -260,6 +257,8 @@ func (s *Service) addPropertyReferences(
 		func(relativePath string, fileErr error) error {
 			return failures.Record(ctx, relativePath, fileErr)
 		},
+		// At the request deadline, the fallback keeps the rows that it finished and records the files of its other
+		// rows as not processed.
 		func(notProcessed []string) bool {
 			return failures.StopByTimeout(ctx, notProcessed)
 		},
@@ -267,7 +266,8 @@ func (s *Service) addPropertyReferences(
 	if augmentErr == nil {
 		return augmentedResult, nil
 	}
-	// The result keeps the references of the finished search when the fallback failed after the deadline.
+	// The result keeps the references of the finished search when the fallback failed after the deadline before its
+	// rows, and targetFile counts as not processed.
 	if failures.StopByTimeout(ctx, []string{targetFile}) {
 		return result, nil
 	}

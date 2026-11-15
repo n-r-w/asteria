@@ -150,9 +150,9 @@ func TestIntegrationRuntimeEnsureConnIsolatedByRoot(t *testing.T) {
 	require.Empty(t, runtime.sessions)
 }
 
-// TestIntegrationRuntimeCloseSessionIsolatedByRoot proves that closing one workspace session does not interrupt
-// another workspace and that the closed workspace starts a fresh process on its next access.
-func TestIntegrationRuntimeCloseSessionIsolatedByRoot(t *testing.T) {
+// TestIntegrationRuntimeBackgroundCloseRestartsOnlyItsRoot proves that closing one workspace session in the background
+// does not interrupt another workspace and that the closed workspace starts a fresh process on its next access.
+func TestIntegrationRuntimeBackgroundCloseRestartsOnlyItsRoot(t *testing.T) {
 	runtime := newIntegrationRuntime(t)
 	firstRoot := runtimeFixtureRoot(t)
 	secondRoot := runtimeMultilineFixtureRoot(t)

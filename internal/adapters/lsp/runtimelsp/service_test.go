@@ -269,8 +269,8 @@ func (s *backgroundCloseSuite) TestSecondLookupAfterDetachReturnsError() {
 	s.Require().NoError(runtime.Close(t.Context()))
 }
 
-// newRunningSession registers a session of root that counts as running: its server answers the shutdown request and
-// exits when the session closes its side of the connection. It returns the client side of the connection.
+// newRunningSession registers a running session of root, whose server answers the shutdown request and exits when the
+// session closes its side of the connection, and returns the client side of the connection.
 func newRunningSession(t *testing.T, runtime *Runtime, root string) jsonrpc2.Conn {
 	t.Helper()
 
@@ -299,10 +299,10 @@ func newRunningSession(t *testing.T, runtime *Runtime, root string) jsonrpc2.Con
 
 // TestRuntimeCloseForcesBackgroundCloseToStop proves that runtime shutdown ends the graceful phase of a session that
 // closes in the background at once, waits until its server exits, and closes the live sessions too.
-// It runs in real time: go.lsp.dev/jsonrpc2 keeps call waiters with their ready channels in the package-level
-// waiterPool sync.Pool, so a waiter from one synctest bubble is reused in another and fails with "select on synctest
-// channel from outside bubble".
 func (s *backgroundCloseSuite) TestRuntimeCloseForcesBackgroundCloseToStop() {
+	// The test runs in real time: go.lsp.dev/jsonrpc2 keeps call waiters with their ready channels in the
+	// package-level waiterPool sync.Pool, so a waiter from one synctest bubble is reused in another and fails with
+	// "select on synctest channel from outside bubble".
 	t := s.T()
 	const shutdownTimeout = 5 * time.Second
 	runtime := newTestRuntime(t, func(config *LSPConfig) { config.ShutdownTimeout = shutdownTimeout })
