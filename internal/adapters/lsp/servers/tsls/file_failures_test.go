@@ -702,7 +702,11 @@ func noFailedSymbols(string, int) bool {
 
 // overviewRequest builds the overview of alias.ts.
 func (e *adapterEnv) overviewRequest() *domain.GetSymbolsOverviewRequest {
-	return &domain.GetSymbolsOverviewRequest{Depth: 0, WorkspaceRoot: e.workspaceRoot, File: "alias.ts"}
+	return &domain.GetSymbolsOverviewRequest{
+		Depth:         0,
+		WorkspaceRoot: e.workspaceRoot,
+		File:          "alias.ts",
+	}
 }
 
 // substringAliasRequest builds the workspace symbol search for each symbol whose name contains "s", which matches

@@ -235,14 +235,18 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 				"references.ts",
 				"fixture.ts",
 			},
-			result: domain.FindReferencingSymbolsResult{Symbols: []domain.ReferencingSymbol{{
-				Kind:             0,
-				Path:             "",
-				File:             "fixture.ts",
-				ContentStartLine: 0,
-				ContentEndLine:   0,
-				Content:          "",
-			}}, Incomplete: false, Warnings: nil},
+			result: domain.FindReferencingSymbolsResult{
+				Symbols: []domain.ReferencingSymbol{{
+					Kind:             0,
+					Path:             "",
+					File:             "fixture.ts",
+					ContentStartLine: 0,
+					ContentEndLine:   0,
+					Content:          "",
+				}},
+				Incomplete: false,
+				Warnings:   nil,
+			},
 			expected: true,
 		},
 		{
@@ -252,14 +256,18 @@ func TestShouldRetryReferenceResult(t *testing.T) {
 				"references.ts",
 				"fixture.ts",
 			},
-			result: domain.FindReferencingSymbolsResult{Symbols: []domain.ReferencingSymbol{{
-				Kind:             0,
-				Path:             "",
-				File:             "references.ts",
-				ContentStartLine: 0,
-				ContentEndLine:   0,
-				Content:          "",
-			}}, Incomplete: false, Warnings: nil},
+			result: domain.FindReferencingSymbolsResult{
+				Symbols: []domain.ReferencingSymbol{{
+					Kind:             0,
+					Path:             "",
+					File:             "references.ts",
+					ContentStartLine: 0,
+					ContentEndLine:   0,
+					Content:          "",
+				}},
+				Incomplete: false,
+				Warnings:   nil,
+			},
 			expected: false,
 		},
 	}

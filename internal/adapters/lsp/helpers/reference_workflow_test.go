@@ -26,7 +26,11 @@ func TestReferenceWorkflow(t *testing.T) {
 
 // TestUnreadableFileIsSkippedAndReported checks that an unreadable neighbor file is skipped and returned.
 func (s *referenceWorkflowSuite) TestUnreadableFileIsSkippedAndReported() {
-	readErr := &fs.PathError{Op: "open", Path: "/root/b.php", Err: fs.ErrPermission}
+	readErr := &fs.PathError{
+		Op:   "open",
+		Path: "/root/b.php",
+		Err:  fs.ErrPermission,
+	}
 	var openedInRun []string
 
 	skipped, err := RunWithReferenceWorkflowFiles(
@@ -51,7 +55,11 @@ func (s *referenceWorkflowSuite) TestUnreadableFileIsSkippedAndReported() {
 
 // TestUnreadableTargetEndsRequest checks that the target file, which comes last, is never skipped.
 func (s *referenceWorkflowSuite) TestUnreadableTargetEndsRequest() {
-	readErr := &fs.PathError{Op: "open", Path: "/root/target.php", Err: fs.ErrPermission}
+	readErr := &fs.PathError{
+		Op:   "open",
+		Path: "/root/target.php",
+		Err:  fs.ErrPermission,
+	}
 
 	_, err := RunWithReferenceWorkflowFiles(
 		s.T().Context(),

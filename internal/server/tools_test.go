@@ -520,7 +520,11 @@ func TestFindReferencingSymbolsToolMapsWorkspaceRoot(t *testing.T) {
 		File:          "fixture.go",
 	}
 	warning := ".go: 1 file is not processed: a.go: permission denied"
-	expectedResult := domain.FindReferencingSymbolsResult{Symbols: nil, Incomplete: true, Warnings: []string{warning}}
+	expectedResult := domain.FindReferencingSymbolsResult{
+		Symbols:    nil,
+		Incomplete: true,
+		Warnings:   []string{warning},
+	}
 
 	search.EXPECT().FindReferencingSymbols(gomock.Any(), expectedRequest).Return(expectedResult, nil)
 

@@ -285,7 +285,11 @@ func parseProcessTreePIDs(t *testing.T, report string) *processTreePIDs {
 	childPID, err := strconv.Atoi(fields[1])
 	require.NoError(t, err)
 
-	pids := &processTreePIDs{command: commandPID, child: childPID, gone: false}
+	pids := &processTreePIDs{
+		command: commandPID,
+		child:   childPID,
+		gone:    false,
+	}
 	t.Cleanup(func() {
 		if pids.gone {
 			return

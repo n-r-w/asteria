@@ -41,9 +41,11 @@ tasks:
   fmt:
     desc: "Format the codebase"
     cmds:
+      # structfmt goes first because it leaves its output unformatted, and it gets files because it walks directories
+      # into testdata, whose fixtures may hold invalid Go source on purpose.
+      - go tool structfmt --base-formatter=none -w $(git ls-files --cached --others --exclude-standard -- '*.go' ':(exclude)**/testdata/**')
       - go fmt ./...
       - go tool golangci-lint fmt --config .golangci.yml ./...
-      - go tool structfmt --base-formatter=none -w .
 
   vet:
     desc: "Run go vet"

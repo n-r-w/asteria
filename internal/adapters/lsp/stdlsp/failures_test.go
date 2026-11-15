@@ -435,7 +435,11 @@ func (s *fileFailureSuite) TestTimeoutReasonStaysWhenEachNotProcessedFileFailed(
 	s.Require().NoError(failures.RecordSkippedFiles(ctx, []helpers.SkippedFile{
 		{RelativePath: "b.php", Err: errors.New("close request document: notification failed")},
 	}))
-	result := domain.FindReferencingSymbolsResult{Symbols: nil, Incomplete: false, Warnings: nil}
+	result := domain.FindReferencingSymbolsResult{
+		Symbols:    nil,
+		Incomplete: false,
+		Warnings:   nil,
+	}
 	failures.CompleteReferenceResult(&result)
 
 	s.Equal([]string{
@@ -454,7 +458,11 @@ func (s *fileFailureSuite) TestTimeoutLineLeavesOutFailedFiles() {
 	s.Require().NoError(failures.RecordSkippedFiles(ctx, []helpers.SkippedFile{
 		{RelativePath: "b.php", Err: errors.New("close request document: notification failed")},
 	}))
-	result := domain.FindReferencingSymbolsResult{Symbols: nil, Incomplete: false, Warnings: nil}
+	result := domain.FindReferencingSymbolsResult{
+		Symbols:    nil,
+		Incomplete: false,
+		Warnings:   nil,
+	}
 	failures.CompleteReferenceResult(&result)
 
 	s.Equal([]string{
