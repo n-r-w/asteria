@@ -89,6 +89,37 @@ func TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession(t *tes
 	assert.NotSame(t, firstConn, restartedConn)
 }
 
+// TestIntegrationServiceReferenceSearchFailsAfterItsSessionCloses proves that a reference search whose acquired
+// session another request closes during the search returns an error instead of moving to the replacement session.
+func TestIntegrationServiceReferenceSearchFailsAfterItsSessionCloses(t *testing.T) {
+	workspaceRoot := phpactorFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	openDocument := service.withRequestDocument
+	service.withRequestDocument = func(
+		requestCtx context.Context,
+		conn jsonrpc2.Conn,
+		absolutePath string,
+		run func(context.Context) error,
+	) error {
+		closer, err := service.rt.AcquireClosableSession(ctx, workspaceRoot)
+		require.NoError(t, err)
+		closer.ReleaseAndCloseInBackground(ctx)
+		replacementUser, err := service.rt.AcquireClosableSession(ctx, workspaceRoot)
+		require.NoError(t, err)
+		t.Cleanup(replacementUser.Release)
+
+		return openDocument(requestCtx, conn, absolutePath, run)
+	}
+
+	_, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "make_bucket"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "fixture.php",
+	})
+	require.Error(t, err)
+}
+
 // TestIntegrationServiceReferenceSearchOfNewSessionOpensOnlyTarget proves that a reference search that starts the
 // phpactor session finds a reference in another file while the adapter opens no file except the target.
 func TestIntegrationServiceReferenceSearchOfNewSessionOpensOnlyTarget(t *testing.T) {

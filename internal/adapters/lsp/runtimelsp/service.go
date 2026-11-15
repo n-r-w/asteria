@@ -78,24 +78,12 @@ func New(config *RuntimeConfig) (*Runtime, error) {
 	return runtime, nil
 }
 
-// EnsureConn starts the process on demand for one workspace root and returns its live JSON-RPC connection.
+// EnsureConn starts the process on demand for one workspace root and returns its live JSON-RPC connection; when ctx
+// carries the acquired session of this root, it uses only that session and fails after the session was closed.
 func (r *Runtime) EnsureConn(ctx context.Context, workspaceRoot string) (jsonrpc2.Conn, error) {
-	normalizedWorkspaceRoot, err := normalizeWorkspaceRoot(workspaceRoot)
+	session, err := r.startedSession(ctx, workspaceRoot)
 	if err != nil {
 		return nil, err
-	}
-	release, acquireErr := r.AcquireSession(ctx, normalizedWorkspaceRoot)
-	if acquireErr != nil {
-		return nil, acquireErr
-	}
-	defer release()
-
-	session, sessionErr := r.getOrCreateSession(normalizedWorkspaceRoot)
-	if sessionErr != nil {
-		return nil, sessionErr
-	}
-	if startErr := session.ensureStarted(ctx); startErr != nil {
-		return nil, startErr
 	}
 	if r.isClosing() {
 		return nil, errRuntimeClosing
@@ -109,24 +97,12 @@ func (r *Runtime) EnsureConn(ctx context.Context, workspaceRoot string) (jsonrpc
 	return conn, nil
 }
 
-// SessionInfo starts the process on demand for one workspace root and returns the captured initialize metadata.
+// SessionInfo starts the process on demand for one workspace root and returns the captured initialize metadata; when
+// ctx carries the acquired session of this root, it uses only that session and fails after the session was closed.
 func (r *Runtime) SessionInfo(ctx context.Context, workspaceRoot string) (*SessionInfo, error) {
-	normalizedWorkspaceRoot, err := normalizeWorkspaceRoot(workspaceRoot)
+	session, err := r.startedSession(ctx, workspaceRoot)
 	if err != nil {
 		return nil, err
-	}
-	release, acquireErr := r.AcquireSession(ctx, normalizedWorkspaceRoot)
-	if acquireErr != nil {
-		return nil, acquireErr
-	}
-	defer release()
-
-	session, sessionErr := r.getOrCreateSession(normalizedWorkspaceRoot)
-	if sessionErr != nil {
-		return nil, sessionErr
-	}
-	if startErr := session.ensureStarted(ctx); startErr != nil {
-		return nil, startErr
 	}
 	if r.isClosing() {
 		return nil, errRuntimeClosing
@@ -138,6 +114,51 @@ func (r *Runtime) SessionInfo(ctx context.Context, workspaceRoot string) (*Sessi
 	}
 
 	return info, nil
+}
+
+// startedSession returns the session of workspaceRoot with a started server: the acquired session that ctx carries
+// for this root while it is still registered, or otherwise the session registered for the root.
+func (r *Runtime) startedSession(ctx context.Context, workspaceRoot string) (*session, error) {
+	root, err := normalizeWorkspaceRoot(workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	if acquired := acquiredSessionFrom(ctx, r, root); acquired != nil {
+		if !r.isRegistered(root, acquired.managed) {
+			return nil, errSessionClosed
+		}
+		// A background close that starts after this check retires the session, so the server cannot outlive it.
+		if startErr := acquired.managed.session.ensureStarted(ctx); startErr != nil {
+			return nil, startErr
+		}
+
+		return acquired.managed.session, nil
+	}
+
+	release, acquireErr := r.AcquireSession(ctx, root)
+	if acquireErr != nil {
+		return nil, acquireErr
+	}
+	defer release()
+
+	session, sessionErr := r.getOrCreateSession(root)
+	if sessionErr != nil {
+		return nil, sessionErr
+	}
+	if startErr := session.ensureStarted(ctx); startErr != nil {
+		return nil, startErr
+	}
+
+	return session, nil
+}
+
+// isRegistered reports whether managed is the session registered for root.
+func (r *Runtime) isRegistered(root string, managed *managedSession) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.sessions[root] == managed
 }
 
 // getOrCreateSession resolves one normalized root and reuses or creates its session wrapper.
@@ -214,7 +235,7 @@ func (r *Runtime) closeInBackground(ctx context.Context, root string, managed *m
 		defer r.backgroundCloses.Done()
 
 		// The session owns a bounded shutdown budget, so the close needs no deadline of the request.
-		if closeErr := managed.session.closeUnlessForced(closeCtx, forceStop); closeErr != nil {
+		if closeErr := managed.session.retireUnlessForced(closeCtx, forceStop); closeErr != nil {
 			slog.WarnContext(closeCtx, "close LSP session in background",
 				"server_name", r.config.ServerName, "workspace_root", root, "err", closeErr)
 		}

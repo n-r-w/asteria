@@ -31,6 +31,25 @@ func (a *AcquiredSession) ReleaseAndCloseInBackground(ctx context.Context) {
 	a.Release()
 }
 
+// acquiredSessionKey is the context key of the session that a request acquired.
+type acquiredSessionKey struct{}
+
+// WithAcquiredSession returns a context in which EnsureConn and SessionInfo of the runtime of acquired use only the
+// acquired session for its workspace root and return an error after this session was closed.
+func WithAcquiredSession(ctx context.Context, acquired *AcquiredSession) context.Context {
+	return context.WithValue(ctx, acquiredSessionKey{}, acquired)
+}
+
+// acquiredSessionFrom returns the acquired session that ctx carries for root of runtime, or nil.
+func acquiredSessionFrom(ctx context.Context, runtime *Runtime, root string) *AcquiredSession {
+	acquired, ok := ctx.Value(acquiredSessionKey{}).(*AcquiredSession)
+	if !ok || acquired.runtime != runtime || acquired.root != root {
+		return nil
+	}
+
+	return acquired
+}
+
 // AcquireSession keeps a workspace session available for the complete caller workflow.
 // The caller must release it exactly once, after all requests and document cleanup finish.
 // Acquisition does not start the language server.

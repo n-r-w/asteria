@@ -9,6 +9,9 @@ import (
 
 var errRuntimeClosing = errors.New("runtime is closing")
 
+// errSessionClosed reports that the session that a request acquired was closed, so the request cannot continue on it.
+var errSessionClosed = errors.New("LSP session closed")
+
 var (
 	// errStdoutAlreadySet repeats the exec.Cmd error for a caller that set Stdout before an output method.
 	errStdoutAlreadySet = errors.New("exec: Stdout already set")

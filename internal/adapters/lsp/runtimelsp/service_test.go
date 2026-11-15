@@ -210,6 +210,93 @@ func (s *backgroundCloseSuite) TestCleanupClosesBeforeRelease() {
 	})
 }
 
+// TestLookupAfterDetachReturnsError checks that a connection lookup of a request whose acquired session was closed
+// before the lookup returns an error, and that the lookup neither starts nor closes the replacement session.
+func (s *backgroundCloseSuite) TestLookupAfterDetachReturnsError() {
+	t := s.T()
+	runtime := newTestRuntime(t, nil)
+	root := t.TempDir()
+	newRunningSession(t, runtime, root)
+	requestA, err := runtime.AcquireClosableSession(t.Context(), root)
+	s.Require().NoError(err)
+	requestB, err := runtime.AcquireClosableSession(t.Context(), root)
+	s.Require().NoError(err)
+	requestA.ReleaseAndCloseInBackground(t.Context())
+	requestC, err := runtime.AcquireClosableSession(t.Context(), root)
+	s.Require().NoError(err)
+	replacement, err := runtime.getOrCreateSession(root)
+	s.Require().NoError(err)
+
+	_, err = runtime.EnsureConn(WithAcquiredSession(t.Context(), requestB), root)
+
+	s.Require().ErrorIs(err, errSessionClosed)
+	s.Nil(replacement.connection(), "the lookup started the replacement session")
+	registered, err := runtime.getOrCreateSession(root)
+	s.Require().NoError(err)
+	s.Same(replacement, registered)
+	requestB.Release()
+	requestC.Release()
+	s.Require().NoError(runtime.Close(t.Context()))
+}
+
+// TestSecondLookupAfterDetachReturnsError checks that a request whose first lookup got its acquired session gets an
+// error from the next lookup after that session was closed, and that the replacement session stays untouched.
+func (s *backgroundCloseSuite) TestSecondLookupAfterDetachReturnsError() {
+	t := s.T()
+	runtime := newTestRuntime(t, nil)
+	root := t.TempDir()
+	acquiredConn := newRunningSession(t, runtime, root)
+	requestA, err := runtime.AcquireClosableSession(t.Context(), root)
+	s.Require().NoError(err)
+	requestB, err := runtime.AcquireClosableSession(t.Context(), root)
+	s.Require().NoError(err)
+	ctxB := WithAcquiredSession(t.Context(), requestB)
+	firstConn, err := runtime.EnsureConn(ctxB, root)
+	s.Require().NoError(err)
+	s.Same(acquiredConn, firstConn)
+
+	requestA.ReleaseAndCloseInBackground(t.Context())
+	requestC, err := runtime.AcquireClosableSession(t.Context(), root)
+	s.Require().NoError(err)
+	replacement, err := runtime.getOrCreateSession(root)
+	s.Require().NoError(err)
+	_, err = runtime.EnsureConn(ctxB, root)
+
+	s.Require().ErrorIs(err, errSessionClosed)
+	s.Nil(replacement.connection(), "the lookup started the replacement session")
+	requestB.Release()
+	requestC.Release()
+	s.Require().NoError(runtime.Close(t.Context()))
+}
+
+// newRunningSession registers a session of root that counts as running: its server answers the shutdown request and
+// exits when the session closes its side of the connection. It returns the client side of the connection.
+func newRunningSession(t *testing.T, runtime *Runtime, root string) jsonrpc2.Conn {
+	t.Helper()
+
+	running, err := runtime.getOrCreateSession(root)
+	require.NoError(t, err)
+	serverSide, clientSide := net.Pipe()
+	serverConn := jsonrpc2.NewConn(jsonrpc2.NewStream(serverSide))
+	clientConn := jsonrpc2.NewConn(jsonrpc2.NewStream(clientSide))
+	serverConn.Go(t.Context(), func(context.Context, *jsonrpc2.Request) (any, error) {
+		//nolint:nilnil // The shutdown request gets the null result, and a notification gets no reply.
+		return nil, nil
+	})
+	clientConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)
+	exited := make(chan struct{})
+	go func() {
+		<-clientConn.Done()
+		close(exited)
+	}()
+	running.cmd = NewCommand(t.Context(), "gopls")
+	running.conn = clientConn
+	running.done = exited
+	t.Cleanup(func() { _ = serverConn.Close() })
+
+	return clientConn
+}
+
 // TestRuntimeCloseForcesBackgroundCloseToStop proves that runtime shutdown ends the graceful phase of a session that
 // closes in the background at once, waits until its server exits, and closes the live sessions too.
 // It runs in real time: go.lsp.dev/jsonrpc2 keeps call waiters with their ready channels in the package-level

@@ -12,6 +12,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/domain"
 )
@@ -27,6 +28,8 @@ func (s *Service) GetSymbolsOverview(
 			return domain.GetSymbolsOverviewResult{}, acquireErr
 		}
 		defer releaseSessionAfterRequest(ctx, acquired)
+		// Each connection lookup of the request uses the acquired session, or fails after this session was closed.
+		ctx = runtimelsp.WithAcquiredSession(ctx, acquired)
 	}
 
 	result, err := s.std.GetSymbolsOverview(ctx, request)
@@ -69,6 +72,8 @@ func (s *Service) FindSymbol(
 			return domain.FindSymbolResult{}, acquireErr
 		}
 		defer releaseSessionAfterRequest(ctx, acquired)
+		// Each connection lookup of the request uses the acquired session, or fails after this session was closed.
+		ctx = runtimelsp.WithAcquiredSession(ctx, acquired)
 	}
 
 	result, failures, err := s.std.FindSymbolWithFailures(ctx, request)
@@ -179,6 +184,9 @@ func (s *Service) FindReferencingSymbols(
 	if acquireErr != nil {
 		return domain.FindReferencingSymbolsResult{}, acquireErr
 	}
+	// Each connection lookup of the request, including the one before the wait for indexing, uses the acquired
+	// session, or fails after this session was closed.
+	ctx = runtimelsp.WithAcquiredSession(ctx, acquired)
 	// A request that ends while it waits for indexing has sent phpactor no search request, so the session stays open
 	// and keeps indexing for later requests.
 	endedDuringIndexing := false

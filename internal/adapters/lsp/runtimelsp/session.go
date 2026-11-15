@@ -25,6 +25,8 @@ type session struct {
 
 	done       chan struct{}
 	waitResult chan error
+	// retired is set when the session is closed for good, so it never starts its server again.
+	retired bool
 }
 
 // newSession creates a reusable session holder before any server process is started.
@@ -38,6 +40,7 @@ func newSession(config *sessionConfig) *session {
 		info:        nil,
 		done:        nil,
 		waitResult:  nil,
+		retired:     false,
 	}
 }
 
@@ -68,6 +71,9 @@ func (s *session) ensureStarted(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.retired {
+		return errSessionClosed
+	}
 	if s.isAliveLocked() {
 		return nil
 	}
@@ -239,13 +245,19 @@ func (s *session) initializeParams(processID int32) (*protocol.InitializeParams,
 
 // close gracefully shuts down the language server before the process pipes are torn down.
 func (s *session) close(ctx context.Context) error {
-	return s.closeUnlessForced(ctx, nil)
-}
-
-// closeUnlessForced gracefully shuts down the language server and kills it at once when forceStop closes.
-func (s *session) closeUnlessForced(ctx context.Context, forceStop <-chan struct{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	return s.closeLocked(ctx)
+}
+
+// retireUnlessForced shuts down the language server for good, so the session never starts it again, and kills it at
+// once when forceStop closes.
+func (s *session) retireUnlessForced(ctx context.Context, forceStop <-chan struct{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.retired = true
 
 	return s.closeLockedUnlessForced(ctx, forceStop)
 }
