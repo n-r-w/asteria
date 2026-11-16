@@ -200,9 +200,11 @@ Make sure `~/.local/bin` is in `PATH`.
 
 Source: <https://phpactor.readthedocs.io/en/master/usage/standalone.html>
 
-`find_referencing_symbols` waits until `phpactor` finishes indexing the project in each new session. On a project of 17,596 PHP files with an empty cache, the wait took 52.5 seconds.
+When `phpactor` starts indexing within 30 seconds after a new session starts, `find_referencing_symbols` waits until `phpactor` finishes indexing the project. On a project of 17,596 PHP files with an empty cache, the wait took 52.5 seconds.
 Asteria keeps the `phpactor` index under `ASTERIAMCP_CACHE_ROOT`, and later sessions reuse it. With this index, the wait on the same project took 0.5 seconds.
 When `ASTERIAMCP_TOOL_TIMEOUT` ends during the wait, the call returns a timeout error and `phpactor` continues indexing. A later call waits only for the rest of the indexing. For a large project, increase `ASTERIAMCP_TOOL_TIMEOUT` so that the first call can finish.
+
+When `phpactor` has not started indexing 30 seconds after the session starts, `find_referencing_symbols` stops waiting at that moment and searches for references. The reply of this call has the field `incomplete` set to `true`, because references from files that `phpactor` has not indexed may be missing. Each later call of this session also returns `incomplete` set to `true` until `phpactor` starts indexing. After `phpactor` starts indexing, calls wait until the indexing ends.
 
 By default, `phpactor` 2026.06.23.0 skips the following files when it indexes a project, so `find_referencing_symbols` omits references from them:
 - tests of packages under `vendor`: `/vendor/**/tests/**/*` and `/vendor/**/Tests/**/*`;

@@ -163,7 +163,8 @@ func addPHPConstants(
 
 // FindReferencingSymbols returns the references from all indexed files after the phpactor session finishes indexing
 // the workspace, with warnings that name the files it could not process or count the files left at the request
-// deadline; when ctx ends during the wait for indexing, it returns the error of ctx.
+// deadline; the result is marked incomplete when phpactor has not reported indexing, and when ctx ends during the wait
+// for indexing, it returns the error of ctx.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
@@ -207,7 +208,8 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
-	if err = s.waitForIndexing(ctx, workspaceRoot); err != nil {
+	indexingReported, err := s.waitForIndexing(ctx, workspaceRoot)
+	if err != nil {
 		endedDuringIndexing = true
 
 		return domain.FindReferencingSymbolsResult{}, err
@@ -235,6 +237,7 @@ func (s *Service) FindReferencingSymbols(
 		}
 	}
 	failures.CompleteReferenceResult(&result)
+	result.Incomplete = result.Incomplete || !indexingReported
 
 	return result, nil
 }
@@ -287,8 +290,8 @@ func (s *Service) addPropertyReferences(
 // patchInitializeParams sets the phpactor options of a new session and makes reference searches wait for the
 // indexing of this session.
 func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.InitializeParams) error {
-	// The runtime calls this hook before it sends the initialize request, so the new session cannot report the end of
-	// indexing before startIndexing runs.
+	// The runtime calls this hook before it sends the initialize request, so the new session cannot begin indexing
+	// before startIndexing runs.
 	s.startIndexing(workspaceRoot)
 
 	indexPath, err := phpactorIndexerPath(s.cacheRoot, workspaceRoot)

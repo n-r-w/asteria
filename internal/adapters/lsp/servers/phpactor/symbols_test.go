@@ -18,8 +18,8 @@ import (
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
-// TestBuildClientCapabilities proves that phpactor explicitly advertises the hover and references features
-// that its adapter relies on, while preserving the shared runtime baseline for the rest of the handshake.
+// TestBuildClientCapabilities proves that phpactor explicitly advertises the hover, references, and work-done progress
+// features that its adapter relies on, while preserving the shared runtime baseline for the rest of the handshake.
 func TestBuildClientCapabilities(t *testing.T) {
 	t.Parallel()
 
@@ -39,6 +39,8 @@ func TestBuildClientCapabilities(t *testing.T) {
 		capabilities.TextDocument.Hover.ContentFormat,
 	)
 	assert.True(t, lo.FromPtr(capabilities.TextDocument.References.DynamicRegistration))
+	require.NotNil(t, capabilities.Window)
+	assert.True(t, lo.FromPtr(capabilities.Window.WorkDoneProgress))
 }
 
 // TestShouldWatchPHPFile proves that runtime-managed watcher notifications stay scoped to PHP files only.
@@ -98,8 +100,9 @@ func TestPatchInitializeParams(t *testing.T) {
 		withRequestDocument:   nil,
 		runPropertyReferences: nil,
 		cacheRoot:             cacheRoot,
+		indexingStartTimeout:  phpactorIndexingStartTimeout,
 		mu:                    sync.Mutex{},
-		indexing:              make(map[string]indexingDone),
+		indexing:              make(map[string]*indexingState),
 	}
 	err := service.patchInitializeParams(workspaceRoot, params)
 	require.NoError(t, err)

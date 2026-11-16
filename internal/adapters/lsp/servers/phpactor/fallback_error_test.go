@@ -43,9 +43,10 @@ func TestInMemorySearch(t *testing.T) {
 	suite.Run(t, new(inMemorySearchSuite))
 }
 
-// TestReferenceSearchWaitsForEndOfIndexing checks that a reference search before phpactor reports the end of indexing
-// sends no request to the language server and ends with the deadline error, and that a search after the report returns
-// references.
+// TestReferenceSearchWaitsForEndOfIndexing checks that a reference search before phpactor ends the indexing progress,
+// whose token the session announced, sends no request to the language server and ends with the deadline error, also
+// after a progress that the session did not announce begins first and ends, and that a search after the end of the
+// indexing progress returns references that are not marked incomplete.
 func (s *inMemorySearchSuite) TestReferenceSearchWaitsForEndOfIndexing() {
 	var requests atomic.Int32
 	service, request, server := s.newServiceWithServer(
@@ -58,16 +59,52 @@ func (s *inMemorySearchSuite) TestReferenceSearchWaitsForEndOfIndexing() {
 		nil,
 		nil,
 	)
-	s.notifyShowMessage(server, "Indexing workspace")
+	s.notifyProgress(server, otherProgressToken, progressKindBegin)
+	s.createProgress(server, indexingToken)
+	s.notifyProgress(server, indexingToken, progressKindBegin)
+	s.notifyProgress(server, otherProgressToken, progressKindEnd)
 
 	_, err := service.FindReferencingSymbols(deadlineContext(s.T()), request)
 	s.Require().ErrorIs(err, context.DeadlineExceeded)
 	s.Zero(requests.Load())
 
-	s.notifyShowMessage(server, indexingDoneMessage)
+	s.notifyProgress(server, indexingToken, progressKindEnd)
 	result, err := service.FindReferencingSymbols(deadlineContext(s.T()), request)
 	s.Require().NoError(err)
 	s.Equal([]string{"Fixture/read"}, referencingPaths(result))
+	s.False(result.Incomplete)
+}
+
+// TestReferenceSearchWithoutIndexingProgressIsIncomplete checks that each reference search of a session in which no
+// indexing progress begins within the start timeout returns references marked incomplete without warnings, also after
+// a progress that the session did not announce begins and ends, and that a search after an indexing progress begins
+// later waits for its end again.
+func (s *inMemorySearchSuite) TestReferenceSearchWithoutIndexingProgressIsIncomplete() {
+	service, request, server := s.newServiceWithServer(fixtureFiles(), fixtureAnswer(nil), nil, nil)
+	service.indexingStartTimeout = shortIndexingStartTimeout
+
+	for search := range 2 {
+		result, err := service.FindReferencingSymbols(deadlineContext(s.T()), request)
+		s.Require().NoError(err)
+		s.Equal([]string{"Fixture/read"}, referencingPaths(result))
+		s.True(result.Incomplete)
+		s.Empty(result.Warnings)
+		// phpactor reports each reference search through a progress that it does not announce.
+		if search == 0 {
+			s.notifyProgress(server, otherProgressToken, progressKindBegin)
+			s.notifyProgress(server, otherProgressToken, progressKindEnd)
+		}
+	}
+
+	s.createProgress(server, indexingToken)
+	s.notifyProgress(server, indexingToken, progressKindBegin)
+	_, err := service.FindReferencingSymbols(deadlineContext(s.T()), request)
+	s.Require().ErrorIs(err, context.DeadlineExceeded)
+
+	s.notifyProgress(server, indexingToken, progressKindEnd)
+	result, err := service.FindReferencingSymbols(deadlineContext(s.T()), request)
+	s.Require().NoError(err)
+	s.False(result.Incomplete)
 }
 
 // TestNewSessionWaitsForItsOwnIndexing checks that a reference search of a new session waits for the end of indexing
@@ -474,12 +511,22 @@ func fixtureAnswer(fallbackSymbols func() error) testAnswer {
 	}
 }
 
-// indexingDoneMessage is a sample of the message with which phpactor reports the end of indexing.
-const indexingDoneMessage = "Done indexing (0.05s, 10mb), watching with lsp"
+const (
+	// indexingToken is the token of the announced indexing progress of a test session.
+	indexingToken = "indexing"
+	// otherProgressToken is the token of a progress that the session does not announce, as phpactor does for a
+	// reference search.
+	otherProgressToken = "references"
+	// syncProgressToken is the token of an announced progress that never begins.
+	syncProgressToken = "sync"
+	// shortIndexingStartTimeout is the time within which a test session must begin a progress, shorter than the
+	// deadline of deadlineContext.
+	shortIndexingStartTimeout = 100 * time.Millisecond
+)
 
 // newService writes files into a new workspace and creates a phpactor service whose in-memory language server answers
-// through answer and has reported the end of indexing, whose member-reference command returns propertyRows, and whose
-// session ends after the references request when sessionErr is set.
+// through answer and has reported the begin and the end of indexing, whose member-reference command returns
+// propertyRows, and whose session ends after the references request when sessionErr is set.
 func (s *inMemorySearchSuite) newService(
 	files map[string]string,
 	answer testAnswer,
@@ -487,13 +534,15 @@ func (s *inMemorySearchSuite) newService(
 	propertyRows []phpactorReferenceRow,
 ) (*Service, *domain.FindReferencingSymbolsRequest) {
 	service, request, server := s.newServiceWithServer(files, answer, sessionErr, propertyRows)
-	s.notifyShowMessage(server, indexingDoneMessage)
+	s.createProgress(server, indexingToken)
+	s.notifyProgress(server, indexingToken, progressKindBegin)
+	s.notifyProgress(server, indexingToken, progressKindEnd)
 
 	return service, request
 }
 
-// newServiceWithServer creates the service of newService before the report of the end of indexing and also returns
-// the server side of the connection, whose messages reach the server callback of the service.
+// newServiceWithServer creates the service of newService in a new session before any progress and also returns the
+// server side of the connection, whose messages reach the server callback of the service.
 func (s *inMemorySearchSuite) newServiceWithServer(
 	files map[string]string,
 	answer testAnswer,
@@ -521,7 +570,13 @@ func (s *inMemorySearchSuite) newServiceWithServer(
 			return answer(method, documentPath, call)
 		},
 		func(ctx context.Context, req *jsonrpc2.Request) (any, bool, error) {
-			return service.handleServerCallback(ctx, req, workspaceRoot)
+			result, handled, err := service.handleServerCallback(ctx, req, workspaceRoot)
+			// The runtime answers window/workDoneProgress/create with null after the server callback.
+			if !handled && err == nil && req.Method() == protocol.MethodWindowWorkDoneProgressCreate {
+				return nil, true, nil
+			}
+
+			return result, handled, err
 		},
 	)
 
@@ -574,10 +629,13 @@ func (s *inMemorySearchSuite) newServiceWithServer(
 		runPropertyReferences: func(context.Context, string, string, string, string) ([]phpactorReferenceRow, error) {
 			return propertyRows, nil
 		},
-		cacheRoot: t.TempDir(),
-		mu:        sync.Mutex{},
-		indexing:  make(map[string]indexingDone),
+		cacheRoot:            t.TempDir(),
+		indexingStartTimeout: phpactorIndexingStartTimeout,
+		mu:                   sync.Mutex{},
+		indexing:             make(map[string]*indexingState),
 	}
+	// The runtime calls this hook before the initialize request of each new session.
+	s.Require().NoError(service.patchInitializeParams(workspaceRoot, &protocol.InitializeParams{}))
 
 	return service, &domain.FindReferencingSymbolsRequest{
 		Path:          "Fixture/value",
@@ -588,12 +646,28 @@ func (s *inMemorySearchSuite) newServiceWithServer(
 	}, server
 }
 
-// notifyShowMessage sends the window/showMessage notification with message from the in-memory language server.
-func (s *inMemorySearchSuite) notifyShowMessage(server jsonrpc2.Conn, message string) {
-	s.Require().NoError(server.Notify(s.T().Context(), protocol.MethodWindowShowMessage, &protocol.ShowMessageParams{
-		Type:    protocol.MessageTypeInfo,
-		Message: message,
+// createProgress sends the window/workDoneProgress/create request with token from the in-memory language server and
+// returns after the client has answered it.
+func (s *inMemorySearchSuite) createProgress(server jsonrpc2.Conn, token string) {
+	_, err := server.Call(
+		s.T().Context(),
+		protocol.MethodWindowWorkDoneProgressCreate,
+		map[string]any{"token": token},
+		nil,
+	)
+	s.Require().NoError(err)
+}
+
+// notifyProgress sends the $/progress notification of kind with token from the in-memory language server and returns
+// after the client has handled it.
+func (s *inMemorySearchSuite) notifyProgress(server jsonrpc2.Conn, token string, kind string) {
+	s.Require().NoError(server.Notify(s.T().Context(), protocol.MethodProgress, map[string]any{
+		"token": token,
+		"value": map[string]any{"kind": kind},
 	}))
+	// The client handles the messages of the server in their order, so the answer to this request, which announces a
+	// progress that never begins, comes after the client has handled the notification.
+	s.createProgress(server, syncProgressToken)
 }
 
 // newConn builds an in-memory language server that accepts document notifications and answers each request through

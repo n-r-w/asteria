@@ -121,7 +121,8 @@ func TestIntegrationServiceReferenceSearchFailsAfterItsSessionCloses(t *testing.
 }
 
 // TestIntegrationServiceReferenceSearchOfNewSessionOpensOnlyTarget proves that a reference search that starts the
-// phpactor session finds a reference in another file while the adapter opens no file except the target.
+// phpactor session waits for the indexing that phpactor reports and finds a reference in another file while the
+// adapter opens no file except the target.
 func TestIntegrationServiceReferenceSearchOfNewSessionOpensOnlyTarget(t *testing.T) {
 	workspaceRoot := phpactorFixtureRoot(t)
 	service, ctx := newIntegrationService(t)
@@ -150,6 +151,7 @@ func TestIntegrationServiceReferenceSearchOfNewSessionOpensOnlyTarget(t *testing
 		File:                         "fixture.php",
 	})
 	require.NoError(t, err)
+	assert.False(t, result.Incomplete, "expected phpactor to report indexing through work-done progress")
 
 	symbol, ok := findReferencingSymbol(result.Symbols, "use_bucket")
 	require.True(t, ok, "expected reference in another file, got %#v", result.Symbols)
