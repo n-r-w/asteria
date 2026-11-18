@@ -28,7 +28,9 @@ type startupReadinessState struct {
 
 // Service implements rust-analyzer-specific symbolic search logic.
 type Service struct {
-	rt                  *runtimelsp.Runtime
+	rt *runtimelsp.Runtime
+	// ensureConn returns the live connection of the workspace session for adapter-specific requests.
+	ensureConn          stdlsp.EnsureConnFunc
 	std                 *stdlsp.Service
 	stdReferences       *stdlsp.Service
 	withRequestDocument stdlsp.WithRequestDocumentFunc
@@ -55,6 +57,7 @@ func New(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig, sessionIdleTimeou
 
 	service := &Service{
 		rt:                         nil,
+		ensureConn:                 nil,
 		std:                        nil,
 		stdReferences:              nil,
 		withRequestDocument:        nil,
@@ -117,6 +120,7 @@ func New(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig, sessionIdleTimeou
 	}
 
 	service.rt = rt
+	service.ensureConn = rt.EnsureConn
 	service.std = std
 	service.stdReferences = stdReferences
 	service.withRequestDocument = withRequestDocument
@@ -131,21 +135,23 @@ func buildClientCapabilities() protocol.ClientCapabilities {
 	if capabilities.Workspace == nil {
 		capabilities.Workspace = &protocol.WorkspaceClientCapabilities{}
 	}
-	capabilities.Workspace.DidChangeWatchedFiles = &protocol.DidChangeWatchedFilesWorkspaceClientCapabilities{
-		DynamicRegistration: true,
+	capabilities.Workspace.DidChangeWatchedFiles = &protocol.DidChangeWatchedFilesClientCapabilities{
+		DynamicRegistration:    new(true),
+		RelativePatternSupport: nil,
 	}
 	capabilities.Workspace.ExecuteCommand = &protocol.ExecuteCommandClientCapabilities{
-		DynamicRegistration: true,
+		DynamicRegistration: new(true),
 	}
 
-	var symbolKinds *protocol.SymbolKindCapabilities
+	var symbolKinds *protocol.ClientSymbolKindOptions
 	if capabilities.TextDocument != nil && capabilities.TextDocument.DocumentSymbol != nil {
 		symbolKinds = capabilities.TextDocument.DocumentSymbol.SymbolKind
 	}
 	capabilities.Workspace.Symbol = &protocol.WorkspaceSymbolClientCapabilities{
-		DynamicRegistration: true,
+		DynamicRegistration: new(true),
 		SymbolKind:          symbolKinds,
-		TagSupport:          nil,
+		TagSupport:          protocol.ClientSymbolTagOptions{},
+		ResolveSupport:      protocol.ClientSymbolResolveOptions{},
 	}
 
 	if capabilities.TextDocument == nil {
@@ -154,33 +160,31 @@ func buildClientCapabilities() protocol.ClientCapabilities {
 	if capabilities.TextDocument.Synchronization == nil {
 		capabilities.TextDocument.Synchronization = &protocol.TextDocumentSyncClientCapabilities{}
 	}
-	capabilities.TextDocument.Synchronization.DynamicRegistration = true
-	capabilities.TextDocument.Synchronization.WillSave = true
-	capabilities.TextDocument.Synchronization.WillSaveWaitUntil = true
-	capabilities.TextDocument.Synchronization.DidSave = true
-	capabilities.TextDocument.References = &protocol.ReferencesTextDocumentClientCapabilities{
-		DynamicRegistration: true,
+	capabilities.TextDocument.Synchronization.DynamicRegistration = new(true)
+	capabilities.TextDocument.Synchronization.WillSave = new(true)
+	capabilities.TextDocument.Synchronization.WillSaveWaitUntil = new(true)
+	capabilities.TextDocument.Synchronization.DidSave = new(true)
+	capabilities.TextDocument.References = &protocol.ReferenceClientCapabilities{
+		DynamicRegistration: new(true),
 	}
-	capabilities.TextDocument.Hover = &protocol.HoverTextDocumentClientCapabilities{
-		DynamicRegistration: true,
-		ContentFormat:       []protocol.MarkupKind{protocol.Markdown, protocol.PlainText},
+	capabilities.TextDocument.Hover = &protocol.HoverClientCapabilities{
+		DynamicRegistration: new(true),
+		ContentFormat:       []protocol.MarkupKind{protocol.MarkupKindMarkdown, protocol.MarkupKindPlainText},
 	}
 	capabilities.TextDocument.PublishDiagnostics = &protocol.PublishDiagnosticsClientCapabilities{
-		RelatedInformation:     true,
-		TagSupport:             nil,
-		VersionSupport:         false,
-		CodeDescriptionSupport: false,
-		DataSupport:            false,
+		RelatedInformation:     new(true),
+		TagSupport:             protocol.ClientDiagnosticsTagOptions{},
+		CodeDescriptionSupport: nil,
+		DataSupport:            nil,
+		VersionSupport:         nil,
 	}
 
 	capabilities.Window = &protocol.WindowClientCapabilities{
-		WorkDoneProgress: true,
+		WorkDoneProgress: new(true),
 		ShowMessage:      nil,
 		ShowDocument:     nil,
 	}
-	capabilities.Experimental = map[string]any{
-		"serverStatusNotification": true,
-	}
+	capabilities.Experimental = protocol.LSPAny(`{"serverStatusNotification":true}`)
 
 	return capabilities
 }
@@ -198,7 +202,7 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 		workspaceOption = "workspace"
 	)
 
-	params.InitializationOptions = map[string]any{
+	initializationOptions, err := helpers.MarshalLSPAny(map[string]any{
 		"cargo": map[string]any{
 			"autoreload": true,
 			"extraEnv": map[string]any{
@@ -230,7 +234,11 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 		"diagnostics": map[string]any{
 			enableOption: false,
 		},
+	})
+	if err != nil {
+		return err
 	}
+	params.InitializationOptions = initializationOptions
 
 	return nil
 }
@@ -249,30 +257,29 @@ func (s *Service) cargoTargetDir(workspaceRoot string) (string, error) {
 // handleServerCallback acknowledges the extra rust-analyzer callback that appears during workspace analysis
 // but is not yet handled by the shared runtime callback set.
 func (s *Service) handleServerCallback(
-	ctx context.Context,
-	reply jsonrpc2.Replier,
-	req jsonrpc2.Request,
+	_ context.Context,
+	req *jsonrpc2.Request,
 	workspaceRoot string,
-) (bool, error) {
+) (result any, handled bool, err error) {
 	switch req.Method() {
 	case experimentalServerStatusMethod:
 		params := &struct {
 			Quiescent bool `json:"quiescent"`
 		}{}
 		if len(req.Params()) > 0 {
-			if err := json.Unmarshal(req.Params(), params); err != nil {
-				return true, reply(ctx, nil, fmt.Errorf("decode rust-analyzer server status: %w", err))
+			if decodeErr := json.Unmarshal(req.Params(), params); decodeErr != nil {
+				return nil, true, fmt.Errorf("decode rust-analyzer server status: %w", decodeErr)
 			}
 		}
 		if params.Quiescent {
 			s.markStartupReady(workspaceRoot)
 		}
 
-		return true, reply(ctx, nil, nil)
+		return nil, true, nil
 	case workspaceDiagnosticRefreshMethod:
-		return true, reply(ctx, nil, nil)
+		return nil, true, nil
 	default:
-		return false, nil
+		return nil, false, nil
 	}
 }
 

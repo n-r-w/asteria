@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/samber/lo"
+
 	"go.lsp.dev/protocol"
 
 	"github.com/n-r-w/asteria/internal/domain"
@@ -347,7 +349,7 @@ func symbolInformationNode(
 	symbol *protocol.SymbolInformation,
 	buildNamePath NamePathBuilder,
 ) *node {
-	parentPath := strings.TrimSpace(symbol.ContainerName)
+	parentPath := strings.TrimSpace(lo.FromPtr(symbol.ContainerName))
 
 	return &node{
 		Kind:         int(symbol.Kind),

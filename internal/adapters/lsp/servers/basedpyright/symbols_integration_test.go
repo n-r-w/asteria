@@ -154,6 +154,22 @@ func TestIntegrationServiceFindSymbolSupportsWholeWorkspaceScope(t *testing.T) {
 	assert.Equal(t, "references.py", symbol.File)
 }
 
+// TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8 proves that workspace-wide Python search
+// reads a legacy file whose string literal holds bytes that are not valid UTF-8.
+func TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8(t *testing.T) {
+	workspaceRoot := basedpyrightFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	result, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "BinaryMetadata/descriptor"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            "",
+	})
+	require.NoError(t, err)
+
+	requireFoundSymbolInFile(t, result.Symbols, "BinaryMetadata/descriptor", "binary_metadata.py")
+}
+
 // TestIntegrationServiceGetSymbolsOverviewIncludesAdvancedPythonForms proves that the live adapter keeps
 // advanced Python declarations observable without needing shared-layer changes.
 func TestIntegrationServiceGetSymbolsOverviewIncludesAdvancedPythonForms(t *testing.T) {

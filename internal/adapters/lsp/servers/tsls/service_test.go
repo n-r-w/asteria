@@ -1,6 +1,7 @@
 package lsptsls
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -30,11 +31,13 @@ func (s *initializeSuite) TestMemoryAndFallback() {
 		}
 		s.Run(name, func() {
 			workspaceRoot := s.T().TempDir()
-			workspaceFolders := []protocol.WorkspaceFolder{{
-				URI: string(uri.File(workspaceRoot)), Name: "workspace",
-			}}
+			workspaceFolders := protocol.NewNullable([]protocol.WorkspaceFolder{{
+				URI: uri.File(workspaceRoot), Name: "workspace",
+			}})
 			//nolint:exhaustruct_v5 // The test exercises workspace and initialization options only.
-			params := &protocol.InitializeParams{WorkspaceFolders: workspaceFolders}
+			params := &protocol.InitializeParams{
+				WorkspaceFolders: workspaceFolders,
+			}
 			config := cfgadapters.TSLSConfig{TSServerFallbackPath: "", MaxTSServerMemory: 1536}
 			expectedServerOptions := map[string]any{"useSyntaxServer": "never"}
 			if withFallback {
@@ -43,13 +46,15 @@ func (s *initializeSuite) TestMemoryAndFallback() {
 			}
 
 			s.Require().NoError(patchInitializeParams(workspaceRoot, config, params))
-			s.Equal(uri.File(workspaceRoot), params.RootURI)
-			s.Empty(params.RootPath)
+			s.Equal(new(uri.File(workspaceRoot)), params.RootURI)
+			s.True(params.RootPath.IsZero())
 			s.Equal(workspaceFolders, params.WorkspaceFolders)
-			s.Equal(map[string]any{
+			expectedOptions, err := json.Marshal(map[string]any{
 				"maxTsServerMemory": 1536,
 				"tsserver":          expectedServerOptions,
-			}, params.InitializationOptions)
+			})
+			s.Require().NoError(err)
+			s.JSONEq(string(expectedOptions), string(params.InitializationOptions))
 		})
 	}
 }

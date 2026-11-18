@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +24,11 @@ type Runtime struct {
 	mu       sync.Mutex
 	closing  bool
 	active   int
+	// backgroundCloses counts the sessions that shut down in the background, so Close can wait for them.
+	backgroundCloses sync.WaitGroup
+	// forceBackgroundCloses closes when Close starts, so the background closes skip the graceful shutdown and kill their
+	// servers at once.
+	forceBackgroundCloses chan struct{}
 }
 
 // New validates runtime configuration, normalizes defaults in place, and prepares lazy session storage.
@@ -59,34 +65,25 @@ func New(config *RuntimeConfig) (*Runtime, error) {
 	}
 
 	runtime := &Runtime{
-		config:   config,
-		sessions: make(map[string]*managedSession),
-		mu:       sync.Mutex{},
-		closing:  false,
-		active:   0,
+		config:           config,
+		sessions:         make(map[string]*managedSession),
+		mu:               sync.Mutex{},
+		closing:          false,
+		active:           0,
+		backgroundCloses: sync.WaitGroup{},
+
+		forceBackgroundCloses: make(chan struct{}),
 	}
 
 	return runtime, nil
 }
 
-// EnsureConn starts the process on demand for one workspace root and returns its live JSON-RPC connection.
+// EnsureConn starts the process on demand for one workspace root and returns its live JSON-RPC connection; when ctx
+// carries the acquired session of this root, it uses only that session and fails after the session was closed.
 func (r *Runtime) EnsureConn(ctx context.Context, workspaceRoot string) (jsonrpc2.Conn, error) {
-	normalizedWorkspaceRoot, err := normalizeWorkspaceRoot(workspaceRoot)
+	session, err := r.startedSession(ctx, workspaceRoot)
 	if err != nil {
 		return nil, err
-	}
-	release, acquireErr := r.AcquireSession(ctx, normalizedWorkspaceRoot)
-	if acquireErr != nil {
-		return nil, acquireErr
-	}
-	defer release()
-
-	session, sessionErr := r.getOrCreateSession(normalizedWorkspaceRoot)
-	if sessionErr != nil {
-		return nil, sessionErr
-	}
-	if startErr := session.ensureStarted(ctx); startErr != nil {
-		return nil, startErr
 	}
 	if r.isClosing() {
 		return nil, errRuntimeClosing
@@ -100,24 +97,12 @@ func (r *Runtime) EnsureConn(ctx context.Context, workspaceRoot string) (jsonrpc
 	return conn, nil
 }
 
-// SessionInfo starts the process on demand for one workspace root and returns the captured initialize metadata.
+// SessionInfo starts the process on demand for one workspace root and returns the captured initialize metadata; when
+// ctx carries the acquired session of this root, it uses only that session and fails after the session was closed.
 func (r *Runtime) SessionInfo(ctx context.Context, workspaceRoot string) (*SessionInfo, error) {
-	normalizedWorkspaceRoot, err := normalizeWorkspaceRoot(workspaceRoot)
+	session, err := r.startedSession(ctx, workspaceRoot)
 	if err != nil {
 		return nil, err
-	}
-	release, acquireErr := r.AcquireSession(ctx, normalizedWorkspaceRoot)
-	if acquireErr != nil {
-		return nil, acquireErr
-	}
-	defer release()
-
-	session, sessionErr := r.getOrCreateSession(normalizedWorkspaceRoot)
-	if sessionErr != nil {
-		return nil, sessionErr
-	}
-	if startErr := session.ensureStarted(ctx); startErr != nil {
-		return nil, startErr
 	}
 	if r.isClosing() {
 		return nil, errRuntimeClosing
@@ -129,6 +114,52 @@ func (r *Runtime) SessionInfo(ctx context.Context, workspaceRoot string) (*Sessi
 	}
 
 	return info, nil
+}
+
+// startedSession returns the session of workspaceRoot with a started server: the acquired session that ctx carries
+// for this root while it is still registered, or otherwise the session registered for the root.
+func (r *Runtime) startedSession(ctx context.Context, workspaceRoot string) (*session, error) {
+	root, err := normalizeWorkspaceRoot(workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	if acquired := acquiredSessionFrom(ctx, r, root); acquired != nil {
+		if !r.isRegistered(root, acquired.managed) {
+			return nil, errSessionClosed
+		}
+		// A background close that starts after this check marks the session retired, so ensureStarted either fails or
+		// starts a server that this close then stops.
+		if startErr := acquired.managed.session.ensureStarted(ctx); startErr != nil {
+			return nil, startErr
+		}
+
+		return acquired.managed.session, nil
+	}
+
+	release, acquireErr := r.AcquireSession(ctx, root)
+	if acquireErr != nil {
+		return nil, acquireErr
+	}
+	defer release()
+
+	session, sessionErr := r.getOrCreateSession(root)
+	if sessionErr != nil {
+		return nil, sessionErr
+	}
+	if startErr := session.ensureStarted(ctx); startErr != nil {
+		return nil, startErr
+	}
+
+	return session, nil
+}
+
+// isRegistered reports whether managed is the session registered for root.
+func (r *Runtime) isRegistered(root string, managed *managedSession) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	return r.sessions[root] == managed
 }
 
 // getOrCreateSession resolves one normalized root and reuses or creates its session wrapper.
@@ -185,34 +216,35 @@ func (r *Runtime) newSessionConfig(workspaceRoot string) (*sessionConfig, error)
 	}, nil
 }
 
-// CloseSession shuts down the session for one workspace root without affecting other live sessions.
-func (r *Runtime) CloseSession(ctx context.Context, workspaceRoot string) error {
-	normalizedWorkspaceRoot, err := normalizeWorkspaceRoot(workspaceRoot)
-	if err != nil {
-		return err
-	}
-
+// closeInBackground removes managed from the sessions of root and shuts it down in a goroutine that Close forces to
+// stop and waits for; it does nothing when managed is no longer registered for root or the runtime is closing.
+func (r *Runtime) closeInBackground(ctx context.Context, root string, managed *managedSession) {
 	r.mu.Lock()
-	if r.closing {
+	if r.closing || r.sessions[root] != managed {
 		r.mu.Unlock()
 
-		return nil
+		return
 	}
-	sessionToClose, ok := r.sessions[normalizedWorkspaceRoot]
-	if ok {
-		sessionToClose.stopIdleTimer()
-		delete(r.sessions, normalizedWorkspaceRoot)
-	}
+	managed.stopIdleTimer()
+	delete(r.sessions, root)
+	r.backgroundCloses.Add(1)
+	forceStop := r.forceBackgroundCloses
 	r.mu.Unlock()
 
-	if !ok {
-		return nil
-	}
+	closeCtx := context.WithoutCancel(ctx)
+	go func() {
+		defer r.backgroundCloses.Done()
 
-	return sessionToClose.session.close(ctx)
+		// The session owns a bounded shutdown budget, so the close needs no deadline of the request.
+		if closeErr := managed.session.retireUnlessForced(closeCtx, forceStop); closeErr != nil {
+			slog.WarnContext(closeCtx, "close LSP session in background",
+				"server_name", r.config.ServerName, "workspace_root", root, "err", closeErr)
+		}
+	}()
 }
 
-// Close shuts down all live sessions so process-level cleanup stays explicit to the caller.
+// Close shuts down all live sessions and the sessions that close in the background, so process-level cleanup stays
+// explicit to the caller.
 func (r *Runtime) Close(ctx context.Context) error {
 	r.mu.Lock()
 	if r.closing {
@@ -220,15 +252,18 @@ func (r *Runtime) Close(ctx context.Context) error {
 		return errRuntimeClosing
 	}
 	r.closing = true
+	close(r.forceBackgroundCloses)
 	r.mu.Unlock()
+
+	// No background close starts while the runtime is closing; each running one kills its server at once and waits for
+	// its exit up to ShutdownTimeout.
+	r.backgroundCloses.Wait()
 
 	closeCtx, cancel := newShutdownContext(ctx, r.config.ShutdownTimeout)
 	defer cancel()
 
 	if waitErr := r.waitForActiveRequests(closeCtx); waitErr != nil {
-		r.mu.Lock()
-		r.closing = false
-		r.mu.Unlock()
+		r.endClosing()
 
 		return waitErr
 	}
@@ -247,11 +282,18 @@ func (r *Runtime) Close(ctx context.Context) error {
 		closeErr = errors.Join(closeErr, session.close(ctx))
 	}
 
-	r.mu.Lock()
-	r.closing = false
-	r.mu.Unlock()
+	r.endClosing()
 
 	return closeErr
+}
+
+// endClosing lets the runtime serve requests again and gives later background closes a new force signal.
+func (r *Runtime) endClosing() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.closing = false
+	r.forceBackgroundCloses = make(chan struct{})
 }
 
 // isClosing reports whether runtime shutdown has started.

@@ -138,42 +138,74 @@ func (s *Service) FindSymbol(
 		return domain.FindSymbolResult{Symbols: results, Warnings: nil}, nil
 	}
 
+	return s.findSymbolInMatchedLSPs(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: request.FindSymbolFilter,
+		WorkspaceRoot:    effectiveRoot,
+		Scope:            trimmedScope,
+	}, fileNames)
+}
+
+// findSymbolInMatchedLSPs runs one directory or workspace search in each LSP that serves an extension of fileNames
+// and merges their results.
+func (s *Service) findSymbolInMatchedLSPs(
+	ctx context.Context,
+	request *domain.FindSymbolRequest,
+	fileNames []string,
+) (domain.FindSymbolResult, error) {
 	// Directory and workspace scopes must fan out once per matching adapter, not once per file, because each
 	// adapter owns its own traversal rules such as ignored directories and language-specific search semantics.
 	// One failed adapter, for example a TypeScript server without TypeScript for one script in a Go repository,
 	// must not hide symbols of other adapters, so its error becomes a warning unless every adapter fails.
+	// Warnings of adapters that succeeded name their files that could not be processed and reach the client too.
+	// After the request deadline, the client gets the symbols of each adapter that returned a result, and a timeout
+	// warning in place of an error for the extensions of each adapter that was not called or returned an error.
 	matchedExtensions := s.collectMatchedExtensions(fileNames)
 	lsps := s.selectLSPsByExtensions(matchedExtensions)
 	var (
-		warnings []string
-		firstErr error
+		results     []domain.FoundSymbol
+		warnings    []string
+		firstErr    error
+		failedCount int
 	)
 	for _, lsp := range lsps {
-		searchRequest := &domain.FindSymbolRequest{
-			FindSymbolFilter: request.FindSymbolFilter,
-			WorkspaceRoot:    effectiveRoot,
-			Scope:            trimmedScope,
+		buildNotSearchedWarning := func(reason any) string {
+			return fmt.Sprintf(
+				"%s files are not searched: %v",
+				strings.Join(s.matchedExtensionsOf(lsp, matchedExtensions), ", "),
+				reason,
+			)
+		}
+		if domain.IsStoppedByTimeout(ctx) {
+			warnings = append(warnings, buildNotSearchedWarning(domain.SearchStoppedByTimeout))
+
+			continue
 		}
 
-		result, findErr := lsp.FindSymbol(ctx, searchRequest)
+		// Each adapter gets its own request, because an adapter may normalize the request in place.
+		searchRequest := *request
+		result, findErr := lsp.FindSymbol(ctx, &searchRequest)
+		if findErr != nil && domain.IsStoppedByTimeout(ctx) {
+			slog.WarnContext(ctx, "stop LSP symbol search by timeout", "lsp", fmt.Sprintf("%T", lsp), "err", findErr)
+			warnings = append(warnings, buildNotSearchedWarning(domain.SearchStoppedByTimeout))
+
+			continue
+		}
 		if findErr != nil {
 			lspErr := fmt.Errorf("lsp %T failed to find symbol: %w", lsp, findErr)
 			slog.WarnContext(ctx, "skip failed LSP in symbol search", "lsp", fmt.Sprintf("%T", lsp), "err", findErr)
 			if firstErr == nil {
 				firstErr = lspErr
 			}
-			warnings = append(warnings, fmt.Sprintf(
-				"%s files are not searched: %s",
-				strings.Join(s.matchedExtensionsOf(lsp, matchedExtensions), ", "),
-				lspErr,
-			))
+			failedCount++
+			warnings = append(warnings, buildNotSearchedWarning(lspErr))
 
 			continue
 		}
 
 		results = mergeFoundSymbols(results, result.Symbols)
+		warnings = append(warnings, result.Warnings...)
 	}
-	if firstErr != nil && len(warnings) == len(lsps) {
+	if firstErr != nil && failedCount == len(lsps) {
 		return domain.FindSymbolResult{}, firstErr
 	}
 

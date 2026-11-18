@@ -79,6 +79,34 @@ func groupReferenceMatches(matches []referenceMatch) []domain.ReferencingSymbol 
 	return result
 }
 
+// MergeReferenceResults returns the containers of completed and the containers of partial that completed does not
+// hold, in the order of a grouped reference result, so that rows of an interrupted lookup add to a finished one.
+func MergeReferenceResults(
+	completed domain.FindReferencingSymbolsResult,
+	partial domain.FindReferencingSymbolsResult,
+) domain.FindReferencingSymbolsResult {
+	containerKey := func(symbol *domain.ReferencingSymbol) string {
+		return symbol.File + "\x00" + symbol.Path
+	}
+	symbols := slices.Clone(completed.Symbols)
+	known := make(map[string]struct{}, len(symbols))
+	for index := range symbols {
+		known[containerKey(&symbols[index])] = struct{}{}
+	}
+	for index := range partial.Symbols {
+		if _, ok := known[containerKey(&partial.Symbols[index])]; !ok {
+			symbols = append(symbols, partial.Symbols[index])
+		}
+	}
+	sortReferencingSymbols(symbols)
+
+	return domain.FindReferencingSymbolsResult{
+		Symbols:    symbols,
+		Incomplete: completed.Incomplete || partial.Incomplete,
+		Warnings:   nil,
+	}
+}
+
 // shouldReplaceReference keeps representative reference selection deterministic by preferring
 // source order and, for one line, the leftmost reference column.
 func shouldReplaceReference(

@@ -67,7 +67,7 @@ brew install --cask n-r-w/homebrew-tap/asteria-mcp
 
 Requirements:
 
-- Go `1.27.2`
+- Go `1.27.4`
 
 ```bash
 go build -o asteria-mcp ./cmd/asteria-mcp
@@ -200,6 +200,18 @@ Make sure `~/.local/bin` is in `PATH`.
 
 Source: <https://phpactor.readthedocs.io/en/master/usage/standalone.html>
 
+When `phpactor` starts indexing within 30 seconds after a new session starts, `find_referencing_symbols` waits until `phpactor` finishes indexing the project. On a project of 17,596 PHP files with an empty cache, the wait took 52.5 seconds.
+Asteria keeps the `phpactor` index under `ASTERIAMCP_CACHE_ROOT`, and later sessions reuse it. With this index, the wait on the same project took 0.5 seconds.
+When `ASTERIAMCP_TOOL_TIMEOUT` ends during the wait, the call returns a timeout error and `phpactor` continues indexing. A later call waits only for the rest of the indexing. For a large project, increase `ASTERIAMCP_TOOL_TIMEOUT` so that the first call can finish.
+
+When `phpactor` has not started indexing 30 seconds after the session starts, `find_referencing_symbols` stops waiting at that moment and searches for references. The reply of this call has the field `incomplete` set to `true`, because references from files that `phpactor` has not indexed may be missing. Each later call of this session also returns `incomplete` set to `true` until `phpactor` starts indexing. After `phpactor` starts indexing, calls wait until the indexing ends.
+
+By default, `phpactor` 2026.06.23.0 skips the following files when it indexes a project, so `find_referencing_symbols` omits references from them:
+- tests of packages under `vendor`: `/vendor/**/tests/**/*` and `/vendor/**/Tests/**/*`;
+- `/vendor/composer/**/*`;
+- the Rector stubs: `/vendor/rector/rector/stubs-rector`;
+- files larger than 1,000,000 bytes.
+
 ### Rust
 
 - Executable: `rust-analyzer`
@@ -271,6 +283,8 @@ Clangd and Marksman retain the indexing needed for symbol and reference search.
 - `ASTERIAMCP_TOOL_TIMEOUT` (optional, default: `360s`)
 	- Global timeout for one MCP tool call.
 	- Must be greater than `0`.
+	- When a `find_symbol` search over a directory or the workspace reaches the timeout, the tool returns the symbols found so far and warnings that list the file extensions whose search did not finish.
+	- When a `find_referencing_symbols` search reaches the timeout while it processes the files with references, the tool returns the references found so far and a timeout warning that counts the files that it did not process, unless another warning already reports them. A timeout before the language server returns the first list of reference locations ends the call with an error.
 
 - `ASTERIAMCP_LSP_SESSION_IDLE_TIMEOUT` (optional, default: `10m`)
 	- Positive duration before closing an LSP session after its last active request finishes.

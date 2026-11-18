@@ -4,6 +4,7 @@ package lspphpactor
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -11,9 +12,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
@@ -21,7 +24,14 @@ import (
 	"github.com/n-r-w/asteria/internal/usecase/router"
 )
 
-const phpactorFixtureFilePermissions = fs.FileMode(0o600)
+const (
+	phpactorFixtureFilePermissions = fs.FileMode(0o600)
+	// indexingLoadFileCount is the number of generated classes that keeps phpactor indexing longer than
+	// indexingDeadline.
+	indexingLoadFileCount = 2000
+	// indexingDeadline is the deadline of a reference search that comes while phpactor indexes the project.
+	indexingDeadline = 300 * time.Millisecond
+)
 
 // TestIntegrationServiceGetSymbolsOverviewReturnsFixtureSymbols proves that the live phpactor-backed overview
 // exposes stable top-level and nested PHP symbols from the fixture workspace.
@@ -44,8 +54,8 @@ func TestIntegrationServiceGetSymbolsOverviewReturnsFixtureSymbols(t *testing.T)
 	assertKindContainsExactPath(t, result.Symbols, int(protocol.SymbolKindFunction), "make_bucket")
 }
 
-// TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession proves that a canceled PHP reference tool
-// request does not leave its language-server process available for reuse after the request returns.
+// TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession proves that a PHP reference tool request
+// canceled during its search does not leave its language-server process available for reuse after the request returns.
 func TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession(t *testing.T) {
 	workspaceRoot := phpactorFixtureRoot(t)
 	service, ctx := newIntegrationService(t)
@@ -53,8 +63,20 @@ func TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession(t *tes
 	firstConn, err := service.rt.EnsureConn(ctx, workspaceRoot)
 	require.NoError(t, err)
 
+	// The request is canceled when the search opens the target file, after the wait for indexing.
 	requestCtx, cancel := context.WithCancel(ctx)
-	cancel()
+	defer cancel()
+	openDocument := service.withRequestDocument
+	service.withRequestDocument = func(
+		ctx context.Context,
+		conn jsonrpc2.Conn,
+		absolutePath string,
+		run func(context.Context) error,
+	) error {
+		cancel()
+
+		return openDocument(ctx, conn, absolutePath, run)
+	}
 	_, err = service.FindReferencingSymbols(requestCtx, &domain.FindReferencingSymbolsRequest{
 		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "make_bucket"},
 		WorkspaceRoot:                workspaceRoot,
@@ -67,13 +89,145 @@ func TestIntegrationServiceCanceledReferenceRequestClosesWorkspaceSession(t *tes
 	assert.NotSame(t, firstConn, restartedConn)
 }
 
-// TestIntegrationBuildPHPActorIndexHonorsContextCancellation proves that the CLI fallback cannot outlive a canceled
-// MCP tool request.
-func TestIntegrationBuildPHPActorIndexHonorsContextCancellation(t *testing.T) {
+// TestIntegrationServiceReferenceSearchFailsAfterItsSessionCloses proves that a reference search whose acquired
+// session another request closes during the search returns an error instead of moving to the replacement session.
+func TestIntegrationServiceReferenceSearchFailsAfterItsSessionCloses(t *testing.T) {
+	workspaceRoot := phpactorFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	openDocument := service.withRequestDocument
+	service.withRequestDocument = func(
+		requestCtx context.Context,
+		conn jsonrpc2.Conn,
+		absolutePath string,
+		run func(context.Context) error,
+	) error {
+		closer, err := service.rt.AcquireClosableSession(ctx, workspaceRoot)
+		require.NoError(t, err)
+		closer.ReleaseAndCloseInBackground(ctx)
+		replacementUser, err := service.rt.AcquireClosableSession(ctx, workspaceRoot)
+		require.NoError(t, err)
+		t.Cleanup(replacementUser.Release)
+
+		return openDocument(requestCtx, conn, absolutePath, run)
+	}
+
+	_, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "make_bucket"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "fixture.php",
+	})
+	require.Error(t, err)
+}
+
+// TestIntegrationServiceReferenceSearchOfNewSessionOpensOnlyTarget proves that a reference search that starts the
+// phpactor session waits for the indexing that phpactor reports and finds a reference in another file while the
+// adapter opens no file except the target.
+func TestIntegrationServiceReferenceSearchOfNewSessionOpensOnlyTarget(t *testing.T) {
+	workspaceRoot := phpactorFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	var (
+		mu          sync.Mutex
+		openedFiles []string
+	)
+	openDocument := service.withRequestDocument
+	service.withRequestDocument = func(
+		ctx context.Context,
+		conn jsonrpc2.Conn,
+		absolutePath string,
+		run func(context.Context) error,
+	) error {
+		mu.Lock()
+		openedFiles = append(openedFiles, filepath.Base(absolutePath))
+		mu.Unlock()
+
+		return openDocument(ctx, conn, absolutePath, run)
+	}
+
+	result, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "make_bucket"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "fixture.php",
+	})
+	require.NoError(t, err)
+	assert.False(t, result.Incomplete, "expected phpactor to report indexing through work-done progress")
+
+	symbol, ok := findReferencingSymbol(result.Symbols, "use_bucket")
+	require.True(t, ok, "expected reference in another file, got %#v", result.Symbols)
+	assert.Equal(t, "references.php", symbol.File)
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"fixture.php"}, openedFiles)
+}
+
+// TestIntegrationServiceReferenceDeadlineDuringIndexingKeepsSession proves that a reference search whose deadline
+// comes while phpactor indexes the project returns the deadline error and leaves the session running, so the next
+// search reuses it.
+func TestIntegrationServiceReferenceDeadlineDuringIndexingKeepsSession(t *testing.T) {
+	workspaceRoot := phpactorFixtureRoot(t)
+	writeIndexingLoadFixture(t, workspaceRoot)
+	service, ctx := newIntegrationService(t)
+	request := &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "make_bucket"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "fixture.php",
+	}
+
+	firstConn, err := service.rt.EnsureConn(ctx, workspaceRoot)
+	require.NoError(t, err)
+
+	requestCtx, cancel := context.WithTimeout(ctx, indexingDeadline)
+	defer cancel()
+	_, err = service.FindReferencingSymbols(requestCtx, request)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+
+	sameConn, err := service.rt.EnsureConn(ctx, workspaceRoot)
+	require.NoError(t, err)
+	assert.Same(t, firstConn, sameConn)
+
+	result, err := service.FindReferencingSymbols(ctx, request)
+	require.NoError(t, err)
+	_, ok := findReferencingSymbol(result.Symbols, "use_bucket")
+	assert.True(t, ok, "expected reference after indexing, got %#v", result.Symbols)
+}
+
+// TestIntegrationServiceDoesNotWriteAutoConfigIntoWorkspace proves that a phpactor session over a project whose
+// composer.lock lists tools that phpactor can configure writes no .phpactor.json into the project.
+func TestIntegrationServiceDoesNotWriteAutoConfigIntoWorkspace(t *testing.T) {
+	workspaceRoot := phpactorFixtureRoot(t)
+	require.NoError(t, os.WriteFile(
+		filepath.Join(workspaceRoot, "composer.json"),
+		[]byte(`{"require-dev": {"phpstan/phpstan": "^1.10", "phpspec/prophecy": "^1.17"}}`),
+		phpactorFixtureFilePermissions,
+	))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(workspaceRoot, "composer.lock"),
+		[]byte(`{"packages": [], "packages-dev": [`+
+			`{"name": "phpstan/phpstan", "version": "1.10.0"}, `+
+			`{"name": "phpspec/prophecy", "version": "1.17.0"}]}`),
+		phpactorFixtureFilePermissions,
+	))
+	service, ctx := newIntegrationService(t)
+
+	// The reference search waits until phpactor finishes indexing, which happens after its startup configuration.
+	_, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "make_bucket"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "fixture.php",
+	})
+	require.NoError(t, err)
+
+	assert.NoFileExists(t, filepath.Join(workspaceRoot, ".phpactor.json"))
+}
+
+// TestIntegrationPropertyReferencesCommandHonorsContextCancellation proves that the CLI fallback cannot outlive a
+// canceled MCP tool request.
+func TestIntegrationPropertyReferencesCommandHonorsContextCancellation(t *testing.T) {
 	requestCtx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	err := buildPHPActorIndex(requestCtx, phpactorFixtureRoot(t))
+	_, err := runPHPActorPropertyReferences(requestCtx, phpactorFixtureRoot(t), t.TempDir(), "Bucket", "value")
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -425,6 +579,22 @@ func TestIntegrationRouterFindSymbolUsesDirectoryFilterWithPersistedIndex(t *tes
 	)
 }
 
+// TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8 proves that workspace-wide PHP search
+// reads a file whose string literal holds bytes that are not valid UTF-8, as generated protobuf metadata does.
+func TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8(t *testing.T) {
+	workspaceRoot := phpactorFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	result, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "BinaryMetadata/descriptor"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            "",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"binary_metadata.php"}, collectFoundSymbolFiles(result.Symbols))
+}
+
 // TestIntegrationServiceFindReferencingSymbolsGroupsReferences proves that live reference lookup groups PHP
 // usages by the smallest containing symbol exposed in the referencing file.
 func TestIntegrationServiceFindReferencingSymbolsGroupsReferences(t *testing.T) {
@@ -508,6 +678,50 @@ func TestIntegrationServiceFindReferencingSymbolsReturnsPropertyUsageContainers(
 	require.True(t, ok, "expected describe property reference, got %#v", result.Symbols)
 	assert.Equal(t, "fixture.php", describeSymbol.File)
 	assert.Contains(t, describeSymbol.Content, "return $this->value")
+}
+
+// TestIntegrationServicePropertyFallbackUsesManagedIndex proves that the property reference fallback finds usages
+// through the index in the managed cache and writes nothing into phpactor's default index directory.
+func TestIntegrationServicePropertyFallbackUsesManagedIndex(t *testing.T) {
+	// phpactor places its default cache, and the default index in it, under XDG_CACHE_HOME.
+	cacheHome := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheHome)
+	workspaceRoot := phpactorFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	var fallbackRows []phpactorReferenceRow
+	runPropertyReferences := service.runPropertyReferences
+	service.runPropertyReferences = func(
+		ctx context.Context,
+		workspaceRoot string,
+		indexPath string,
+		referenceTarget string,
+		propertyName string,
+	) ([]phpactorReferenceRow, error) {
+		rows, err := runPropertyReferences(ctx, workspaceRoot, indexPath, referenceTarget, propertyName)
+		fallbackRows = rows
+
+		return rows, err
+	}
+
+	result, err := service.FindReferencingSymbols(ctx, &domain.FindReferencingSymbolsRequest{
+		FindReferencingSymbolsFilter: domain.FindReferencingSymbolsFilter{Path: "Bucket/value"},
+		WorkspaceRoot:                workspaceRoot,
+		File:                         "fixture.php",
+	})
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, fallbackRows, "expected property usages from the phpactor command")
+	_, ok := findReferencingSymbol(result.Symbols, "Bucket/describe")
+	assert.True(t, ok, "expected describe property reference, got %#v", result.Symbols)
+	assert.NoDirExists(t, filepath.Join(cacheHome, "phpactor", "index"))
+	normalizedRoot, err := helpers.ResolveWorkspaceRoot(workspaceRoot)
+	require.NoError(t, err)
+	indexPath, err := phpactorIndexerPath(service.cacheRoot, normalizedRoot)
+	require.NoError(t, err)
+	indexEntries, err := os.ReadDir(indexPath)
+	require.NoError(t, err)
+	assert.NotEmpty(t, indexEntries)
 }
 
 // TestIntegrationServiceFindReferencingSymbolsUsesDeclarationFileForProjectLikePropertyLookup proves that the
@@ -873,6 +1087,27 @@ func writeIgnoredNodeModulesFixture(t *testing.T, workspaceRoot string) {
 			phpactorFixtureFilePermissions,
 		),
 	)
+}
+
+// writeIndexingLoadFixture adds indexingLoadFileCount generated classes to the workspace so that phpactor indexing
+// lasts longer than indexingDeadline.
+func writeIndexingLoadFixture(t *testing.T, workspaceRoot string) {
+	t.Helper()
+
+	loadDir := filepath.Join(workspaceRoot, "generated")
+	require.NoError(t, os.MkdirAll(loadDir, phpactorStateDirPermissions))
+	for i := range indexingLoadFileCount {
+		className := fmt.Sprintf("GeneratedLoad%d", i)
+		content := fmt.Sprintf(
+			"<?php\n\nclass %s\n{\n    public function read(): string\n    {\n        return '%s';\n    }\n}\n",
+			className,
+			className,
+		)
+		require.NoError(
+			t,
+			os.WriteFile(filepath.Join(loadDir, className+".php"), []byte(content), phpactorFixtureFilePermissions),
+		)
+	}
 }
 
 // findFoundSymbol keeps integration assertions readable when find_symbol returns a flat slice of matches.

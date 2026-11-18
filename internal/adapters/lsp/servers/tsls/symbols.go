@@ -47,22 +47,32 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
-	conn, err := s.rt.EnsureConn(ctx, workspaceRoot)
+	conn, err := s.ensureConn(ctx, workspaceRoot)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
 	var result domain.FindReferencingSymbolsResult
-	err = runWithReferenceWorkflowFiles(
+	// failures holds every file that this request skipped, so that the retry and the final result leave out the
+	// same files.
+	failures := stdlsp.NewFileFailures(workspaceRoot, false)
+	_, err = runWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		referenceWorkflowFiles,
 		newWithRequestDocument(),
-		func(callCtx context.Context) error {
-			resolvedRequest, resolveErr := s.resolveReferenceTarget(callCtx, workspaceRoot, request)
+		func(callCtx context.Context, warmedPaths []string, knownSkipped []helpers.SkippedFile) error {
+			if recordErr := failures.RecordSkippedFiles(callCtx, knownSkipped); recordErr != nil {
+				return recordErr
+			}
+
+			resolvedRequest, targetSkipped, resolveErr := s.resolveReferenceTarget(callCtx, workspaceRoot, request)
 			if resolveErr != nil {
 				return resolveErr
+			}
+			if recordErr := failures.RecordSkippedFiles(callCtx, targetSkipped); recordErr != nil {
+				return recordErr
 			}
 
 			var callErr error
@@ -70,8 +80,9 @@ func (s *Service) FindReferencingSymbols(
 				callCtx,
 				conn,
 				resolvedRequest,
-				referenceWorkflowFiles,
-				absoluteWorkflowPaths(workspaceRoot, referenceWorkflowFiles),
+				workspaceRoot,
+				warmedPaths,
+				failures,
 			)
 
 			return callErr
@@ -80,30 +91,69 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
+	failures.CompleteReferenceResult(&result)
 
 	return result, nil
 }
 
+// findReferencingSymbolsWithRetry repeats the shared reference lookup while tsls has not indexed the other open
+// files yet. It adds the files that each lookup or repeated warm-up could not process to failures. Without a stop by
+// the request deadline, the function returns the result of the last lookup without the rows of any file in failures.
+// After the deadline, no retry starts:
+//   - a first lookup that the deadline stopped returns its own rows;
+//   - a later lookup that the deadline stopped returns the rows of all finished lookups and its own rows, and failures
+//     count the files of its remaining locations as not processed;
+//   - when a needed retry did not start or failed after the deadline, the function returns the rows of all finished
+//     lookups, and failures count the files of the reference workflow as not processed.
 func (s *Service) findReferencingSymbolsWithRetry(
 	ctx context.Context,
 	conn jsonrpc2.Conn,
 	request *domain.FindReferencingSymbolsRequest,
+	workspaceRoot string,
 	referenceWorkflowFiles []string,
-	absoluteWorkflowPaths []string,
+	failures *stdlsp.FileFailures,
 ) (domain.FindReferencingSymbolsResult, error) {
 	attempt := 0
+	var (
+		// finishedResult holds the rows of all finished lookups, which a stop by the deadline returns.
+		finishedResult domain.FindReferencingSymbolsResult
+		finished       bool
+	)
 	result, err := backoff.Retry(ctx, func() (domain.FindReferencingSymbolsResult, error) {
 		if attempt > 0 {
-			if warmErr := warmRequestDocuments(ctx, conn, absoluteWorkflowPaths); warmErr != nil {
+			warmedPaths, warmSkipped, warmErr := warmReferenceWorkflowFiles(
+				ctx,
+				conn,
+				workspaceRoot,
+				referenceWorkflowFiles,
+			)
+			if warmErr != nil {
 				return domain.FindReferencingSymbolsResult{}, backoff.Permanent(warmErr)
+			}
+			referenceWorkflowFiles = warmedPaths
+			if recordErr := failures.RecordSkippedFiles(ctx, warmSkipped); recordErr != nil {
+				return domain.FindReferencingSymbolsResult{}, backoff.Permanent(recordErr)
 			}
 		}
 		attempt++
 
-		currentResult, currentErr := s.Service.FindReferencingSymbols(ctx, request)
+		currentResult, currentFailures, currentErr := s.FindReferencingSymbolsWithFailures(ctx, request)
 		if currentErr != nil {
 			return currentResult, backoff.Permanent(currentErr)
 		}
+		failures.Merge(currentFailures)
+		// Rows of failed files are removed from the answer, so only the usable rows decide whether to retry.
+		failures.CompleteReferenceResult(&currentResult)
+		// A lookup stopped by the deadline returns what it found, without a retry; a stopped retry adds its rows
+		// to the rows of the finished lookups.
+		if failures.StoppedByTimeout() {
+			if finished {
+				currentResult = stdlsp.MergeReferenceResults(finishedResult, currentResult)
+			}
+
+			return currentResult, nil
+		}
+		finishedResult, finished = stdlsp.MergeReferenceResults(finishedResult, currentResult), true
 		if shouldRetryReferenceResult(request.File, referenceWorkflowFiles, currentResult) {
 			return currentResult, errTSLSReferencesNotReady
 		}
@@ -115,6 +165,9 @@ func (s *Service) findReferencingSymbolsWithRetry(
 	)
 	if errors.Is(err, errTSLSReferencesNotReady) {
 		return result, nil
+	}
+	if err != nil && finished && failures.StopByTimeout(ctx, referenceWorkflowFiles) {
+		return finishedResult, nil
 	}
 
 	return result, err
@@ -153,63 +206,42 @@ func referenceWorkflowIncludesAdditionalFiles(targetRelativePath string, referen
 	return false
 }
 
-func absoluteWorkflowPaths(workspaceRoot string, relativePaths []string) []string {
-	absolutePaths := make([]string, 0, len(relativePaths))
-	for _, relativePath := range relativePaths {
-		absolutePaths = append(absolutePaths, filepath.Join(workspaceRoot, filepath.FromSlash(relativePath)))
-	}
-
-	return absolutePaths
-}
-
 // collectReferenceWorkflowFiles returns the tsls reference-workflow file set for one target file: all
 // supported, adapter-non-ignored files under the validated target directory, with the target last.
 func collectReferenceWorkflowFiles(workspaceRoot, targetRelativePath string) ([]string, error) {
 	return helpers.CollectReferenceWorkflowFiles(workspaceRoot, targetRelativePath, extensions, shouldIgnoreDir)
 }
 
-// runWithReferenceWorkflowFiles opens the reference-workflow file set until the wrapped
-// shared stdlsp workflow finishes.
+// runWithReferenceWorkflowFiles opens the reference-workflow file set and warms the opened files until the wrapped
+// shared stdlsp workflow finishes, and returns the files that could not be opened or warmed. run receives
+// the warmed files and the files that could not be opened or warmed.
 func runWithReferenceWorkflowFiles(
 	ctx context.Context,
 	conn jsonrpc2.Conn,
 	workspaceRoot string,
 	relativePaths []string,
 	withRequestDocument stdlsp.WithRequestDocumentFunc,
-	run func(context.Context) error,
-) error {
-	absolutePaths := absoluteWorkflowPaths(workspaceRoot, relativePaths)
-
-	return runWithOpenReferenceWorkflowFiles(
+	run func(ctx context.Context, warmedPaths []string, skipped []helpers.SkippedFile) error,
+) ([]helpers.SkippedFile, error) {
+	var warmSkipped []helpers.SkippedFile
+	openSkipped, err := helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
-		absolutePaths,
+		workspaceRoot,
+		relativePaths,
 		withRequestDocument,
-		func(callCtx context.Context) error {
-			if err := warmRequestDocuments(callCtx, conn, absolutePaths); err != nil {
-				return err
+		func(callCtx context.Context, openedPaths []string, skipped []helpers.SkippedFile) error {
+			warmedPaths, warmFailures, warmErr := warmReferenceWorkflowFiles(callCtx, conn, workspaceRoot, openedPaths)
+			if warmErr != nil {
+				return warmErr
 			}
+			warmSkipped = warmFailures
 
-			return run(callCtx)
+			return run(callCtx, warmedPaths, append(skipped, warmFailures...))
 		},
 	)
-}
 
-// runWithOpenReferenceWorkflowFiles keeps the whole tsls workflow file set open until the wrapped call finishes.
-func runWithOpenReferenceWorkflowFiles(
-	ctx context.Context,
-	conn jsonrpc2.Conn,
-	absolutePaths []string,
-	withRequestDocument stdlsp.WithRequestDocumentFunc,
-	run func(context.Context) error,
-) error {
-	if len(absolutePaths) == 0 {
-		return run(ctx)
-	}
-
-	return withRequestDocument(ctx, conn, absolutePaths[0], func(callCtx context.Context) error {
-		return runWithOpenReferenceWorkflowFiles(callCtx, conn, absolutePaths[1:], withRequestDocument, run)
-	})
+	return append(openSkipped, warmSkipped...), err
 }
 
 // shouldIgnoreDir filters directories that are known to add noise or excessive cost to TypeScript traversal.

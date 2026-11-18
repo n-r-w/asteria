@@ -1,5 +1,16 @@
 package domain
 
+import (
+	"context"
+	"errors"
+)
+
+// IsStoppedByTimeout reports whether the request context ended because its deadline passed, so that a search can
+// return the results found so far.
+func IsStoppedByTimeout(ctx context.Context) bool {
+	return errors.Is(ctx.Err(), context.DeadlineExceeded)
+}
+
 // ToolError describes a failed tool request with context message and optional cause.
 type ToolError struct {
 	message string

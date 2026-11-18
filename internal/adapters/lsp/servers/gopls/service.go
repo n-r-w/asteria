@@ -9,6 +9,8 @@ import (
 
 	"go.lsp.dev/protocol"
 
+	"github.com/samber/lo"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
@@ -95,7 +97,7 @@ func buildReplyConfiguration(config cfgadapters.GoplsConfig) func(string, protoc
 	return func(_ string, params protocol.ConfigurationParams) ([]any, error) {
 		results := make([]any, len(params.Items))
 		for i, item := range params.Items {
-			if item.Section == goplsConfigSection {
+			if lo.FromPtr(item.Section) == goplsConfigSection {
 				results[i] = settings
 			}
 		}

@@ -82,10 +82,10 @@ func TestMapRawSymbolsToOverviewRespectsDepth(t *testing.T) {
 
 	rawSymbols := mustRawMessages(t, []protocol.DocumentSymbol{{
 		Name:       "Service",
-		Detail:     "",
+		Detail:     nil,
 		Kind:       protocol.SymbolKindStruct,
 		Tags:       nil,
-		Deprecated: false,
+		Deprecated: nil,
 		Range: protocol.Range{
 			Start: protocol.Position{Line: 0, Character: 0},
 			End:   protocol.Position{Line: 20, Character: 0},
@@ -96,10 +96,10 @@ func TestMapRawSymbolsToOverviewRespectsDepth(t *testing.T) {
 		},
 		Children: []protocol.DocumentSymbol{{
 			Name:       "GetSymbolsOverview",
-			Detail:     "",
+			Detail:     nil,
 			Kind:       protocol.SymbolKindMethod,
 			Tags:       nil,
-			Deprecated: false,
+			Deprecated: nil,
 			Range: protocol.Range{
 				Start: protocol.Position{Line: 4, Character: 0},
 				End:   protocol.Position{Line: 10, Character: 0},
@@ -110,10 +110,10 @@ func TestMapRawSymbolsToOverviewRespectsDepth(t *testing.T) {
 			},
 			Children: []protocol.DocumentSymbol{{
 				Name:       "request",
-				Detail:     "",
+				Detail:     nil,
 				Kind:       protocol.SymbolKindVariable,
 				Tags:       nil,
-				Deprecated: false,
+				Deprecated: nil,
 				Range: protocol.Range{
 					Start: protocol.Position{Line: 6, Character: 0},
 					End:   protocol.Position{Line: 6, Character: 7},
@@ -155,10 +155,11 @@ func TestMapRawSymbolsToOverviewBuildsBestEffortNamePath(t *testing.T) {
 	t.Parallel()
 
 	rawSymbols := mustRawMessages(t, []protocol.SymbolInformation{{
-		Name:       "GetSymbolsOverview",
-		Kind:       protocol.SymbolKindMethod,
-		Tags:       nil,
-		Deprecated: false,
+		Name:          "GetSymbolsOverview",
+		Kind:          protocol.SymbolKindMethod,
+		Tags:          nil,
+		ContainerName: new("Service"),
+		Deprecated:    nil,
 		Location: protocol.Location{
 			URI: "",
 			Range: protocol.Range{
@@ -166,7 +167,6 @@ func TestMapRawSymbolsToOverviewBuildsBestEffortNamePath(t *testing.T) {
 				End:   protocol.Position{Line: 12, Character: 0},
 			},
 		},
-		ContainerName: "Service",
 	}})
 
 	result, err := mapRawSymbolsToOverview("fixture.go", 0, rawSymbols, JoinNamePath)
@@ -186,10 +186,11 @@ func TestMapRawSymbolsToTreeBuildsBestEffortNode(t *testing.T) {
 	t.Parallel()
 
 	rawSymbols := mustRawMessages(t, []protocol.SymbolInformation{{
-		Name:       "GetSymbolsOverview",
-		Kind:       protocol.SymbolKindMethod,
-		Tags:       nil,
-		Deprecated: false,
+		Name:          "GetSymbolsOverview",
+		Kind:          protocol.SymbolKindMethod,
+		Tags:          nil,
+		ContainerName: new("Service"),
+		Deprecated:    nil,
 		Location: protocol.Location{
 			URI: "",
 			Range: protocol.Range{
@@ -197,7 +198,6 @@ func TestMapRawSymbolsToTreeBuildsBestEffortNode(t *testing.T) {
 				End:   protocol.Position{Line: 12, Character: 0},
 			},
 		},
-		ContainerName: "Service",
 	}})
 
 	nodes, err := mapRawSymbolsToTree("fixture.go", rawSymbols, JoinNamePath)
@@ -215,10 +215,10 @@ func TestMapRawSymbolsToTreeDisambiguatesDuplicateSiblingPaths(t *testing.T) {
 
 	rawSymbols := mustRawMessages(t, []protocol.DocumentSymbol{{
 		Name:       "execute",
-		Detail:     "",
+		Detail:     nil,
 		Kind:       protocol.SymbolKindFunction,
 		Tags:       nil,
-		Deprecated: false,
+		Deprecated: nil,
 		Range: protocol.Range{
 			Start: protocol.Position{Line: 0, Character: 0},
 			End:   protocol.Position{Line: 11, Character: 1},
@@ -230,10 +230,10 @@ func TestMapRawSymbolsToTreeDisambiguatesDuplicateSiblingPaths(t *testing.T) {
 		Children: []protocol.DocumentSymbol{
 			{
 				Name:       "notification",
-				Detail:     "",
+				Detail:     nil,
 				Kind:       protocol.SymbolKindVariable,
 				Tags:       nil,
-				Deprecated: false,
+				Deprecated: nil,
 				Range: protocol.Range{
 					Start: protocol.Position{Line: 2, Character: 8},
 					End:   protocol.Position{Line: 3, Character: 32},
@@ -246,10 +246,10 @@ func TestMapRawSymbolsToTreeDisambiguatesDuplicateSiblingPaths(t *testing.T) {
 			},
 			{
 				Name:       "notification",
-				Detail:     "",
+				Detail:     nil,
 				Kind:       protocol.SymbolKindVariable,
 				Tags:       nil,
-				Deprecated: false,
+				Deprecated: nil,
 				Range: protocol.Range{
 					Start: protocol.Position{Line: 6, Character: 4},
 					End:   protocol.Position{Line: 7, Character: 28},

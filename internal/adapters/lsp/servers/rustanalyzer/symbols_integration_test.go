@@ -61,6 +61,24 @@ func TestIntegrationServiceFindSymbolReturnsCanonicalStructMethod(t *testing.T) 
 	assert.Equal(t, filepath.ToSlash(filepath.Join("src", "lib.rs")), symbol.File)
 }
 
+// TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8 proves that workspace-wide Rust search
+// reads a file whose string literal holds bytes that are not valid UTF-8, as legacy or generated sources do.
+func TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8(t *testing.T) {
+	workspaceRoot := rustFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	result, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "binary_metadata_descriptor"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            "",
+	})
+	require.NoError(t, err)
+
+	symbol, ok := findFoundSymbol(result.Symbols, "binary_metadata_descriptor")
+	require.True(t, ok, "expected whole-workspace match, got %#v", result.Symbols)
+	assert.Equal(t, filepath.ToSlash(filepath.Join("src", "binary_metadata.rs")), symbol.File)
+}
+
 // TestIntegrationServiceFindSymbolReturnsCanonicalNestedStructMethod proves that canonical nested Rust
 // impl-member paths resolve against the live workspace, not only through the unit-level raw-path rewrite.
 func TestIntegrationServiceFindSymbolReturnsCanonicalNestedStructMethod(t *testing.T) {

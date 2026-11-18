@@ -251,8 +251,8 @@ func TestPatchInitializeParamsSetsCompilationDatabasePath(t *testing.T) {
 	err = service.patchInitializeParams(workspaceRoot, params)
 	require.NoError(t, err)
 
-	options, ok := params.InitializationOptions.(map[string]any)
-	require.True(t, ok)
+	var options map[string]any
+	require.NoError(t, json.Unmarshal(params.InitializationOptions, &options))
 	assert.Equal(t, cacheDir, options[clangdCompilationDatabasePathKey])
 }
 

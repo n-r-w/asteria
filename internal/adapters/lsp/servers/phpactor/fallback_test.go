@@ -81,7 +81,7 @@ func TestAugmentFindSymbolWithPHPConstants(t *testing.T) {
 		SubstringMatching: false,
 		WorkspaceRoot:     workspaceRoot,
 		Scope:             "fixture.php",
-	}, domain.FindSymbolResult{Symbols: nil, Warnings: nil})
+	}, domain.FindSymbolResult{Symbols: nil, Warnings: nil}, func(_ string, err error) error { return err }, neverStop)
 	require.NoError(t, err)
 	require.Len(t, result.Symbols, 1)
 	assert.Equal(t, domain.FoundSymbol{
@@ -93,6 +93,101 @@ func TestAugmentFindSymbolWithPHPConstants(t *testing.T) {
 		StartLine: 2,
 		EndLine:   2,
 	}, result.Symbols[0])
+}
+
+// TestAugmentFindSymbolWithPHPConstantsStopsBeforeLaterFile proves that a scan whose stop check fires before a file
+// keeps the constants of the files that it finished and passes the files that it did not start to the check.
+func TestAugmentFindSymbolWithPHPConstantsStopsBeforeLaterFile(t *testing.T) {
+	t.Parallel()
+
+	workspaceRoot := t.TempDir()
+	for _, name := range []string{"a.php", "b.php", "c.php"} {
+		require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, name), []byte("<?php\nconst STAMP = 1;\n"), 0o600))
+	}
+	var notSearched []string
+
+	result, err := augmentFindSymbolWithPHPConstants(workspaceRoot, &domain.FindSymbolRequest{
+		Path:              "STAMP",
+		IncludeKinds:      nil,
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       false,
+		IncludeInfo:       false,
+		SubstringMatching: false,
+		WorkspaceRoot:     workspaceRoot,
+		Scope:             "",
+	}, domain.FindSymbolResult{Symbols: nil, Warnings: nil}, func(_ string, err error) error { return err },
+		func(remaining []string) bool {
+			if len(remaining) > 1 {
+				return false
+			}
+			notSearched = remaining
+
+			return true
+		},
+	)
+	require.NoError(t, err)
+
+	files := make([]string, 0, len(result.Symbols))
+	for _, symbol := range result.Symbols {
+		files = append(files, symbol.File)
+	}
+	assert.Equal(t, []string{"a.php", "b.php"}, files)
+	assert.Equal(t, []string{"c.php"}, notSearched)
+}
+
+// TestAugmentFindSymbolWithPHPConstantsKeepsConstantsWhenFileFailsAtDeadline proves that a scan whose file fails
+// when the stop check fires keeps the constants of the files that it finished instead of ending with the error.
+func TestAugmentFindSymbolWithPHPConstantsKeepsConstantsWhenFileFailsAtDeadline(t *testing.T) {
+	t.Parallel()
+
+	workspaceRoot := t.TempDir()
+	for _, name := range []string{"a.php", "c.php"} {
+		require.NoError(t, os.WriteFile(filepath.Join(workspaceRoot, name), []byte("<?php\nconst STAMP = 1;\n"), 0o600))
+	}
+	// b.php is listed as a PHP file but cannot be read.
+	unreadableFile := filepath.Join(workspaceRoot, "b.php")
+	if err := os.Symlink(filepath.Join(workspaceRoot, "missing.txt"), unreadableFile); err != nil {
+		t.Skipf("symbolic links are not available: %v", err)
+	}
+	var (
+		checks      int
+		notSearched []string
+	)
+
+	result, err := augmentFindSymbolWithPHPConstants(workspaceRoot, &domain.FindSymbolRequest{
+		Path:              "STAMP",
+		IncludeKinds:      nil,
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       false,
+		IncludeInfo:       false,
+		SubstringMatching: false,
+		WorkspaceRoot:     workspaceRoot,
+		Scope:             "",
+	}, domain.FindSymbolResult{Symbols: nil, Warnings: nil}, func(_ string, err error) error { return err },
+		// The deadline passes while b.php is read: the check before b.php lets it start, and the check after its
+		// error stops the scan.
+		func(remaining []string) bool {
+			checks++
+			if checks < 3 {
+				return false
+			}
+			notSearched = remaining
+
+			return true
+		},
+	)
+	require.NoError(t, err)
+
+	require.Len(t, result.Symbols, 1)
+	assert.Equal(t, "a.php", result.Symbols[0].File)
+	assert.Equal(t, []string{"b.php", "c.php"}, notSearched)
+}
+
+// neverStop lets a constant scan process each file of its scope.
+func neverStop([]string) bool {
+	return false
 }
 
 // TestPHPActorPropertyReferenceTarget proves that the property-reference fallback uses the declaration file path

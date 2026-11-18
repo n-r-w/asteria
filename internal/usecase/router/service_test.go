@@ -1,15 +1,19 @@
 package router
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
 	"github.com/n-r-w/asteria/internal/domain"
@@ -541,17 +545,23 @@ func TestServiceFindSymbol(t *testing.T) {
 			StartLine: 11,
 			EndLine:   18,
 		}
+		goWarning := ".go: 1 file is not searched: broken.go: permission denied"
 		goLSP.EXPECT().FindSymbol(t.Context(), lspRequest).
-			Return(domain.FindSymbolResult{Symbols: []domain.FoundSymbol{goSymbol}, Warnings: nil}, nil)
+			Return(domain.FindSymbolResult{Symbols: []domain.FoundSymbol{goSymbol}, Warnings: []string{goWarning}}, nil)
 		tsLSP.EXPECT().FindSymbol(t.Context(), lspRequest).
 			Return(domain.FindSymbolResult{}, domain.NewToolError("initialize typescript-language-server", errors.New("boom")))
 
 		result, findErr := svc.FindSymbol(t.Context(), request)
 		require.NoError(t, findErr)
 		assert.Equal(t, []domain.FoundSymbol{goSymbol}, result.Symbols)
-		require.Len(t, result.Warnings, 1)
-		assert.True(t, strings.HasPrefix(result.Warnings[0], ".js files are not searched: "), result.Warnings[0])
-		assert.Contains(t, result.Warnings[0], "initialize typescript-language-server: boom")
+		require.Len(t, result.Warnings, 2)
+		assert.Contains(t, result.Warnings, goWarning)
+		tsWarning := result.Warnings[0]
+		if tsWarning == goWarning {
+			tsWarning = result.Warnings[1]
+		}
+		assert.True(t, strings.HasPrefix(tsWarning, ".js files are not searched: "), tsWarning)
+		assert.Contains(t, tsWarning, "initialize typescript-language-server: boom")
 	})
 
 	t.Run("missing scope path names the argument", func(t *testing.T) {
@@ -579,6 +589,214 @@ func TestServiceFindSymbol(t *testing.T) {
 		require.ErrorIs(t, findErr, fs.ErrNotExist)
 		assert.ErrorContains(t, findErr, `scope_path "missing.go": stat `)
 	})
+}
+
+// findSymbolTimeoutSuite checks how a directory or workspace symbol search ends when its request context ends.
+type findSymbolTimeoutSuite struct {
+	suite.Suite
+}
+
+// TestFindSymbolTimeout runs the checks of symbol searches that reach the request deadline or are canceled.
+func TestFindSymbolTimeout(t *testing.T) {
+	t.Parallel()
+
+	suite.Run(t, new(findSymbolTimeoutSuite))
+}
+
+// TestDeadlineDuringFirstLSPKeepsItsSymbolsAndSkipsOtherLSPs checks that the symbols of the LSP that reached the
+// deadline reach the caller, and that each LSP after it gets a timeout warning without a call.
+func (s *findSymbolTimeoutSuite) TestDeadlineDuringFirstLSPKeepsItsSymbolsAndSkipsOtherLSPs() {
+	synctest.Test(s.T(), func(t *testing.T) {
+		env := newTimeoutTestEnv(t)
+		var called []ILSP
+		for _, lsp := range env.lsps {
+			lsp.EXPECT().FindSymbol(gomock.Any(), env.lspRequest).MaxTimes(1).DoAndReturn(
+				func(context.Context, *domain.FindSymbolRequest) (domain.FindSymbolResult, error) {
+					called = append(called, lsp)
+					// The search of this LSP reaches the deadline and returns what it found.
+					time.Sleep(2 * time.Minute)
+
+					return domain.FindSymbolResult{
+						Symbols: []domain.FoundSymbol{env.symbols[lsp]},
+						Warnings: []string{
+							env.extensions[lsp] + ": 1 file is not searched: search stopped by timeout",
+						},
+					}, nil
+				})
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+
+		result, findErr := env.svc.FindSymbol(ctx, env.request)
+		require.NoError(t, findErr)
+
+		require.Len(t, called, 1)
+		skipped := env.other(called[0])
+		assert.Equal(t, []domain.FoundSymbol{env.symbols[called[0]]}, result.Symbols)
+		assert.Equal(t, []string{
+			env.extensions[called[0]] + ": 1 file is not searched: search stopped by timeout",
+			env.extensions[skipped] + " files are not searched: search stopped by timeout",
+		}, result.Warnings)
+	})
+}
+
+// TestDeadlineDuringSecondLSPKeepsSymbolsOfFirstLSP checks that the symbols of the LSP that finished before the
+// deadline reach the caller, and that the error of the LSP that reached the deadline becomes a timeout warning.
+func (s *findSymbolTimeoutSuite) TestDeadlineDuringSecondLSPKeepsSymbolsOfFirstLSP() {
+	synctest.Test(s.T(), func(t *testing.T) {
+		env := newTimeoutTestEnv(t)
+		var called []ILSP
+		for _, lsp := range env.lsps {
+			lsp.EXPECT().FindSymbol(gomock.Any(), env.lspRequest).DoAndReturn(
+				func(ctx context.Context, _ *domain.FindSymbolRequest) (domain.FindSymbolResult, error) {
+					called = append(called, lsp)
+					if len(called) == 1 {
+						return domain.FindSymbolResult{
+							Symbols:  []domain.FoundSymbol{env.symbols[lsp]},
+							Warnings: nil,
+						}, nil
+					}
+					<-ctx.Done()
+
+					return domain.FindSymbolResult{}, ctx.Err()
+				})
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+		defer cancel()
+
+		result, findErr := env.svc.FindSymbol(ctx, env.request)
+		require.NoError(t, findErr)
+
+		require.Len(t, called, 2)
+		assert.Equal(t, []domain.FoundSymbol{env.symbols[called[0]]}, result.Symbols)
+		assert.Equal(t, []string{
+			env.extensions[called[1]] + " files are not searched: search stopped by timeout",
+		}, result.Warnings)
+	})
+}
+
+// TestLSPErrorAfterDeadlineBecomesTimeoutWarning checks that a search whose only LSP fails after the deadline returns
+// a timeout warning for the extensions of this LSP in place of an error.
+func (s *findSymbolTimeoutSuite) TestLSPErrorAfterDeadlineBecomesTimeoutWarning() {
+	svc, goLSP, workspaceRoot := s.newGoRouter()
+	ctx, cancel := context.WithDeadline(s.T().Context(), time.Now().Add(-time.Second))
+	defer cancel()
+	goLSP.EXPECT().FindSymbol(gomock.Any(), gomock.Any()).
+		Return(domain.FindSymbolResult{}, context.DeadlineExceeded).AnyTimes()
+
+	result, findErr := svc.FindSymbol(ctx, newWorkspaceFindSymbolRequest(workspaceRoot))
+	s.Require().NoError(findErr)
+
+	s.Empty(result.Symbols)
+	s.Equal([]string{".go files are not searched: search stopped by timeout"}, result.Warnings)
+}
+
+// TestLSPErrorAfterCancellationEndsSearch checks that a canceled search ends with the error of its LSP.
+func (s *findSymbolTimeoutSuite) TestLSPErrorAfterCancellationEndsSearch() {
+	svc, goLSP, workspaceRoot := s.newGoRouter()
+	ctx, cancel := context.WithCancel(s.T().Context())
+	cancel()
+	goLSP.EXPECT().FindSymbol(gomock.Any(), gomock.Any()).Return(domain.FindSymbolResult{}, context.Canceled)
+
+	_, findErr := svc.FindSymbol(ctx, newWorkspaceFindSymbolRequest(workspaceRoot))
+	s.Require().ErrorIs(findErr, context.Canceled)
+}
+
+// newGoRouter creates a router over one mock Go LSP for a new workspace with one Go file.
+func (s *findSymbolTimeoutSuite) newGoRouter() (*Service, *MockILSP, string) {
+	t := s.T()
+	workspaceRoot := normalizeTestWorkspaceRoot(t, t.TempDir())
+	writeTestFile(t, workspaceRoot, "internal/usecase/router/service.go")
+
+	goLSP := NewMockILSP(gomock.NewController(t))
+	goLSP.EXPECT().Extensions().Return([]string{".go"}).AnyTimes()
+	svc, err := New([]ILSP{goLSP})
+	s.Require().NoError(err)
+
+	return svc, goLSP, workspaceRoot
+}
+
+// timeoutTestEnv holds a router over a Go and a Python LSP for one workspace with a file of each language.
+type timeoutTestEnv struct {
+	// svc is the router under test.
+	svc *Service
+	// lsps holds the Go LSP and then the Python LSP.
+	lsps []*MockILSP
+	// request is the workspace search that the client sends to the router.
+	request *domain.FindSymbolRequest
+	// lspRequest is the request that each LSP gets from the router: the filter of request with the workspace root and
+	// scope that the router normalized, in a copy of its own.
+	lspRequest *domain.FindSymbolRequest
+	// symbols maps each LSP to the symbol that it finds.
+	symbols map[ILSP]domain.FoundSymbol
+	// extensions is the extension of the workspace file that each LSP serves.
+	extensions map[ILSP]string
+}
+
+// newTimeoutTestEnv creates the router of the test t over mock Go and Python LSPs that the test programs.
+func newTimeoutTestEnv(t *testing.T) *timeoutTestEnv {
+	t.Helper()
+	workspaceRoot := normalizeTestWorkspaceRoot(t, t.TempDir())
+	writeTestFile(t, workspaceRoot, "internal/usecase/router/service.go")
+	writeTestFile(t, workspaceRoot, "pkg/example.py")
+
+	ctrl := gomock.NewController(t)
+	goLSP := NewMockILSP(ctrl)
+	pyLSP := NewMockILSP(ctrl)
+	goLSP.EXPECT().Extensions().Return([]string{".go"}).AnyTimes()
+	pyLSP.EXPECT().Extensions().Return([]string{".py"}).AnyTimes()
+	svc, err := New([]ILSP{goLSP, pyLSP})
+	require.NoError(t, err)
+
+	request := newWorkspaceFindSymbolRequest(workspaceRoot)
+
+	return &timeoutTestEnv{
+		svc:     svc,
+		lsps:    []*MockILSP{goLSP, pyLSP},
+		request: request,
+		lspRequest: &domain.FindSymbolRequest{
+			FindSymbolFilter: request.FindSymbolFilter,
+			WorkspaceRoot:    workspaceRoot,
+			Scope:            "",
+		},
+		symbols: map[ILSP]domain.FoundSymbol{
+			goLSP: {
+				Kind:      23,
+				Body:      "",
+				Info:      "",
+				Path:      "Service",
+				File:      "internal/usecase/router/service.go",
+				StartLine: 1,
+				EndLine:   2,
+			},
+			pyLSP: {Kind: 5, Body: "", Info: "", Path: "Service", File: "pkg/example.py", StartLine: 1, EndLine: 2},
+		},
+		extensions: map[ILSP]string{goLSP: ".go", pyLSP: ".py"},
+	}
+}
+
+// other returns the LSP of the environment that is not lsp.
+func (e *timeoutTestEnv) other(lsp ILSP) ILSP {
+	if lsp == ILSP(e.lsps[0]) {
+		return e.lsps[1]
+	}
+
+	return e.lsps[0]
+}
+
+// newWorkspaceFindSymbolRequest builds the workspace search for the symbol Service.
+func newWorkspaceFindSymbolRequest(workspaceRoot string) *domain.FindSymbolRequest {
+	return &domain.FindSymbolRequest{
+		Path:              "Service",
+		IncludeKinds:      nil,
+		ExcludeKinds:      nil,
+		Depth:             0,
+		IncludeBody:       false,
+		IncludeInfo:       false,
+		SubstringMatching: false,
+		WorkspaceRoot:     workspaceRoot,
+		Scope:             "",
+	}
 }
 
 // TestServiceFindSymbolUsesExplicitWorkspaceRoot proves that router path resolution and adapter forwarding
@@ -673,6 +891,7 @@ func TestServiceFindReferencingSymbols(t *testing.T) {
 			Content:          "GetSymbolsOverview",
 		}},
 		Incomplete: false,
+		Warnings:   nil,
 	}
 
 	goLSP.EXPECT().FindReferencingSymbols(t.Context(), lspRequest).Return(expected, nil)
@@ -858,6 +1077,7 @@ func TestServiceFindReferencingSymbolsUsesExplicitWorkspaceRoot(t *testing.T) {
 			Content:          "Service()",
 		}},
 		Incomplete: false,
+		Warnings:   nil,
 	}
 
 	goLSP.EXPECT().FindReferencingSymbols(t.Context(), lspRequest).Return(expected, nil)

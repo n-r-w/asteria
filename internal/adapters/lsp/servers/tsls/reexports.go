@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,6 +17,7 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
@@ -67,7 +69,11 @@ func (s *Service) GetSymbolsOverview(
 		return domain.GetSymbolsOverviewResult{}, err
 	}
 
-	resolvedAliases, err := s.resolveReexportAliases(ctx, workspaceRoot, strings.TrimSpace(request.File))
+	cleanFile, _, err := helpers.ResolveDocumentPath(workspaceRoot, strings.TrimSpace(request.File))
+	if err != nil {
+		return domain.GetSymbolsOverviewResult{}, err
+	}
+	resolvedAliases, err := s.resolveReexportAliases(ctx, workspaceRoot, cleanFile)
 	if err != nil {
 		return domain.GetSymbolsOverviewResult{}, err
 	}
@@ -92,7 +98,9 @@ func (s *Service) GetSymbolsOverview(
 }
 
 // FindSymbol augments the shared lookup with synthetic TypeScript re-export aliases
-// when tsls omits them from documentSymbol.
+// when tsls omits them from documentSymbol. Warnings of the result name the files of a directory or workspace
+// search that could not be processed, and count the files not searched because the search or the re-export scan
+// stopped at the request deadline.
 func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
@@ -105,7 +113,7 @@ func (s *Service) FindSymbol(
 		defer release()
 	}
 
-	result, err := s.Service.FindSymbol(ctx, request)
+	result, failures, err := s.FindSymbolWithFailures(ctx, request)
 	if err != nil {
 		return domain.FindSymbolResult{}, err
 	}
@@ -115,63 +123,150 @@ func (s *Service) FindSymbol(
 		return domain.FindSymbolResult{}, err
 	}
 
-	searchFiles, err := syntheticSearchFiles(
-		workspaceRoot,
-		strings.TrimSpace(request.Scope),
-	)
-	if err != nil {
-		return domain.FindSymbolResult{}, err
-	}
-
-	trimmedPath := strings.TrimSpace(request.Path)
-	for _, relativePath := range searchFiles {
-		// Resolve only aliases that can enter the result so an unrelated unavailable package cannot abort the search.
-		resolvedAliases, resolveErr := s.resolveMatchingReexportAliases(
-			ctx,
-			workspaceRoot,
-			relativePath,
-			trimmedPath,
-			request.SubstringMatching,
-		)
-		if resolveErr != nil {
-			return domain.FindSymbolResult{}, resolveErr
-		}
-		for _, resolvedAlias := range resolvedAliases {
-			if !matchesSyntheticAliasKind(
-				request.IncludeKinds,
-				request.ExcludeKinds,
-				resolvedAlias.SourceKind,
-			) {
-				continue
-			}
-			foundSymbol, buildErr := s.syntheticFoundSymbol(
-				ctx,
-				workspaceRoot,
-				request,
-				relativePath,
-				&resolvedAlias,
-			)
-			if buildErr != nil {
-				return domain.FindSymbolResult{}, buildErr
-			}
-			appendFoundSymbolIfMissing(&result.Symbols, &foundSymbol)
+	// After the deadline, the search returns what it found, without the re-export scan.
+	if !failures.StopFollowUpByTimeout(ctx) {
+		if scanErr := s.appendReexportScan(ctx, workspaceRoot, request, failures, &result); scanErr != nil {
+			return domain.FindSymbolResult{}, scanErr
 		}
 	}
 
 	sortFoundSymbolsCompat(result.Symbols)
+	failures.CompleteSymbolResult(&result)
 
 	return result, nil
 }
 
+// appendReexportScan adds the matching re-export aliases of each file of the request scope to result, records the
+// files that fail in failures, and stops at the request deadline with the current file and the files after it recorded
+// as not searched. It returns only an error that must end the whole search.
+func (s *Service) appendReexportScan(
+	ctx context.Context,
+	workspaceRoot string,
+	request *domain.FindSymbolRequest,
+	failures *stdlsp.FileFailures,
+	result *domain.FindSymbolResult,
+) error {
+	searchFiles, err := syntheticSearchFiles(workspaceRoot, strings.TrimSpace(request.Scope))
+	if err != nil {
+		return err
+	}
+
+	for fileIndex, relativePath := range searchFiles {
+		// Files without matching aliases do not call the language server, so the deadline is checked before each
+		// file and not only after an error.
+		if failures.StopByTimeout(ctx, searchFiles[fileIndex:]) {
+			return nil
+		}
+		appendErr := s.appendSyntheticFoundSymbols(ctx, workspaceRoot, request, relativePath, failures, result)
+		if appendErr != nil {
+			if failures.StopByTimeout(ctx, searchFiles[fileIndex:]) {
+				return nil
+			}
+
+			return appendErr
+		}
+	}
+
+	return nil
+}
+
+// appendSyntheticFoundSymbols adds the re-export aliases of one file that match the request to result, and records
+// the files that fail in failures. It returns only an error that must end the whole search, or the error of the request
+// context when the deadline passes before an alias, with the aliases resolved before it left in result.
+func (s *Service) appendSyntheticFoundSymbols(
+	ctx context.Context,
+	workspaceRoot string,
+	request *domain.FindSymbolRequest,
+	relativePath string,
+	failures *stdlsp.FileFailures,
+	result *domain.FindSymbolResult,
+) error {
+	aliases, err := parseReexportAliases(workspaceRoot, relativePath)
+	if err != nil {
+		return failures.Record(ctx, relativePath, err)
+	}
+
+	trimmedPath := strings.TrimSpace(request.Path)
+	for aliasIndex := range aliases {
+		// Resolve only aliases that can enter the result so an unrelated unavailable package cannot abort the search.
+		if !matchesSyntheticAliasPath(trimmedPath, request.SubstringMatching, aliases[aliasIndex].Name) {
+			continue
+		}
+		// An alias whose source the language server already returned does not notice the deadline, so the deadline
+		// is checked before each alias; the aliases resolved before it stay in the result.
+		if domain.IsStoppedByTimeout(ctx) {
+			return ctx.Err()
+		}
+		resolvedAlias, stopFile, resolveErr := s.resolveSyntheticAlias(
+			ctx,
+			workspaceRoot,
+			relativePath,
+			&aliases[aliasIndex],
+			failures,
+		)
+		if stopFile {
+			return resolveErr
+		}
+		if resolvedAlias == nil ||
+			!matchesSyntheticAliasKind(request.IncludeKinds, request.ExcludeKinds, resolvedAlias.SourceKind) {
+			continue
+		}
+		foundSymbol, buildErr := s.syntheticFoundSymbol(ctx, workspaceRoot, request, relativePath, resolvedAlias)
+		if buildErr != nil {
+			if recordErr := failures.Record(ctx, relativePath, buildErr); recordErr != nil {
+				return recordErr
+			}
+
+			continue
+		}
+		appendFoundSymbolIfMissing(&result.Symbols, &foundSymbol)
+	}
+
+	return nil
+}
+
+// resolveSyntheticAlias resolves one alias of the file relativePath and records the files that fail in failures. It
+// returns the resolved alias, or nil when the alias stays out because its source file failed; stopFile reports that
+// the other aliases of the file must not be resolved, with the error that must end the whole search, if any.
+func (s *Service) resolveSyntheticAlias(
+	ctx context.Context,
+	workspaceRoot string,
+	relativePath string,
+	alias *reexportAlias,
+	failures *stdlsp.FileFailures,
+) (resolvedAlias *resolvedReexportAlias, stopFile bool, err error) {
+	resolved, skipped, resolveErr := s.resolveReexportAliasDefinition(ctx, workspaceRoot, relativePath, alias)
+	if recordErr := failures.RecordSkippedFiles(ctx, skipped); recordErr != nil {
+		return nil, true, recordErr
+	}
+	if resolveErr != nil && helpers.IsRequestError(ctx, resolveErr) {
+		return nil, true, resolveErr
+	}
+	if resolveErr == nil {
+		return &resolved, false, nil
+	}
+	// A source file whose symbols cannot be read fails by itself; only the alias that needs it stays out.
+	if sourceErr, ok := errors.AsType[*sourceFileError](resolveErr); ok {
+		if recordErr := failures.Record(ctx, sourceErr.relativePath, sourceErr.err); recordErr != nil {
+			return nil, true, recordErr
+		}
+
+		return nil, false, nil
+	}
+
+	return nil, true, failures.Record(ctx, relativePath, resolveErr)
+}
+
 // resolveReferenceTarget rewrites one re-export alias target into its defining
-// source symbol when tsls omits raw references for the alias itself.
+// source symbol when tsls omits raw references for the alias itself, and returns the neighbor files that the alias
+// definition request skipped.
 func (s *Service) resolveReferenceTarget(
 	ctx context.Context,
 	workspaceRoot string,
 	request *domain.FindReferencingSymbolsRequest,
-) (*domain.FindReferencingSymbolsRequest, error) {
+) (*domain.FindReferencingSymbolsRequest, []helpers.SkippedFile, error) {
 	// Reference lookup needs at most the exact requested alias; resolving other aliases can introduce unrelated failures.
-	resolvedAliases, err := s.resolveMatchingReexportAliases(
+	resolvedAliases, skipped, err := s.resolveMatchingReexportAliases(
 		ctx,
 		workspaceRoot,
 		strings.TrimSpace(request.File),
@@ -179,7 +274,7 @@ func (s *Service) resolveReferenceTarget(
 		false,
 	)
 	if err != nil {
-		return nil, err
+		return nil, skipped, err
 	}
 
 	for _, resolvedAlias := range resolvedAliases {
@@ -187,13 +282,14 @@ func (s *Service) resolveReferenceTarget(
 		rewrittenRequest.File = resolvedAlias.SourceFile
 		rewrittenRequest.Path = resolvedAlias.SourcePath
 
-		return &rewrittenRequest, nil
+		return &rewrittenRequest, skipped, nil
 	}
 
-	return request, nil
+	return request, skipped, nil
 }
 
-// resolveReexportAliases resolves every explicit alias declaration needed by a complete file overview.
+// resolveReexportAliases resolves every explicit alias declaration needed by a complete file overview; a neighbor
+// file that an alias definition request skipped only hides its declarations from that request.
 func (s *Service) resolveReexportAliases(
 	ctx context.Context,
 	workspaceRoot string,
@@ -203,21 +299,23 @@ func (s *Service) resolveReexportAliases(
 	if err != nil {
 		return nil, err
 	}
+	resolvedAliases, _, err := s.resolveParsedReexportAliases(ctx, workspaceRoot, relativePath, aliases)
 
-	return s.resolveParsedReexportAliases(ctx, workspaceRoot, relativePath, aliases)
+	return resolvedAliases, err
 }
 
-// resolveMatchingReexportAliases filters aliases before resolution so unrelated project errors cannot affect a query.
+// resolveMatchingReexportAliases filters aliases before resolution so unrelated project errors cannot affect a query,
+// and returns the neighbor files that the alias definition requests skipped.
 func (s *Service) resolveMatchingReexportAliases(
 	ctx context.Context,
 	workspaceRoot string,
 	relativePath string,
 	query string,
 	substringMatching bool,
-) ([]resolvedReexportAlias, error) {
+) ([]resolvedReexportAlias, []helpers.SkippedFile, error) {
 	aliases, err := parseReexportAliases(workspaceRoot, relativePath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	matchingAliases := lo.Filter(aliases, func(alias reexportAlias, _ int) bool {
@@ -228,38 +326,41 @@ func (s *Service) resolveMatchingReexportAliases(
 }
 
 // resolveParsedReexportAliases resolves the selected declarations and stops when one selected alias is invalid.
+// It returns the neighbor files that the alias definition requests skipped, also when it stops.
 func (s *Service) resolveParsedReexportAliases(
 	ctx context.Context,
 	workspaceRoot string,
 	relativePath string,
 	aliases []reexportAlias,
-) ([]resolvedReexportAlias, error) {
+) ([]resolvedReexportAlias, []helpers.SkippedFile, error) {
 	result := make([]resolvedReexportAlias, 0, len(aliases))
+	var skipped []helpers.SkippedFile
 	for aliasIndex := range aliases {
-		resolvedAlias, err := s.resolveReexportAliasDefinition(
+		resolvedAlias, aliasSkipped, err := s.resolveReexportAliasDefinition(
 			ctx,
 			workspaceRoot,
 			relativePath,
 			&aliases[aliasIndex],
 		)
+		skipped = append(skipped, aliasSkipped...)
 		if err != nil {
-			return nil, err
+			return nil, skipped, err
 		}
 		result = append(result, resolvedAlias)
 	}
 
-	return result, nil
+	return result, skipped, nil
 }
 
 // resolveReexportAliasDefinition maps one re-export alias position to the source
-// symbol that tsls resolves via definition.
+// symbol that tsls resolves via definition, and returns the neighbor files that the definition request skipped.
 func (s *Service) resolveReexportAliasDefinition(
 	ctx context.Context,
 	workspaceRoot string,
 	relativePath string,
 	alias *reexportAlias,
-) (resolvedReexportAlias, error) {
-	definitionLocation, err := s.requestDefinitionLocation(
+) (resolvedReexportAlias, []helpers.SkippedFile, error) {
+	definitionLocation, skipped, err := s.requestDefinitionLocation(
 		ctx,
 		workspaceRoot,
 		relativePath,
@@ -267,7 +368,7 @@ func (s *Service) resolveReexportAliasDefinition(
 	)
 	if err != nil && !isExpectedReexportResolutionMiss(err) {
 		// Transport, process, and protocol failures are internal errors; a filesystem fallback must not hide them.
-		return resolvedReexportAlias{}, err
+		return resolvedReexportAlias{}, skipped, err
 	}
 	if err == nil {
 		resolvedAlias, found, resolveErr := s.reexportFromDefinitionLocation(
@@ -278,19 +379,21 @@ func (s *Service) resolveReexportAliasDefinition(
 			definitionLocation,
 		)
 		if resolveErr != nil {
-			return resolvedReexportAlias{}, resolveErr
+			return resolvedReexportAlias{}, skipped, resolveErr
 		}
 		if found {
-			return resolvedAlias, nil
+			return resolvedAlias, skipped, nil
 		}
 	}
 
 	// The local resolver understands source-relative imports only; package resolution belongs to TypeScript.
 	if !isRelativeModuleSpecifier(alias.ModuleSpecifier) {
-		return resolvedReexportAlias{}, newUnresolvedReexportError(relativePath, alias.ModuleSpecifier)
+		return resolvedReexportAlias{}, skipped, newUnresolvedReexportError(relativePath, alias.ModuleSpecifier)
 	}
 
-	return s.resolveExplicitReexportSource(ctx, workspaceRoot, relativePath, alias)
+	resolvedAlias, err := s.resolveExplicitReexportSource(ctx, workspaceRoot, relativePath, alias)
+
+	return resolvedAlias, skipped, err
 }
 
 // reexportFromDefinitionLocation builds a resolved alias when TypeScript points to a usable workspace symbol.
@@ -450,44 +553,61 @@ func (s *Service) syntheticFoundSymbol(
 		resolvedAlias.Alias.SelectionRange.Start,
 	)
 	if err != nil {
-		return domain.FoundSymbol{}, err
+		if hoverErr := handleSyntheticHoverError(ctx, relativePath, err); hoverErr != nil {
+			return domain.FoundSymbol{}, hoverErr
+		}
+
+		return foundSymbol, nil
 	}
 	foundSymbol.Info = hoverInfo
 
 	return foundSymbol, nil
 }
 
+// handleSyntheticHoverError returns a hover error of one alias only when it ends the whole request; hover info is
+// optional, so any other error is logged and the alias stays without info.
+func handleSyntheticHoverError(ctx context.Context, relativePath string, err error) error {
+	if helpers.IsRequestError(ctx, err) {
+		return err
+	}
+
+	slog.WarnContext(ctx, "skip optional synthetic hover info", "err", err, "file_path", relativePath)
+
+	return nil
+}
+
 // requestDefinitionLocation asks tsls for one alias definition location while
-// keeping the whole target directory visible to the live session.
+// keeping the whole target directory visible to the live session, and returns the neighbor files that it skipped.
 func (s *Service) requestDefinitionLocation(
 	ctx context.Context,
 	workspaceRoot string,
 	relativePath string,
 	position protocol.Position,
-) (protocol.Location, error) {
+) (protocol.Location, []helpers.SkippedFile, error) {
 	workflowFiles, err := collectReferenceWorkflowFiles(workspaceRoot, relativePath)
 	if err != nil {
-		return protocol.Location{}, err
+		return protocol.Location{}, nil, err
 	}
 
-	conn, err := s.rt.EnsureConn(ctx, workspaceRoot)
+	conn, err := s.ensureConn(ctx, workspaceRoot)
 	if err != nil {
-		return protocol.Location{}, err
+		return protocol.Location{}, nil, helpers.NewSessionError(err)
 	}
 
 	_, absolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, relativePath)
 	if err != nil {
-		return protocol.Location{}, err
+		return protocol.Location{}, nil, err
 	}
 
 	var locations []protocol.Location
-	err = runWithReferenceWorkflowFiles(
+	// A file that cannot be opened only hides its declarations; a definition missed this way fails below.
+	skipped, err := runWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		workflowFiles,
 		s.withRequestDocument,
-		func(callCtx context.Context) error {
+		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error {
 			params := &protocol.DefinitionParams{
 				TextDocument: protocol.TextDocumentIdentifier{
 					URI: uri.File(absolutePath),
@@ -507,16 +627,16 @@ func (s *Service) requestDefinitionLocation(
 		},
 	)
 	if err != nil {
-		return protocol.Location{}, fmt.Errorf("request definition for %q: %w", relativePath, err)
+		return protocol.Location{}, skipped, fmt.Errorf("request definition for %q: %w", relativePath, err)
 	}
 	if len(locations) == 0 {
-		return protocol.Location{}, domain.NewToolError(
+		return protocol.Location{}, skipped, domain.NewToolError(
 			fmt.Sprintf("no definition matches %q", relativePath),
 			nil,
 		)
 	}
 
-	return locations[0], nil
+	return locations[0], skipped, nil
 }
 
 // findDefinitionOverviewSymbol resolves one source definition position back to
@@ -536,7 +656,7 @@ func (s *Service) findDefinitionOverviewSymbol(
 		},
 	)
 	if err != nil {
-		return domain.SymbolLocation{}, err
+		return domain.SymbolLocation{}, newSourceFileError(relativePath, err)
 	}
 
 	var match domain.SymbolLocation
@@ -582,7 +702,7 @@ func (s *Service) findOverviewSymbolByPath(
 		},
 	)
 	if err != nil {
-		return domain.SymbolLocation{}, err
+		return domain.SymbolLocation{}, newSourceFileError(relativePath, err)
 	}
 
 	for _, symbol := range overview.Symbols {
@@ -604,9 +724,9 @@ func (s *Service) requestSyntheticHoverInfo(
 	relativePath string,
 	position protocol.Position,
 ) (string, error) {
-	conn, err := s.rt.EnsureConn(ctx, workspaceRoot)
+	conn, err := s.ensureConn(ctx, workspaceRoot)
 	if err != nil {
-		return "", err
+		return "", helpers.NewSessionError(err)
 	}
 
 	_, absolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, relativePath)
@@ -636,7 +756,7 @@ func (s *Service) requestSyntheticHoverInfo(
 		return "", fmt.Errorf("request hover for %q: %w", relativePath, err)
 	}
 
-	return strings.TrimSpace(hover.Contents.Value), nil
+	return helpers.HoverText(hover.Contents)
 }
 
 // parseReexportAliases extracts top-level `export { ... } from` and
@@ -766,12 +886,12 @@ func resolveReexportSourceFile(workspaceRoot, relativePath, moduleSpecifier stri
 func findDefaultExportPosition(workspaceRoot, relativePath string) (protocol.Position, error) {
 	_, absolutePath, err := helpers.ResolveDocumentPath(workspaceRoot, relativePath)
 	if err != nil {
-		return protocol.Position{}, err
+		return protocol.Position{}, newSourceFileError(relativePath, err)
 	}
 
 	rawContent, err := os.ReadFile(filepath.Clean(absolutePath))
 	if err != nil {
-		return protocol.Position{}, fmt.Errorf("read %q: %w", relativePath, err)
+		return protocol.Position{}, newSourceFileError(relativePath, fmt.Errorf("read %q: %w", relativePath, err))
 	}
 	content := string(rawContent)
 	offset := strings.Index(content, "export default")
@@ -1044,7 +1164,7 @@ func readSyntheticSymbolBody(
 // relativePathFromDefinitionURI converts one definition URI into a
 // workspace-relative path rooted at the active request workspace.
 func relativePathFromDefinitionURI(workspaceRoot string, fileURI uri.URI) (string, error) {
-	absolutePath := filepath.Clean(fileURI.Filename())
+	absolutePath := filepath.Clean(fileURI.FsPath())
 	normalizedAbsolutePath, err := filepath.EvalSymlinks(absolutePath)
 	if err == nil {
 		absolutePath = normalizedAbsolutePath

@@ -475,6 +475,24 @@ func TestIntegrationServiceFindSymbolSupportsExactCanonicalGoPath(t *testing.T) 
 	require.True(t, ok, "expected exact canonical method match, got %#v", result.Symbols)
 }
 
+// TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8 proves that workspace-wide Go search
+// reads a generated file whose string literal holds bytes that are not valid UTF-8.
+func TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8(t *testing.T) {
+	workspaceRoot := goplsFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	result, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "BinaryMetadataDescriptor"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            "",
+	})
+	require.NoError(t, err)
+
+	symbol, ok := findFoundSymbol(result.Symbols, "BinaryMetadataDescriptor")
+	require.True(t, ok, "expected whole-workspace match, got %#v", result.Symbols)
+	assert.Equal(t, "binarymeta/binary_metadata.go", symbol.File)
+}
+
 // TestIntegrationServiceFindSymbolDoesNotSupportExactPackageQualifiedGoPath proves that leading-slash
 // exact matching stays reserved for canonical public paths, not package-qualified input variants.
 func TestIntegrationServiceFindSymbolDoesNotSupportExactPackageQualifiedGoPath(t *testing.T) {

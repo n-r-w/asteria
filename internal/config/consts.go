@@ -12,7 +12,8 @@ const (
 	Use 'symbol_query' to choose symbols and 'scope_path' only to narrow the filesystem area being searched.
 	The search supports simple names, suffix lookup, and exact lookup with a leading '/'.
 	No matches return an empty 'symbols' array.
-	If 'warnings' is present, the search skipped files with the listed extensions because their language server failed; returned symbols are valid.
+	If 'warnings' is present, the search skipped files: each warning gives their extensions, their count when known, and the first files with reasons or one common reason; returned symbols are valid.
+	Reason 'search stopped by timeout' means the result is partial; narrow 'scope_path' and repeat the search for a complete result.
 	If 'substring_matching' is enabled, it applies only to the last path segment; earlier segments must still match normally.
 	Specify 'depth > 0' to also retrieve children/descendants, (e.g. methods of a class).	
 	🚨  MUST use 'include_body' and 'include_info' ONLY when you REALLY need to, as these options significantly increase the response size and can lead to context window overflow.
@@ -25,6 +26,8 @@ const (
 	The symbol declaration itself is excluded from the results, so symbols with no external usages return an empty 'files' array.
 	The returned range describes the snippet, not the exact reference token.
 	If 'incomplete' is true, the response may miss references because the backing index is building and not ready yet.
+	If 'warnings' is present, the response misses references in the named files, with reasons; returned references are valid.
+	Reason 'search stopped by timeout' means the result is partial; references in the counted files may be missing.
 	The tool resolves one unique target symbol by suffix lookup or exact lookup with a leading '/'.
 	It does not support substring matching and reports ambiguity by listing matching candidates.
 	🚨 MUST be preferred over ANY other search methods for locating code references. 🚨

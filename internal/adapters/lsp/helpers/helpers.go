@@ -3,8 +3,8 @@ package helpers
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -28,7 +28,8 @@ func FindOverviewSymbol(symbols []domain.SymbolLocation, path string) (domain.Sy
 }
 
 // WithRequestDocument opens one file for the duration of one request so adapters can share the same
-// temporary didOpen/didClose workflow without duplicating lifecycle code.
+// temporary didOpen/didClose workflow without duplicating lifecycle code, and returns the error of opening the file
+// or of the request, while a failed didClose only gets a warning in the log.
 func WithRequestDocument(languageID func(ext string) string) func(
 	ctx context.Context,
 	conn jsonrpc2.Conn,
@@ -43,7 +44,7 @@ func WithRequestDocument(languageID func(ext string) string) func(
 		conn jsonrpc2.Conn,
 		absolutePath string,
 		run func(context.Context) error,
-	) (err error) {
+	) error {
 		cleanAbsolutePath := filepath.Clean(absolutePath)
 		documentURI := uri.File(cleanAbsolutePath)
 
@@ -66,7 +67,7 @@ func WithRequestDocument(languageID func(ext string) string) func(
 			openErr := conn.Notify(ctx, protocol.MethodTextDocumentDidOpen, &protocol.DidOpenTextDocumentParams{
 				TextDocument: protocol.TextDocumentItem{
 					URI:        documentURI,
-					LanguageID: protocol.LanguageIdentifier(languageID(filepath.Ext(cleanAbsolutePath))),
+					LanguageID: protocol.LanguageKind(languageID(filepath.Ext(cleanAbsolutePath))),
 					Version:    0,
 					Text:       string(content),
 				},
@@ -105,8 +106,9 @@ func WithRequestDocument(languageID func(ext string) string) func(
 			}
 			mu.Unlock()
 
+			// The work inside the document already received its data, so a failed didClose does not change its result.
 			if closeErr != nil {
-				err = errors.Join(err, fmt.Errorf("close request document %q: %w", cleanAbsolutePath, closeErr))
+				slog.WarnContext(ctx, "close request document", "path", cleanAbsolutePath, "err", closeErr)
 			}
 		}()
 

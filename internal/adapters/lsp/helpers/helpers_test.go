@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -93,6 +94,25 @@ func TestWithRequestDocumentClosesAfterRunError(t *testing.T) {
 	})
 	require.ErrorIs(t, err, expectedErr)
 	waitForURIMethods(t, recorder, uri.File(fixturePath), []string{"textDocument/didOpen", "textDocument/didClose"})
+}
+
+// TestWithRequestDocumentReturnsRunErrorWhenCloseFails proves that a failed didClose notification leaves the error
+// of the wrapped request unchanged.
+func TestWithRequestDocumentReturnsRunErrorWhenCloseFails(t *testing.T) {
+	t.Parallel()
+
+	fixturePath := writeRequestDocumentFixture(t, "fixture.ts")
+	conn, _ := newLifecycleRecorderConn(t)
+	withRequestDocument := WithRequestDocument(func(_ string) string { return "typescript" })
+	expectedErr := errors.New("request failed")
+
+	err := withRequestDocument(t.Context(), conn, fixturePath, func(context.Context) error {
+		// A closed connection makes the didClose notification fail.
+		require.NoError(t, conn.Close())
+
+		return expectedErr
+	})
+	require.Equal(t, expectedErr, err)
 }
 
 // TestWithRequestDocumentKeepsOneOpenForConcurrentSameURI proves that overlapping callers for the same
@@ -278,30 +298,32 @@ func newLifecycleRecorderConn(t *testing.T) (jsonrpc2.Conn, *lifecycleRecorder) 
 	clientConn := jsonrpc2.NewConn(jsonrpc2.NewStream(clientSide))
 	recorder := &lifecycleRecorder{}
 
-	serverConn.Go(t.Context(), func(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	serverConn.Go(t.Context(), func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
 		switch req.Method() {
 		case protocol.MethodTextDocumentDidOpen:
 			var params protocol.DidOpenTextDocumentParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
-			recorder.addEvent(documentLifecycleEvent{Method: req.Method(), URI: params.TextDocument.URI})
+			recorder.addEvent(documentLifecycleEvent{Method: strings.Clone(req.Method()), URI: params.TextDocument.URI})
 
-			return nil
+			//nolint:nilnil // Notifications get no reply, so the handler returns no result.
+			return nil, nil
 		case protocol.MethodTextDocumentDidClose:
 			var params protocol.DidCloseTextDocumentParams
 			err := json.Unmarshal(req.Params(), &params)
 			if err != nil {
 				t.Error(err)
-				return err
+				return nil, err
 			}
-			recorder.addEvent(documentLifecycleEvent{Method: req.Method(), URI: params.TextDocument.URI})
+			recorder.addEvent(documentLifecycleEvent{Method: strings.Clone(req.Method()), URI: params.TextDocument.URI})
 
-			return nil
+			//nolint:nilnil // Notifications get no reply, so the handler returns no result.
+			return nil, nil
 		default:
-			return jsonrpc2.MethodNotFoundHandler(ctx, reply, req)
+			return jsonrpc2.MethodNotFoundHandler(ctx, req)
 		}
 	})
 	clientConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)

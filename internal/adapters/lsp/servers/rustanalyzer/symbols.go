@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
@@ -34,7 +35,9 @@ func (s *Service) GetSymbolsOverview(
 }
 
 // FindSymbol uses the shared standard-LSP search flow and retries Rust impl-member queries through the raw
-// rust-analyzer path when the canonical export shape does not match directly.
+// rust-analyzer path when the canonical export shape does not match directly. Warnings of the result name the files
+// of a directory or workspace search that either attempt could not process, and count the files not searched because
+// the search or the raw impl-path attempt stopped at the request deadline.
 func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
@@ -47,19 +50,26 @@ func (s *Service) FindSymbol(
 		defer release()
 	}
 
-	result, err := s.std.FindSymbol(ctx, request)
+	result, failures, err := s.std.FindSymbolWithFailures(ctx, request)
 	if err != nil {
 		return domain.FindSymbolResult{}, err
 	}
+	// Symbols of failed files are removed first, so only the usable symbols decide whether to retry.
+	failures.CompleteSymbolResult(&result)
 	if len(result.Symbols) == 0 {
 		rawRequest, changed := findSymbolRequestWithRawRustPath(request)
-		if changed {
-			result, err = s.std.FindSymbol(ctx, rawRequest)
-			if err != nil {
-				return domain.FindSymbolResult{}, err
+		// After the deadline, the search returns what it found, without the raw impl-path attempt.
+		if changed && !failures.StopFollowUpByTimeout(ctx) {
+			rawResult, rawFailures, rawErr := s.std.FindSymbolWithFailures(ctx, rawRequest)
+			if rawErr != nil {
+				return domain.FindSymbolResult{}, rawErr
 			}
+			failures.Merge(rawFailures)
+			result = rawResult
 		}
 	}
+	// The raw attempt and the timeout check change the result and failures, so the result is completed again.
+	failures.CompleteSymbolResult(&result)
 
 	normalizeFoundSymbolPaths(result.Symbols)
 
@@ -102,26 +112,35 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
-	conn, err := s.rt.EnsureConn(ctx, workspaceRoot)
+	conn, err := s.ensureConn(ctx, workspaceRoot)
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
 	var result domain.FindReferencingSymbolsResult
+	// failures holds every file that this request skipped, so that the raw retry and the final result leave out the
+	// same files.
+	failures := stdlsp.NewFileFailures(workspaceRoot, false)
 	rawRequest, hasRawVariant := findReferencingSymbolsRequestWithRawRustPath(request)
-	err = helpers.RunWithReferenceWorkflowFiles(
+	_, err = helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		referenceWorkflowFiles,
 		s.withRequestDocument,
-		func(callCtx context.Context) error {
+		func(callCtx context.Context, _ []string, knownSkipped []helpers.SkippedFile) error {
+			if recordErr := failures.RecordSkippedFiles(callCtx, knownSkipped); recordErr != nil {
+				return recordErr
+			}
+
 			var callErr error
 			result, callErr = s.findReferencingSymbolsOnce(
 				callCtx,
 				request,
 				rawRequest,
 				hasRawVariant,
+				referenceWorkflowFiles,
+				failures,
 			)
 
 			return callErr
@@ -130,32 +149,60 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
+	failures.CompleteReferenceResult(&result)
 
 	normalizeReferencingSymbolPaths(result.Symbols)
 
 	return result, nil
 }
 
-// findReferencingSymbolsOnce runs one standard reference lookup and, when needed, one raw impl-path retry for
-// canonical Rust member queries.
+// findReferencingSymbolsOnce runs the standard reference lookup and, when it finds no target or no references of a
+// Rust member query, one raw impl-path lookup. It adds the files that each lookup could not process to failures, and
+// returns the result of the last lookup without the rows of any file in failures.
+// After the request deadline, the raw lookup does not start. A missed target then ends with the error of the standard
+// lookup. A standard result without references is returned as it is; when the standard lookup itself finished,
+// failures count referenceWorkflowFiles as not processed. A raw lookup that fails after the deadline leaves the
+// standard result with this count when the standard lookup returned one, and otherwise ends with its own error.
 func (s *Service) findReferencingSymbolsOnce(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
 	rawRequest *domain.FindReferencingSymbolsRequest,
 	hasRawVariant bool,
+	referenceWorkflowFiles []string,
+	failures *stdlsp.FileFailures,
 ) (domain.FindReferencingSymbolsResult, error) {
-	result, err := s.stdReferences.FindReferencingSymbols(ctx, request)
+	result, attemptFailures, err := s.stdReferences.FindReferencingSymbolsWithFailures(ctx, request)
+	if err == nil {
+		failures.Merge(attemptFailures)
+		// Rows of failed files are removed first, so only the usable rows decide whether to retry.
+		failures.CompleteReferenceResult(&result)
+	}
 	if !hasRawVariant {
 		return result, err
 	}
-	if err == nil && len(result.Symbols) > 0 {
+	if err != nil {
+		// A missed target after the deadline ends the request, because no location list can arrive in time.
+		if !isNoSymbolMatchesError(err) || domain.IsStoppedByTimeout(ctx) {
+			return result, err
+		}
+	} else if len(result.Symbols) > 0 || failures.StoppedByTimeout() ||
+		failures.StopByTimeout(ctx, referenceWorkflowFiles) {
+		// After the deadline, the lookup returns what it found, without the raw impl-path attempt.
 		return result, nil
 	}
-	if err != nil && !isNoSymbolMatchesError(err) {
-		return result, err
-	}
 
-	return s.stdReferences.FindReferencingSymbols(ctx, rawRequest)
+	rawResult, rawFailures, rawErr := s.stdReferences.FindReferencingSymbolsWithFailures(ctx, rawRequest)
+	if rawErr != nil {
+		if err == nil && failures.StopByTimeout(ctx, referenceWorkflowFiles) {
+			return result, nil
+		}
+
+		return domain.FindReferencingSymbolsResult{}, rawErr
+	}
+	failures.Merge(rawFailures)
+	failures.CompleteReferenceResult(&rawResult)
+
+	return rawResult, nil
 }
 
 // isNoSymbolMatchesError identifies the symbol miss after which the raw impl path is retried.

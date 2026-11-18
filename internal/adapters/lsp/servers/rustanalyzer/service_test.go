@@ -3,15 +3,18 @@ package lsprustanalyzer
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
+	"go.lsp.dev/uri"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/config/cfgadapters"
@@ -23,6 +26,7 @@ import (
 func newTestService(cacheRoot string, cfg cfgadapters.RustAnalyzerConfig) *Service {
 	return &Service{
 		rt:                         nil,
+		ensureConn:                 nil,
 		std:                        nil,
 		stdReferences:              nil,
 		withRequestDocument:        nil,
@@ -43,32 +47,29 @@ func TestBuildClientCapabilities(t *testing.T) {
 
 	require.NotNil(t, capabilities.Workspace)
 	require.NotNil(t, capabilities.Workspace.DidChangeWatchedFiles)
-	assert.True(t, capabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration)
+	assert.True(t, lo.FromPtr(capabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration))
 	require.NotNil(t, capabilities.Workspace.ExecuteCommand)
-	assert.True(t, capabilities.Workspace.ExecuteCommand.DynamicRegistration)
+	assert.True(t, lo.FromPtr(capabilities.Workspace.ExecuteCommand.DynamicRegistration))
 	require.NotNil(t, capabilities.Workspace.Symbol)
-	assert.True(t, capabilities.Workspace.Symbol.DynamicRegistration)
+	assert.True(t, lo.FromPtr(capabilities.Workspace.Symbol.DynamicRegistration))
 	require.NotNil(t, capabilities.TextDocument)
 	require.NotNil(t, capabilities.TextDocument.Synchronization)
-	assert.True(t, capabilities.TextDocument.Synchronization.WillSave)
-	assert.True(t, capabilities.TextDocument.Synchronization.WillSaveWaitUntil)
-	assert.True(t, capabilities.TextDocument.Synchronization.DidSave)
+	assert.True(t, lo.FromPtr(capabilities.TextDocument.Synchronization.WillSave))
+	assert.True(t, lo.FromPtr(capabilities.TextDocument.Synchronization.WillSaveWaitUntil))
+	assert.True(t, lo.FromPtr(capabilities.TextDocument.Synchronization.DidSave))
 	require.NotNil(t, capabilities.TextDocument.References)
-	assert.True(t, capabilities.TextDocument.References.DynamicRegistration)
+	assert.True(t, lo.FromPtr(capabilities.TextDocument.References.DynamicRegistration))
 	require.NotNil(t, capabilities.TextDocument.Hover)
 	assert.Equal(
 		t,
-		[]protocol.MarkupKind{protocol.Markdown, protocol.PlainText},
+		[]protocol.MarkupKind{protocol.MarkupKindMarkdown, protocol.MarkupKindPlainText},
 		capabilities.TextDocument.Hover.ContentFormat,
 	)
 	require.NotNil(t, capabilities.TextDocument.PublishDiagnostics)
-	assert.True(t, capabilities.TextDocument.PublishDiagnostics.RelatedInformation)
+	assert.True(t, lo.FromPtr(capabilities.TextDocument.PublishDiagnostics.RelatedInformation))
 	require.NotNil(t, capabilities.Window)
-	assert.True(t, capabilities.Window.WorkDoneProgress)
-	require.IsType(t, map[string]any{}, capabilities.Experimental)
-	experimental, ok := capabilities.Experimental.(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, true, experimental["serverStatusNotification"])
+	assert.True(t, lo.FromPtr(capabilities.Window.WorkDoneProgress))
+	assert.JSONEq(t, `{"serverStatusNotification":true}`, string(capabilities.Experimental))
 }
 
 // TestPatchInitializeParams proves that the Rust adapter adds workspace-loading and indexing options without
@@ -83,13 +84,15 @@ func TestPatchInitializeParams(t *testing.T) {
 		StartupReadyTimeout:        30 * time.Second,
 	})
 
-	workspaceFolders := []protocol.WorkspaceFolder{
-		{URI: string(protocol.DocumentURI(filepath.ToSlash("file://" + workspaceRoot))), Name: "workspace"},
-	}
+	workspaceFolders := protocol.NewNullable([]protocol.WorkspaceFolder{
+		{URI: uri.File(workspaceRoot), Name: "workspace"},
+	})
 	// protocol.InitializeParams has many optional SDK fields that this unit test does not
 	// exercise.
 	//nolint:exhaustruct_v5 // See the preceding comment.
-	params := &protocol.InitializeParams{WorkspaceFolders: workspaceFolders}
+	params := &protocol.InitializeParams{
+		WorkspaceFolders: workspaceFolders,
+	}
 
 	err := service.patchInitializeParams(workspaceRoot, params)
 	require.NoError(t, err)
@@ -98,9 +101,9 @@ func TestPatchInitializeParams(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, workspaceFolders, params.WorkspaceFolders)
-	assert.Empty(t, params.RootPath)
-	assert.Empty(t, params.RootURI)
-	assert.Equal(t, map[string]any{
+	assert.True(t, params.RootPath.IsZero())
+	assert.Nil(t, params.RootURI)
+	expectedOptions, err := json.Marshal(map[string]any{
 		"cargo": map[string]any{
 			"autoreload": true,
 			"extraEnv": map[string]any{
@@ -132,7 +135,9 @@ func TestPatchInitializeParams(t *testing.T) {
 		"diagnostics": map[string]any{
 			"enable": false,
 		},
-	}, params.InitializationOptions)
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, string(expectedOptions), string(params.InitializationOptions))
 }
 
 // TestWaitUntilReadyReturnsAfterQuiescentStatus proves that startup waiting is released only by the observed
@@ -151,38 +156,21 @@ func TestWaitUntilReadyReturnsAfterQuiescentStatus(t *testing.T) {
 	go func() {
 		waitErrCh <- service.waitUntilReady(ctx, nil, "/workspace")
 	}()
+	peerConn := serveServerCallback(t, service)
 
-	serviceReadyFalse := decodeNotification(
-		t,
-		`{"jsonrpc":"2.0","method":"experimental/serverStatus","params":{"health":"ok","quiescent":false}}`,
-	)
-	handled, err := service.handleServerCallback(
-		t.Context(),
-		func(context.Context, any, error) error { return nil },
-		serviceReadyFalse,
-		"/workspace",
-	)
-	require.True(t, handled)
-	require.NoError(t, err)
+	require.NoError(t, peerConn.Notify(t.Context(), experimentalServerStatusMethod, map[string]any{
+		"health": "ok", "quiescent": false,
+	}))
 
 	select {
-	case err = <-waitErrCh:
+	case err := <-waitErrCh:
 		t.Fatalf("waitUntilReady returned too early: %v", err)
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	serviceReadyTrue := decodeNotification(
-		t,
-		`{"jsonrpc":"2.0","method":"experimental/serverStatus","params":{"health":"ok","quiescent":true}}`,
-	)
-	handled, err = service.handleServerCallback(
-		t.Context(),
-		func(context.Context, any, error) error { return nil },
-		serviceReadyTrue,
-		"/workspace",
-	)
-	require.True(t, handled)
-	require.NoError(t, err)
+	require.NoError(t, peerConn.Notify(t.Context(), experimentalServerStatusMethod, map[string]any{
+		"health": "ok", "quiescent": true,
+	}))
 	require.NoError(t, <-waitErrCh)
 	assert.Empty(t, service.startupReadiness)
 }
@@ -196,41 +184,37 @@ func TestHandleServerCallbackAcknowledgesDiagnosticRefresh(t *testing.T) {
 		WorkspaceSymbolSearchLimit: 128,
 		StartupReadyTimeout:        30 * time.Second,
 	})
-	replied := false
-	request := decodeCall(t, `{"jsonrpc":"2.0","id":1,"method":"workspace/diagnostic/refresh","params":null}`)
+	peerConn := serveServerCallback(t, service)
 
-	handled, err := service.handleServerCallback(
-		t.Context(),
-		func(context.Context, any, error) error {
-			replied = true
-			return nil
-		},
-		request,
-		"/workspace",
-	)
+	var result json.RawMessage
+	_, err := peerConn.Call(t.Context(), workspaceDiagnosticRefreshMethod, nil, &result)
 	require.NoError(t, err)
-	assert.True(t, handled)
-	assert.True(t, replied)
+	assert.JSONEq(t, "null", string(result))
 }
 
-// decodeCall keeps callback-handler tests explicit without depending on unexported jsonrpc2 constructors.
-func decodeCall(t *testing.T, raw string) jsonrpc2.Request {
+// serveServerCallback connects one in-memory peer whose messages reach the adapter server callback first;
+// messages that the callback does not handle get the standard method-not-found answer.
+func serveServerCallback(t *testing.T, service *Service) jsonrpc2.Conn {
 	t.Helper()
 
-	var request jsonrpc2.Call
-	require.NoError(t, json.Unmarshal([]byte(raw), &request))
+	callbackSide, peerSide := net.Pipe()
+	callbackConn := jsonrpc2.NewConn(jsonrpc2.NewStream(callbackSide))
+	peerConn := jsonrpc2.NewConn(jsonrpc2.NewStream(peerSide))
+	callbackConn.Go(t.Context(), func(ctx context.Context, req *jsonrpc2.Request) (any, error) {
+		result, handled, err := service.handleServerCallback(ctx, req, "/workspace")
+		if !handled {
+			return jsonrpc2.MethodNotFoundHandler(ctx, req)
+		}
 
-	return &request
-}
+		return result, err
+	})
+	peerConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)
+	t.Cleanup(func() {
+		require.NoError(t, peerConn.Close())
+		require.NoError(t, callbackConn.Close())
+	})
 
-// decodeNotification keeps callback-handler notification tests short and readable.
-func decodeNotification(t *testing.T, raw string) jsonrpc2.Request {
-	t.Helper()
-
-	var request jsonrpc2.Notification
-	require.NoError(t, json.Unmarshal([]byte(raw), &request))
-
-	return &request
+	return peerConn
 }
 
 // TestWaitUntilReadyTimeoutNamesTimeoutSetting proves that the client learns which setting lets indexing finish.

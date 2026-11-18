@@ -99,7 +99,7 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 			FindReferencesDesc:     "",
 			ToolTimeout:            10 * time.Second,
 			LSPSessionIdleTimeout:  0,
-			ToolOutputMaxBytes:     150,
+			ToolOutputMaxBytes:     177, // 150 bytes for references and 27 bytes for the warning
 			Log:                    config.LogConfig{},
 			Adapters:               cfgadapters.Config{},
 		},
@@ -122,6 +122,7 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 			},
 		},
 		Incomplete:      false,
+		Warnings:        []string{".go skipped"},
 		ReturnedPercent: 0,
 	}
 
@@ -129,6 +130,7 @@ func TestLimitFindReferencingSymbolsOutputCountsNestedSymbols(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 50, limited.ReturnedPercent)
 	assert.False(t, limited.Incomplete)
+	assert.Equal(t, []string{".go skipped"}, limited.Warnings)
 	assert.Len(t, limited.Files, 1)
 	require.Len(t, limited.Files[0].Symbols, 2)
 	assert.Equal(t, "A/One", limited.Files[0].Symbols[0].Path)

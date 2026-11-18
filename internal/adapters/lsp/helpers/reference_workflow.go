@@ -4,6 +4,7 @@ package helpers
 import (
 	"context"
 	"path/filepath"
+	"slices"
 
 	"go.lsp.dev/jsonrpc2"
 
@@ -45,22 +46,85 @@ func CollectReferenceWorkflowFiles(
 }
 
 // RunWithReferenceWorkflowFiles keeps the supplied file set open until the wrapped shared references
-// workflow finishes.
+// workflow finishes. A file that cannot be opened is skipped and returned, unless it is the target, which is the last
+// file, or its error ends the whole request.
+// run receives the files that are open and the files that could not be opened.
 func RunWithReferenceWorkflowFiles(
 	ctx context.Context,
 	conn jsonrpc2.Conn,
 	workspaceRoot string,
 	relativePaths []string,
 	withRequestDocument func(context.Context, jsonrpc2.Conn, string, func(context.Context) error) error,
-	run func(context.Context) error,
+	run func(ctx context.Context, openedPaths []string, skipped []SkippedFile) error,
+) ([]SkippedFile, error) {
+	var skipped []SkippedFile
+	err := openReferenceWorkflowFiles(
+		ctx,
+		conn,
+		workspaceRoot,
+		relativePaths,
+		make([]string, 0, len(relativePaths)),
+		&skipped,
+		withRequestDocument,
+		run,
+	)
+
+	return skipped, err
+}
+
+// openReferenceWorkflowFiles opens the remaining files one inside another and runs the workflow inside the last one.
+func openReferenceWorkflowFiles(
+	ctx context.Context,
+	conn jsonrpc2.Conn,
+	workspaceRoot string,
+	remainingPaths []string,
+	openedPaths []string,
+	skipped *[]SkippedFile,
+	withRequestDocument func(context.Context, jsonrpc2.Conn, string, func(context.Context) error) error,
+	run func(ctx context.Context, openedPaths []string, skipped []SkippedFile) error,
 ) error {
-	if len(relativePaths) == 0 {
-		return run(ctx)
+	if len(remainingPaths) == 0 {
+		return run(ctx, openedPaths, slices.Clone(*skipped))
 	}
 
-	absolutePath := filepath.Join(workspaceRoot, filepath.FromSlash(relativePaths[0]))
+	relativePath := remainingPaths[0]
+	absolutePath := filepath.Join(workspaceRoot, filepath.FromSlash(relativePath))
+	// opened separates an error of opening this file from an error of the work that runs inside it.
+	opened := false
+	err := withRequestDocument(ctx, conn, absolutePath, func(callCtx context.Context) error {
+		opened = true
 
-	return withRequestDocument(ctx, conn, absolutePath, func(callCtx context.Context) error {
-		return RunWithReferenceWorkflowFiles(callCtx, conn, workspaceRoot, relativePaths[1:], withRequestDocument, run)
+		return openReferenceWorkflowFiles(
+			callCtx,
+			conn,
+			workspaceRoot,
+			remainingPaths[1:],
+			append(openedPaths, relativePath),
+			skipped,
+			withRequestDocument,
+			run,
+		)
 	})
+	if err == nil {
+		return nil
+	}
+	if opened || IsRequestError(ctx, err) {
+		return err
+	}
+	if len(remainingPaths) == 1 {
+		return err
+	}
+
+	*skipped = append(*skipped, SkippedFile{RelativePath: relativePath, Err: err})
+
+	return openReferenceWorkflowFiles(
+		ctx,
+		conn,
+		workspaceRoot,
+		remainingPaths[1:],
+		openedPaths,
+		skipped,
+		withRequestDocument,
+		run,
+	)
 }

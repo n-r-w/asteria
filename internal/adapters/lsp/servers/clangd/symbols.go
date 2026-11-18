@@ -12,6 +12,7 @@ import (
 	"go.lsp.dev/protocol"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
@@ -112,16 +113,19 @@ func (s *Service) FindReferencingSymbols(
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
-	var result domain.FindReferencingSymbolsResult
-	err = helpers.RunWithReferenceWorkflowFiles(
+	var (
+		result   domain.FindReferencingSymbolsResult
+		failures *stdlsp.FileFailures
+	)
+	skipped, err := helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		referenceWorkflowFiles,
 		s.withRequestDocument,
-		func(callCtx context.Context) error {
+		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error {
 			var callErr error
-			result, callErr = s.std.FindReferencingSymbols(callCtx, request)
+			result, failures, callErr = s.std.FindReferencingSymbolsWithFailures(callCtx, request)
 
 			return callErr
 		},
@@ -129,6 +133,10 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
+	if recordErr := failures.RecordSkippedFiles(ctx, skipped); recordErr != nil {
+		return domain.FindReferencingSymbolsResult{}, recordErr
+	}
+	failures.CompleteReferenceResult(&result)
 	result.Incomplete = s.indexProgress.incomplete(workspaceRoot)
 
 	return result, nil
@@ -149,9 +157,13 @@ func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.I
 		return nil
 	}
 
-	params.InitializationOptions = map[string]any{
+	initializationOptions, err := helpers.MarshalLSPAny(map[string]any{
 		clangdCompilationDatabasePathKey: cacheDir,
+	})
+	if err != nil {
+		return err
 	}
+	params.InitializationOptions = initializationOptions
 
 	return nil
 }

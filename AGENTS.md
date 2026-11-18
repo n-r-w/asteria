@@ -72,5 +72,5 @@ while still providing enough information for the LLM to understand what each too
 1. Use `t.Context()` instead of `context.Background()`
 2. Use `go.uber.org/mock` for mocks. Custom mocks are FORBIDDEN. Use `//go:generate` directives in interface files to generate mocks as needed.
 3. Use `github.com/stretchr/testify`
-4. Use `testify/suite`
+4. Use `testify/suite` where it provides an improvement
 5. Integration fixtures and tests using them MUST cover ALL language features, not just basic constructs.

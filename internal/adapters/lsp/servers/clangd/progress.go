@@ -54,17 +54,16 @@ func newBackgroundIndexProgress() *backgroundIndexProgress {
 // handleCallback observes server progress notifications while leaving normal runtime handling unchanged.
 func (p *backgroundIndexProgress) handleCallback(
 	_ context.Context,
-	_ jsonrpc2.Replier,
-	req jsonrpc2.Request,
+	req *jsonrpc2.Request,
 	workspaceRoot string,
-) (bool, error) {
+) (result any, handled bool, err error) {
 	if req.Method() != protocol.MethodProgress {
-		return false, nil
+		return nil, false, nil
 	}
 
 	p.recordProgress(workspaceRoot, req.Params())
 
-	return false, nil
+	return nil, false, nil
 }
 
 // incomplete reports whether reference results for one workspace should be marked as potentially incomplete.

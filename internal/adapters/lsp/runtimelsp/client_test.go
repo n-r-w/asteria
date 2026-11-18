@@ -3,6 +3,8 @@ package runtimelsp
 import (
 	"context"
 	"encoding/json"
+	"net"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,35 +18,22 @@ import (
 func TestClientHandlerDelegatesAdapterSpecificCallbacks(t *testing.T) {
 	t.Parallel()
 
-	handledMethods := make([]string, 0, 1)
+	var handledMethods []string
 	handler := newClientHandler(
 		t.TempDir(),
 		nil,
 		nil,
-		func(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request, workspaceRoot string) (bool, error) {
-			handledMethods = append(handledMethods, req.Method())
-			return true, reply(ctx, []any{}, nil)
+		func(_ context.Context, req *jsonrpc2.Request, _ string) (any, bool, error) {
+			handledMethods = append(handledMethods, strings.Clone(req.Method()))
+			return []any{}, true, nil
 		},
 	)
 
-	request := decodeCall(t, `{"jsonrpc":"2.0","id":1,"method":"workspace/executeClientCommand","params":{}}`)
-	var repliedResult []any
-	replied := false
-	err := handler(
-		t.Context(),
-		func(ctx context.Context, result any, err error) error {
-			require.NoError(t, err)
-			require.IsType(t, []any{}, result)
-			repliedResult = result.([]any)
-			replied = true
-
-			return nil
-		},
-		request,
-	)
+	var result []any
+	err := callHandler(t, handler, "workspace/executeClientCommand", struct{}{}, &result)
 	require.NoError(t, err)
-	assert.True(t, replied)
-	assert.Empty(t, repliedResult)
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
 	assert.Equal(t, []string{"workspace/executeClientCommand"}, handledMethods)
 }
 
@@ -56,44 +45,32 @@ func TestClientHandlerFallsBackToDefaultReplies(t *testing.T) {
 		t.TempDir(),
 		nil,
 		nil,
-		func(context.Context, jsonrpc2.Replier, jsonrpc2.Request, string) (bool, error) {
-			return false, nil
+		func(context.Context, *jsonrpc2.Request, string) (any, bool, error) {
+			return nil, false, nil
 		},
 	)
 
-	request := decodeNotification(
-		t,
-		`{"jsonrpc":"2.0","method":"`+protocol.MethodWindowLogMessage+`","params":{"type":3,"message":"ready"}}`,
-	)
-	replied := false
-	err := handler(
-		t.Context(),
-		func(context.Context, any, error) error {
-			replied = true
-			return nil
-		},
-		request,
-	)
+	var result json.RawMessage
+	err := callHandler(t, handler, protocol.MethodClientRegisterCapability, struct{}{}, &result)
 	require.NoError(t, err)
-	assert.True(t, replied)
+	assert.JSONEq(t, "null", string(result))
 }
 
-// decodeCall keeps jsonrpc2 request construction explicit without depending on unexported constructors.
-func decodeCall(t *testing.T, raw string) jsonrpc2.Request {
+// callHandler sends one call to handler through an in-memory JSON-RPC connection and decodes its reply.
+func callHandler(t *testing.T, handler jsonrpc2.Handler, method string, params, result any) error {
 	t.Helper()
 
-	var request jsonrpc2.Call
-	require.NoError(t, json.Unmarshal([]byte(raw), &request))
+	handlerSide, callerSide := net.Pipe()
+	handlerConn := jsonrpc2.NewConn(jsonrpc2.NewStream(handlerSide))
+	callerConn := jsonrpc2.NewConn(jsonrpc2.NewStream(callerSide))
+	handlerConn.Go(t.Context(), handler)
+	callerConn.Go(t.Context(), jsonrpc2.MethodNotFoundHandler)
+	t.Cleanup(func() {
+		require.NoError(t, callerConn.Close())
+		require.NoError(t, handlerConn.Close())
+	})
 
-	return &request
-}
+	_, err := callerConn.Call(t.Context(), method, params, result)
 
-// decodeNotification keeps notification-based handler tests short and readable.
-func decodeNotification(t *testing.T, raw string) jsonrpc2.Request {
-	t.Helper()
-
-	var request jsonrpc2.Notification
-	require.NoError(t, json.Unmarshal([]byte(raw), &request))
-
-	return &request
+	return err
 }

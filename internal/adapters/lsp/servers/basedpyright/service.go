@@ -8,6 +8,8 @@ import (
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 
+	"github.com/samber/lo"
+
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
 	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
@@ -89,7 +91,7 @@ func buildReplyConfiguration() func(string, protocol.ConfigurationParams) ([]any
 	return func(_ string, params protocol.ConfigurationParams) ([]any, error) {
 		results := make([]any, len(params.Items))
 		for i, item := range params.Items {
-			if item.Section == basedpyrightConfigSection {
+			if lo.FromPtr(item.Section) == basedpyrightConfigSection {
 				results[i] = settings
 			}
 		}
@@ -106,12 +108,13 @@ func buildClientCapabilities() protocol.ClientCapabilities {
 		capabilities.Workspace = &protocol.WorkspaceClientCapabilities{}
 	}
 	capabilities.Workspace.Symbol = &protocol.WorkspaceSymbolClientCapabilities{
-		DynamicRegistration: true,
-		SymbolKind:          &protocol.SymbolKindCapabilities{ValueSet: supportedSymbolKinds()},
-		TagSupport:          nil,
+		DynamicRegistration: new(true),
+		SymbolKind:          &protocol.ClientSymbolKindOptions{ValueSet: supportedSymbolKinds()},
+		TagSupport:          protocol.ClientSymbolTagOptions{},
+		ResolveSupport:      protocol.ClientSymbolResolveOptions{},
 	}
 	capabilities.Workspace.ExecuteCommand = &protocol.ExecuteCommandClientCapabilities{
-		DynamicRegistration: true,
+		DynamicRegistration: new(true),
 	}
 
 	if capabilities.TextDocument == nil {
@@ -120,34 +123,35 @@ func buildClientCapabilities() protocol.ClientCapabilities {
 	if capabilities.TextDocument.Synchronization == nil {
 		capabilities.TextDocument.Synchronization = &protocol.TextDocumentSyncClientCapabilities{}
 	}
-	capabilities.TextDocument.Synchronization.DynamicRegistration = true
-	capabilities.TextDocument.Synchronization.WillSave = true
-	capabilities.TextDocument.Synchronization.WillSaveWaitUntil = true
-	capabilities.TextDocument.Synchronization.DidSave = true
-	capabilities.TextDocument.Hover = &protocol.HoverTextDocumentClientCapabilities{
-		DynamicRegistration: true,
-		ContentFormat:       []protocol.MarkupKind{protocol.Markdown, protocol.PlainText},
+	capabilities.TextDocument.Synchronization.DynamicRegistration = new(true)
+	capabilities.TextDocument.Synchronization.WillSave = new(true)
+	capabilities.TextDocument.Synchronization.WillSaveWaitUntil = new(true)
+	capabilities.TextDocument.Synchronization.DidSave = new(true)
+	capabilities.TextDocument.Hover = &protocol.HoverClientCapabilities{
+		DynamicRegistration: new(true),
+		ContentFormat:       []protocol.MarkupKind{protocol.MarkupKindMarkdown, protocol.MarkupKindPlainText},
 	}
-	capabilities.TextDocument.SignatureHelp = &protocol.SignatureHelpTextDocumentClientCapabilities{
-		DynamicRegistration: true,
-		SignatureInformation: &protocol.TextDocumentClientCapabilitiesSignatureInformation{
-			DocumentationFormat: []protocol.MarkupKind{protocol.Markdown, protocol.PlainText},
-			ParameterInformation: &protocol.TextDocumentClientCapabilitiesParameterInformation{
-				LabelOffsetSupport: true,
+	capabilities.TextDocument.SignatureHelp = &protocol.SignatureHelpClientCapabilities{
+		DynamicRegistration: new(true),
+		SignatureInformation: &protocol.ClientSignatureInformationOptions{
+			DocumentationFormat: []protocol.MarkupKind{protocol.MarkupKindMarkdown, protocol.MarkupKindPlainText},
+			ParameterInformation: &protocol.ClientSignatureParameterInformationOptions{
+				LabelOffsetSupport: new(true),
 			},
-			ActiveParameterSupport: false,
+			ActiveParameterSupport:   nil,
+			NoActiveParameterSupport: nil,
 		},
-		ContextSupport: false,
+		ContextSupport: nil,
 	}
-	capabilities.TextDocument.References = &protocol.ReferencesTextDocumentClientCapabilities{
-		DynamicRegistration: true,
+	capabilities.TextDocument.References = &protocol.ReferenceClientCapabilities{
+		DynamicRegistration: new(true),
 	}
 	capabilities.TextDocument.PublishDiagnostics = &protocol.PublishDiagnosticsClientCapabilities{
-		RelatedInformation:     true,
-		TagSupport:             nil,
-		VersionSupport:         false,
-		CodeDescriptionSupport: false,
-		DataSupport:            false,
+		RelatedInformation:     new(true),
+		TagSupport:             protocol.ClientDiagnosticsTagOptions{},
+		CodeDescriptionSupport: nil,
+		DataSupport:            nil,
+		VersionSupport:         nil,
 	}
 
 	return capabilities
@@ -156,7 +160,7 @@ func buildClientCapabilities() protocol.ClientCapabilities {
 // patchInitializeParams adds the Pyright-specific startup parameters that the stable Serena implementation
 // relies on, while still reusing the shared runtime handshake.
 func (s *Service) patchInitializeParams(_ string, params *protocol.InitializeParams) error {
-	params.InitializationOptions = map[string]any{
+	initializationOptions, err := helpers.MarshalLSPAny(map[string]any{
 		"exclude": []string{
 			"**/__pycache__",
 			"**/.venv",
@@ -166,34 +170,37 @@ func (s *Service) patchInitializeParams(_ string, params *protocol.InitializePar
 			"**/.pixi",
 		},
 		"reportMissingImports": "error",
+	})
+	if err != nil {
+		return err
 	}
+	params.InitializationOptions = initializationOptions
 
 	return nil
 }
 
 // handleServerCallback acknowledges the extra callbacks that basedpyright emits outside the generic runtime set.
 func (s *Service) handleServerCallback(
-	ctx context.Context,
-	reply jsonrpc2.Replier,
-	req jsonrpc2.Request,
+	_ context.Context,
+	req *jsonrpc2.Request,
 	_ string,
-) (bool, error) {
+) (result any, handled bool, err error) {
 	switch req.Method() {
 	case "workspace/executeClientCommand":
-		return true, reply(ctx, []any{}, nil)
+		return []any{}, true, nil
 	case "language/status",
 		"language/actionableNotification",
 		experimentalServerStatusMethod:
-		return true, reply(ctx, nil, nil)
+		return nil, true, nil
 	default:
-		return false, nil
+		return nil, false, nil
 	}
 }
 
 // afterInitialized triggers the configuration refresh that basedpyright needs before it answers documentSymbol.
 func (s *Service) afterInitialized(ctx context.Context, conn jsonrpc2.Conn, _ string) error {
 	return conn.Notify(ctx, protocol.MethodWorkspaceDidChangeConfiguration, &protocol.DidChangeConfigurationParams{
-		Settings: map[string]any{},
+		Settings: protocol.LSPAny("{}"),
 	})
 }
 

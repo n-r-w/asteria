@@ -475,8 +475,8 @@ func TestIntegrationServiceFindSymbolReturnsModuleReexportBodies(t *testing.T) {
 			IncludeBody: true,
 			IncludeInfo: true,
 		},
-		WorkspaceRoot:    workspaceRoot,
-		Scope:            "module_reexports.ts",
+		WorkspaceRoot: workspaceRoot,
+		Scope:         "module_reexports.ts",
 	})
 	require.NoError(t, err)
 
@@ -710,6 +710,24 @@ func TestIntegrationServiceFindSymbolSupportsWholeWorkspaceScope(t *testing.T) {
 	assert.Equal(t, "fixture.js", symbol.File)
 	assert.Equal(t, 0, symbol.StartLine)
 	assert.Equal(t, 2, symbol.EndLine)
+}
+
+// TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8 proves that workspace-wide search
+// reads a legacy JavaScript file whose string literal holds bytes that are not valid UTF-8.
+func TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8(t *testing.T) {
+	workspaceRoot := tslsFixtureRoot(t)
+	service, ctx := newIntegrationService(t)
+
+	result, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "binaryMetadataDescriptor"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            "",
+	})
+	require.NoError(t, err)
+
+	symbol, ok := findFoundSymbol(result.Symbols, "binaryMetadataDescriptor")
+	require.True(t, ok, "expected whole-workspace match, got %#v", result.Symbols)
+	assert.Equal(t, "binary_metadata.js", symbol.File)
 }
 
 // TestIntegrationServiceFindSymbolSupportsSecondaryWorkspaceSymbols proves that a separate fixture root

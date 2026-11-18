@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sync"
 
 	"go.lsp.dev/jsonrpc2"
@@ -19,13 +18,15 @@ type session struct {
 	config *sessionConfig
 	mu     sync.Mutex
 
-	cmd         *exec.Cmd
+	cmd         *Command
 	conn        jsonrpc2.Conn
 	fileWatcher *workspaceFileWatcher
 	info        *SessionInfo
 
 	done       chan struct{}
 	waitResult chan error
+	// retired is set when the session is closed for good, so it never starts its server again.
+	retired bool
 }
 
 // newSession creates a reusable session holder before any server process is started.
@@ -39,6 +40,7 @@ func newSession(config *sessionConfig) *session {
 		info:        nil,
 		done:        nil,
 		waitResult:  nil,
+		retired:     false,
 	}
 }
 
@@ -60,10 +62,6 @@ func (s *session) infoSnapshot() *SessionInfo {
 	}
 
 	initializeResultCopy := *s.info.InitializeResult
-	if s.info.InitializeResult.ServerInfo != nil {
-		serverInfoCopy := *s.info.InitializeResult.ServerInfo
-		initializeResultCopy.ServerInfo = &serverInfoCopy
-	}
 
 	return &SessionInfo{InitializeResult: &initializeResultCopy}
 }
@@ -73,6 +71,9 @@ func (s *session) ensureStarted(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.retired {
+		return errSessionClosed
+	}
 	if s.isAliveLocked() {
 		return nil
 	}
@@ -110,8 +111,7 @@ func (s *session) startLocked(ctx context.Context) error {
 	}
 
 	var stderr bytes.Buffer
-	//nolint:gosec // RuntimeConfig is built in code for known language servers, not from user input.
-	cmd := exec.CommandContext(startupCtx, s.config.Command, s.config.Args...)
+	cmd := NewCommand(startupCtx, s.config.Command, s.config.Args...)
 	cmd.Dir = s.config.WorkspaceRoot
 	cmd.Stderr = &stderr
 
@@ -131,7 +131,10 @@ func (s *session) startLocked(ctx context.Context) error {
 
 	// Persist the process state before the handshake so cleanup can unwind partial startup.
 	s.cmd = cmd
-	s.conn = jsonrpc2.NewConn(jsonrpc2.NewStream(&stdioConn{reader: stdout, writer: stdin}))
+	s.conn = jsonrpc2.NewConn(
+		jsonrpc2.NewStream(&stdioConn{reader: stdout, writer: stdin}),
+		jsonrpc2.WithCodec(lspCodec{}),
+	)
 	done := make(chan struct{})
 	waitResult := make(chan error, 1)
 	s.done = done
@@ -216,16 +219,16 @@ func (s *session) initializeParams(processID int32) (*protocol.InitializeParams,
 	//nolint:exhaustruct_v5 // The literal intentionally omits deprecated RootPath and RootURI.
 	params := &protocol.InitializeParams{
 		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
-		ProcessID:              processID,
-		ClientInfo: &protocol.ClientInfo{
+		WorkspaceFolders:       protocol.NewNullable(s.config.WorkspaceFolders),
+		ProcessID:              &processID,
+		ClientInfo: protocol.ClientInfo{
 			Name:    domain.ServerName,
-			Version: "",
+			Version: protocol.Optional[string]{},
 		},
-		Locale:                "en",
+		Locale:                new("en"),
 		InitializationOptions: nil,
 		Capabilities:          s.config.BuildClientCapabilities(),
-		Trace:                 protocol.TraceOff,
-		WorkspaceFolders:      s.config.WorkspaceFolders,
+		Trace:                 protocol.TraceValueOff,
 	}
 	if s.config.FileWatch != nil && s.config.FileWatch.RelevantFile != nil {
 		params.Capabilities = enableDidChangeWatchedFilesCapability(params.Capabilities)
@@ -248,8 +251,25 @@ func (s *session) close(ctx context.Context) error {
 	return s.closeLocked(ctx)
 }
 
+// retireUnlessForced shuts down the language server for good, so the session never starts it again, and kills it at
+// once when forceStop closes.
+func (s *session) retireUnlessForced(ctx context.Context, forceStop <-chan struct{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.retired = true
+
+	return s.closeLockedUnlessForced(ctx, forceStop)
+}
+
 // closeLocked gracefully shuts down the language server while the session lock is held.
 func (s *session) closeLocked(ctx context.Context) error {
+	return s.closeLockedUnlessForced(ctx, nil)
+}
+
+// closeLockedUnlessForced gracefully shuts down the language server while the session lock is held, and goes to the
+// forced stop at once when forceStop closes.
+func (s *session) closeLockedUnlessForced(ctx context.Context, forceStop <-chan struct{}) error {
 	if s.cmd == nil && s.conn == nil && s.fileWatcher == nil && s.done == nil {
 		return nil
 	}
@@ -268,6 +288,8 @@ func (s *session) closeLocked(ctx context.Context) error {
 
 	closeCtx, cancel := newShutdownContext(ctx, s.config.ShutdownTimeout)
 	defer cancel()
+	// Ending closeCtx stops the graceful shutdown request and the wait for exit, which leads to the kill.
+	go cancelOnForceStop(closeCtx, cancel, forceStop)
 	closeConnection := func() {
 		if s.conn == nil {
 			return
@@ -333,6 +355,15 @@ func (s *session) closeLocked(ctx context.Context) error {
 	s.resetLocked()
 
 	return closeErr
+}
+
+// cancelOnForceStop calls cancel when forceStop closes before ctx ends; a nil forceStop never closes.
+func cancelOnForceStop(ctx context.Context, cancel context.CancelFunc, forceStop <-chan struct{}) {
+	select {
+	case <-forceStop:
+		cancel()
+	case <-ctx.Done():
+	}
 }
 
 // resetLocked forgets process-bound resources so the same session wrapper can be started again.

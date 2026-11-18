@@ -12,6 +12,8 @@ import (
 	"go.lsp.dev/uri"
 
 	"github.com/n-r-w/asteria/internal/adapters/lsp/helpers"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/runtimelsp"
+	"github.com/n-r-w/asteria/internal/adapters/lsp/stdlsp"
 	"github.com/n-r-w/asteria/internal/domain"
 )
 
@@ -21,12 +23,13 @@ func (s *Service) GetSymbolsOverview(
 	request *domain.GetSymbolsOverviewRequest,
 ) (domain.GetSymbolsOverviewResult, error) {
 	if request != nil {
-		defer s.closeSessionAfterCanceledRequest(ctx, request.WorkspaceRoot)
-		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		acquired, acquireErr := s.rt.AcquireClosableSession(ctx, request.WorkspaceRoot)
 		if acquireErr != nil {
 			return domain.GetSymbolsOverviewResult{}, acquireErr
 		}
-		defer release()
+		defer releaseSessionAfterRequest(ctx, acquired)
+		// Each connection lookup of the request uses the acquired session, or fails after this session was closed.
+		ctx = runtimelsp.WithAcquiredSession(ctx, acquired)
 	}
 
 	result, err := s.std.GetSymbolsOverview(ctx, request)
@@ -41,7 +44,14 @@ func (s *Service) GetSymbolsOverview(
 
 	augmentedResult, augmentErr := augmentOverviewWithPHPConstants(workspaceRoot, request, result)
 	if augmentErr != nil {
-		logFallbackWarning(ctx, "skip phpactor overview constant fallback", augmentErr, "file_path", request.File)
+		if fatalErr := handleFallbackError(
+			ctx,
+			"skip phpactor overview constant fallback",
+			augmentErr,
+			"file_path", request.File,
+		); fatalErr != nil {
+			return domain.GetSymbolsOverviewResult{}, fatalErr
+		}
 
 		return result, nil
 	}
@@ -50,20 +60,23 @@ func (s *Service) GetSymbolsOverview(
 }
 
 // FindSymbol delegates canonical path matching to the shared standard-LSP search flow.
+// Warnings of the result name the files of a directory or workspace search that could not be processed, and count
+// the files not searched because the search or the constant fallback stopped at the request deadline.
 func (s *Service) FindSymbol(
 	ctx context.Context,
 	request *domain.FindSymbolRequest,
 ) (domain.FindSymbolResult, error) {
 	if request != nil {
-		defer s.closeSessionAfterCanceledRequest(ctx, request.WorkspaceRoot)
-		release, acquireErr := s.rt.AcquireSession(ctx, request.WorkspaceRoot)
+		acquired, acquireErr := s.rt.AcquireClosableSession(ctx, request.WorkspaceRoot)
 		if acquireErr != nil {
 			return domain.FindSymbolResult{}, acquireErr
 		}
-		defer release()
+		defer releaseSessionAfterRequest(ctx, acquired)
+		// Each connection lookup of the request uses the acquired session, or fails after this session was closed.
+		ctx = runtimelsp.WithAcquiredSession(ctx, acquired)
 	}
 
-	result, err := s.std.FindSymbol(ctx, request)
+	result, failures, err := s.std.FindSymbolWithFailures(ctx, request)
 	if err != nil || request == nil {
 		return result, err
 	}
@@ -73,22 +86,14 @@ func (s *Service) FindSymbol(
 		return domain.FindSymbolResult{}, rootErr
 	}
 
-	augmentedResult, augmentErr := augmentFindSymbolWithPHPConstants(
-		workspaceRoot,
-		request,
-		result,
-	)
-	if augmentErr != nil {
-		logFallbackWarning(
-			ctx,
-			"skip phpactor find_symbol constant fallback",
-			augmentErr,
-			"scope_path", request.Scope,
-			"symbol_path", request.Path,
-		)
-	} else {
-		result = augmentedResult
+	// After the deadline, the search returns what it found, without the constant fallback.
+	if phpConstantFallbackApplies(request) && !failures.StopFollowUpByTimeout(ctx) {
+		result, err = addPHPConstants(ctx, workspaceRoot, request, result, failures)
+		if err != nil {
+			return domain.FindSymbolResult{}, err
+		}
 	}
+	failures.CompleteSymbolResult(&result)
 	if !request.IncludeInfo || len(result.Symbols) == 0 {
 		return result, nil
 	}
@@ -113,8 +118,53 @@ func (s *Service) FindSymbol(
 	return result, nil
 }
 
-// FindReferencingSymbols keeps the target-directory PHP file set open for the whole shared workflow so
-// phpactor can resolve property and cross-file references before stdlsp groups the final result.
+// addPHPConstants adds the top-level constants that phpactor omits to the result of a finished directory, workspace,
+// or file search, and records in failures the files whose constants the fallback could not read. In a directory or
+// workspace scope, the fallback stops at the request deadline and records the current file and the files after it as
+// not searched, or records each PHP file of the scope as not searched when it fails after the deadline.
+func addPHPConstants(
+	ctx context.Context,
+	workspaceRoot string,
+	request *domain.FindSymbolRequest,
+	result domain.FindSymbolResult,
+	failures *stdlsp.FileFailures,
+) (domain.FindSymbolResult, error) {
+	augmentedResult, augmentErr := augmentFindSymbolWithPHPConstants(
+		workspaceRoot,
+		request,
+		result,
+		func(relativePath string, fileErr error) error {
+			return failures.Record(ctx, relativePath, fileErr)
+		},
+		func(notSearched []string) bool {
+			return failures.StopByTimeout(ctx, notSearched)
+		},
+	)
+	if augmentErr == nil {
+		return augmentedResult, nil
+	}
+	// When the fallback of a directory or workspace search failed after the deadline, the result keeps the symbols of
+	// the finished search, and the PHP files of the scope count as not searched because their constants are left out.
+	if failures.StopFollowUpByTimeout(ctx) {
+		return result, nil
+	}
+	if fatalErr := handleFallbackError(
+		ctx,
+		"skip phpactor find_symbol constant fallback",
+		augmentErr,
+		"scope_path", request.Scope,
+		"symbol_path", request.Path,
+	); fatalErr != nil {
+		return domain.FindSymbolResult{}, fatalErr
+	}
+
+	return result, nil
+}
+
+// FindReferencingSymbols returns the references from all indexed files after the phpactor session finishes indexing
+// the workspace, with warnings that name the files it could not process or count the files left at the request
+// deadline; the result is marked incomplete when phpactor has not reported indexing, and when ctx ends during the wait
+// for indexing, it returns the error of ctx.
 func (s *Service) FindReferencingSymbols(
 	ctx context.Context,
 	request *domain.FindReferencingSymbolsRequest,
@@ -130,87 +180,142 @@ func (s *Service) FindReferencingSymbols(
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
-	defer s.closeSessionAfterCanceledRequest(ctx, workspaceRoot)
-	release, acquireErr := s.rt.AcquireSession(ctx, workspaceRoot)
+	acquired, acquireErr := s.rt.AcquireClosableSession(ctx, workspaceRoot)
 	if acquireErr != nil {
 		return domain.FindReferencingSymbolsResult{}, acquireErr
 	}
-	defer release()
+	// Each connection lookup of the request, including the one before the wait for indexing, uses the acquired
+	// session, or fails after this session was closed.
+	ctx = runtimelsp.WithAcquiredSession(ctx, acquired)
+	// A request that ends while it waits for indexing has sent phpactor no search request, so the session stays open
+	// and keeps indexing for later requests.
+	endedDuringIndexing := false
+	defer func() {
+		if endedDuringIndexing {
+			acquired.Release()
 
-	referenceWorkflowFiles, err := helpers.CollectReferenceWorkflowFiles(
-		workspaceRoot,
-		request.File,
-		extensions,
-		shouldIgnoreDir,
+			return
+		}
+		releaseSessionAfterRequest(ctx, acquired)
+	}()
+
+	targetFile, targetPath, err := helpers.ResolveDocumentPath(workspaceRoot, request.File)
+	if err != nil {
+		return domain.FindReferencingSymbolsResult{}, err
+	}
+
+	conn, err := s.ensureConn(ctx, workspaceRoot)
+	if err != nil {
+		return domain.FindReferencingSymbolsResult{}, err
+	}
+	indexingReported, err := s.waitForIndexing(ctx, workspaceRoot)
+	if err != nil {
+		endedDuringIndexing = true
+
+		return domain.FindReferencingSymbolsResult{}, err
+	}
+
+	var (
+		result   domain.FindReferencingSymbolsResult
+		failures *stdlsp.FileFailures
 	)
+	err = s.withRequestDocument(ctx, conn, targetPath, func(callCtx context.Context) error {
+		var callErr error
+		result, failures, callErr = s.std.FindReferencingSymbolsWithFailures(callCtx, request)
+
+		return callErr
+	})
 	if err != nil {
 		return domain.FindReferencingSymbolsResult{}, err
 	}
 
-	conn, err := s.rt.EnsureConn(ctx, workspaceRoot)
-	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
+	// After the deadline, the search returns what it found, without the property reference fallback.
+	if !failures.StoppedByTimeout() && !failures.StopByTimeout(ctx, []string{targetFile}) {
+		result, err = s.addPropertyReferences(ctx, workspaceRoot, request, result, targetFile, failures)
+		if err != nil {
+			return domain.FindReferencingSymbolsResult{}, err
+		}
 	}
+	failures.CompleteReferenceResult(&result)
+	result.Incomplete = result.Incomplete || !indexingReported
 
-	var result domain.FindReferencingSymbolsResult
-	err = helpers.RunWithReferenceWorkflowFiles(
-		ctx,
-		conn,
-		workspaceRoot,
-		referenceWorkflowFiles,
-		s.withRequestDocument,
-		func(callCtx context.Context) error {
-			var callErr error
-			result, callErr = s.std.FindReferencingSymbols(callCtx, request)
+	return result, nil
+}
 
-			return callErr
-		},
-	)
-	if err != nil {
-		return domain.FindReferencingSymbolsResult{}, err
-	}
-
+// addPropertyReferences adds the property references that the phpactor CLI finds to the result of a finished
+// reference search and records in failures the files that the fallback could not process.
+func (s *Service) addPropertyReferences(
+	ctx context.Context,
+	workspaceRoot string,
+	request *domain.FindReferencingSymbolsRequest,
+	result domain.FindReferencingSymbolsResult,
+	targetFile string,
+	failures *stdlsp.FileFailures,
+) (domain.FindReferencingSymbolsResult, error) {
 	augmentedResult, augmentErr := s.augmentPropertyReferenceResults(
 		ctx,
 		workspaceRoot,
 		request,
 		result,
+		func(relativePath string, fileErr error) error {
+			return failures.Record(ctx, relativePath, fileErr)
+		},
+		// At the request deadline, the fallback keeps the rows that it finished and records the files of its other
+		// rows as not processed.
+		func(notProcessed []string) bool {
+			return failures.StopByTimeout(ctx, notProcessed)
+		},
 	)
-	if augmentErr != nil {
-		logFallbackWarning(
-			ctx,
-			"skip phpactor property reference fallback",
-			augmentErr,
-			"file_path", request.File,
-			"symbol_path", request.Path,
-		)
-
+	if augmentErr == nil {
+		return augmentedResult, nil
+	}
+	// The result keeps the references of the finished search when the fallback failed after the deadline before its
+	// rows, and targetFile counts as not processed.
+	if failures.StopByTimeout(ctx, []string{targetFile}) {
 		return result, nil
 	}
+	if fatalErr := handleFallbackError(
+		ctx,
+		"skip phpactor property reference fallback",
+		augmentErr,
+		"file_path", request.File,
+		"symbol_path", request.Path,
+	); fatalErr != nil {
+		return domain.FindReferencingSymbolsResult{}, fatalErr
+	}
 
-	return augmentedResult, nil
+	return result, nil
 }
 
-// patchInitializeParams keeps the deprecated startup workaround local to phpactor while disabling helper
-// integrations that add noise to symbolic-search startup and redirecting Phpactor state into the managed cache.
+// patchInitializeParams sets the phpactor options of a new session and makes reference searches wait for the
+// indexing of this session.
 func (s *Service) patchInitializeParams(workspaceRoot string, params *protocol.InitializeParams) error {
+	// The runtime calls this hook before it sends the initialize request, so the new session cannot begin indexing
+	// before startIndexing runs.
+	s.startIndexing(workspaceRoot)
+
 	indexPath, err := phpactorIndexerPath(s.cacheRoot, workspaceRoot)
 	if err != nil {
 		return err
 	}
 
 	//nolint:staticcheck // Phpactor initialize does not answer in this environment unless RootURI is set.
-	params.RootURI = uri.File(workspaceRoot)
-	params.InitializationOptions = map[string]any{
+	params.RootURI = new(uri.File(workspaceRoot))
+	initializationOptions, err := helpers.MarshalLSPAny(map[string]any{
 		phpactorIndexerPathKey:         indexPath,
 		phpactorEnabledWatchersKey:     []string{phpactorLSPWatcher},
 		phpactorPHPStanEnabledKey:      false,
 		phpactorPsalmEnabledKey:        false,
 		phpactorPHPCSFixerEnabledKey:   false,
+		phpactorAutoConfigKey:          false,
 		phpactorDiagnosticsOnOpenKey:   false,
 		phpactorDiagnosticsOnUpdateKey: false,
 		phpactorDiagnosticsOnSaveKey:   false,
+	})
+	if err != nil {
+		return err
 	}
+	params.InitializationOptions = initializationOptions
 
 	return nil
 }

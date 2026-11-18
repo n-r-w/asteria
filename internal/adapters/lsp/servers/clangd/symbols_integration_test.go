@@ -240,6 +240,24 @@ func TestIntegrationServiceFindSymbolReturnsOverloadedAdvancedCPPFunctions(t *te
 	assert.Len(t, result.Symbols, 2)
 }
 
+// TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8 proves that workspace-wide C++ search
+// reads a file whose string literal holds bytes that are not valid UTF-8, as legacy or generated sources do.
+func TestIntegrationServiceFindSymbolReturnsSymbolsOfFileWithInvalidUTF8(t *testing.T) {
+	workspaceRoot := clangdFixtureRootByName(t, "basic")
+	service, ctx, _ := newIntegrationService(t)
+
+	result, err := service.FindSymbol(ctx, &domain.FindSymbolRequest{
+		FindSymbolFilter: domain.FindSymbolFilter{Path: "binary_metadata_descriptor"},
+		WorkspaceRoot:    workspaceRoot,
+		Scope:            "",
+	})
+	require.NoError(t, err)
+
+	symbol, ok := findFoundSymbol(result.Symbols, "binary_metadata_descriptor")
+	require.True(t, ok, "expected whole-workspace match, got %#v", result.Symbols)
+	assert.Equal(t, "binary_metadata.cpp", symbol.File)
+}
+
 // TestIntegrationServiceFindReferencingSymbolsReturnsCrossFileCaller proves that the references workflow can
 // follow a declaration from the header into the C++ source that calls it.
 func TestIntegrationServiceFindReferencingSymbolsReturnsCrossFileCaller(t *testing.T) {
@@ -1016,13 +1034,13 @@ func overviewSymbolsInWorkflow(
 		return result.Symbols
 	}
 
-	err = helpers.RunWithReferenceWorkflowFiles(
+	_, err = helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		workflowFiles,
 		service.withRequestDocument,
-		runOverview,
+		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error { return runOverview(callCtx) },
 	)
 	require.NoError(t, err)
 
@@ -1081,13 +1099,15 @@ func rawDocumentSymbolJSONInWorkflow(
 		return mustMarshalRawMessages(t, payload)
 	}
 
-	err = helpers.RunWithReferenceWorkflowFiles(
+	_, err = helpers.RunWithReferenceWorkflowFiles(
 		ctx,
 		conn,
 		workspaceRoot,
 		workflowFilesWithoutTarget(workflowFiles, relativePath),
 		service.withRequestDocument,
-		openTargetAndRequest,
+		func(callCtx context.Context, _ []string, _ []helpers.SkippedFile) error {
+			return openTargetAndRequest(callCtx)
+		},
 	)
 	require.NoError(t, err)
 
